@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { computeEloRatings, getWCTeamRatings } from "../lib/elo.js";
+import { computeEloRatings, getWCTeamRatings, type TeamMetrics } from "../lib/elo.js";
 import { runSimulations, matchProbabilities, type SimResult, type PlayedMatch } from "../lib/simulation.js";
 import { WC2026_TEAMS, getTeamByName } from "../lib/worldcup2026.js";
 
@@ -10,6 +10,7 @@ interface OracleCache {
   ready: boolean;
   matchCount: number;
   ratings: Record<string, number>;
+  teamMetrics: Record<string, TeamMetrics>;
   simResult: SimResult | null;
   playedMatches: PlayedMatch[];
 }
@@ -18,6 +19,7 @@ const cache: OracleCache = {
   ready: false,
   matchCount: 0,
   ratings: {},
+  teamMetrics: {},
   simResult: null,
   playedMatches: [],
 };
@@ -25,12 +27,13 @@ const cache: OracleCache = {
 // ---- Initialize on startup ----
 export async function initOracle(): Promise<void> {
   try {
-    const { ratings: allRatings, matchCount } = await computeEloRatings();
+    const { ratings: allRatings, teamMetrics, matchCount } = await computeEloRatings();
     const wcRatings = getWCTeamRatings(allRatings);
     cache.matchCount = matchCount;
     cache.ratings = wcRatings;
+    cache.teamMetrics = teamMetrics;
 
-    const simResult = runSimulations(wcRatings, cache.playedMatches);
+    const simResult = runSimulations(wcRatings, cache.playedMatches, cache.teamMetrics);
     cache.simResult = simResult;
     cache.ready = true;
   } catch (err) {
@@ -79,7 +82,7 @@ router.post("/oracle/live-match", (req, res) => {
   cache.playedMatches.push({ homeTeam, awayTeam, homeScore, awayScore });
 
   // Recalculate simulation with updated live state
-  cache.simResult = runSimulations(cache.ratings, cache.playedMatches);
+  cache.simResult = runSimulations(cache.ratings, cache.playedMatches, cache.teamMetrics);
 
   return res.json({
     success: true,
@@ -143,10 +146,15 @@ router.post("/oracle/predict-match", (req, res) => {
 
   const eloHome = cache.ratings[homeTeam] ?? 1000;
   const eloAway = cache.ratings[awayTeam] ?? 1000;
+  const metricsHome = cache.teamMetrics[homeTeam];
+  const metricsAway = cache.teamMetrics[awayTeam];
 
   const { pWinA, pDraw, pWinB, xgA, xgB, mostLikelyScore } = matchProbabilities(
     eloHome,
-    eloAway
+    eloAway,
+    50_000,
+    metricsHome,
+    metricsAway
   );
 
   res.json({
@@ -166,3 +174,4 @@ router.post("/oracle/predict-match", (req, res) => {
 });
 
 export default router;
+

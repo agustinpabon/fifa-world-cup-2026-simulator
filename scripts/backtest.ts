@@ -5,7 +5,7 @@ async function main() {
   console.log("🚀 Running World Cup Predictor verification & backtest...");
   const start = Date.now();
 
-  const { ratings, matchCount } = await computeEloRatings();
+  const { ratings, teamMetrics, matchCount } = await computeEloRatings();
   console.log(`✅ Loaded ${matchCount} historical matches.`);
 
   const wcRatings = getWCTeamRatings(ratings);
@@ -14,20 +14,21 @@ async function main() {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
   for (const [team, elo] of top5) {
-    console.log(`   - ${team}: ${elo} Elo`);
+    const m = teamMetrics[team];
+    console.log(`   - ${team}: ${elo} Elo (Atk: ${m?.attackStrength ?? 1}, Def: ${m?.defenseStrength ?? 1})`);
   }
 
-  console.log("\n⚽ Testing Dixon-Coles Match Predictor (Argentina vs France):");
+  console.log("\n⚽ Testing Bivariate Dixon-Coles Match Predictor (Argentina vs France):");
   const argElo = wcRatings["Argentina"] ?? 2000;
   const fraElo = wcRatings["France"] ?? 1950;
-  const pred = matchProbabilities(argElo, fraElo, 50_000);
+  const pred = matchProbabilities(argElo, fraElo, 50_000, teamMetrics["Argentina"], teamMetrics["France"]);
   console.log(`   - Argentina Win: ${Math.round(pred.pWinA * 100)}%`);
   console.log(`   - Draw: ${Math.round(pred.pDraw * 100)}%`);
   console.log(`   - France Win: ${Math.round(pred.pWinB * 100)}%`);
   console.log(`   - Most Likely Score: ${pred.mostLikelyScore}`);
 
   console.log("\n🎰 Executing 10,000 Monte Carlo Tournament Simulations...");
-  const simResult = runSimulations(wcRatings);
+  const simResult = runSimulations(wcRatings, [], teamMetrics);
   console.log("🏆 Top 5 Favorites to win FIFA World Cup 2026:");
   const topFavs = Object.entries(simResult.titles)
     .sort((a, b) => b[1] - a[1])
@@ -41,3 +42,4 @@ async function main() {
 }
 
 main().catch(console.error);
+

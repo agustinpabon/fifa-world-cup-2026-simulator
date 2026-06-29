@@ -1,5 +1,5 @@
 import { WC2026_TEAMS, GROUPS, type WCTeam } from "./worldcup2026.js";
-import type { EloRatings } from "./elo.js";
+import type { EloRatings, TeamMetrics } from "./elo.js";
 
 const NUM_SIMULATIONS = 10_000;
 const BASE_XG = 1.25; // average goals per team per game
@@ -21,7 +21,6 @@ function poissonSample(lambda: number): number {
 
 // Dixon-Coles score sampling adjusting low-score draws (0-0, 1-1, 1-0, 0-1)
 function dixonColesSample(lambda: number, mu: number, rho = -0.06): { goalsA: number; goalsB: number } {
-  // Rejection sampling or probability grid for common scores
   for (let attempt = 0; attempt < 50; attempt++) {
     const ga = poissonSample(lambda);
     const gb = poissonSample(mu);
@@ -39,15 +38,25 @@ function dixonColesSample(lambda: number, mu: number, rho = -0.06): { goalsA: nu
   return { goalsA: poissonSample(lambda), goalsB: poissonSample(mu) };
 }
 
-function expectedGoals(eloA: number, eloB: number): { xgA: number; xgB: number } {
+function expectedGoals(
+  eloA: number,
+  eloB: number,
+  metricsA?: TeamMetrics,
+  metricsB?: TeamMetrics
+): { xgA: number; xgB: number } {
   const diff = (eloA - eloB) / ELO_SCALE;
   const mult = Math.pow(10, diff);
-  // Dynamic scaling without severe artificial truncation (allows dominant teams to reflect true xG superiority)
   const ratio = Math.min(Math.max(Math.sqrt(mult), 0.15), 6.5);
   const total = BASE_XG * 2;
-  const xgA = (total * ratio) / (1 + ratio);
-  const xgB = total - xgA;
-  return { xgA, xgB };
+  let xgA = (total * ratio) / (1 + ratio);
+  let xgB = total - xgA;
+
+  if (metricsA && metricsB) {
+    xgA = xgA * metricsA.attackStrength * metricsB.defenseStrength;
+    xgB = xgB * metricsB.attackStrength * metricsA.defenseStrength;
+  }
+
+  return { xgA: Math.max(0.05, xgA), xgB: Math.max(0.05, xgB) };
 }
 
 export interface PlayedMatch {
@@ -61,12 +70,14 @@ export interface PlayedMatch {
 function simulateMatch(
   eloA: number,
   eloB: number,
-  playedMatch?: PlayedMatch
+  playedMatch?: PlayedMatch,
+  metricsA?: TeamMetrics,
+  metricsB?: TeamMetrics
 ): { goalsA: number; goalsB: number } {
   if (playedMatch) {
     return { goalsA: playedMatch.homeScore, goalsB: playedMatch.awayScore };
   }
-  const { xgA, xgB } = expectedGoals(eloA, eloB);
+  const { xgA, xgB } = expectedGoals(eloA, eloB, metricsA, metricsB);
   return dixonColesSample(xgA, xgB);
 }
 
@@ -74,9 +85,11 @@ function simulateMatch(
 export function matchProbabilities(
   eloA: number,
   eloB: number,
-  trials = 50_000
+  trials = 50_000,
+  metricsA?: TeamMetrics,
+  metricsB?: TeamMetrics
 ): { pWinA: number; pDraw: number; pWinB: number; xgA: number; xgB: number; mostLikelyScore: string } {
-  const { xgA, xgB } = expectedGoals(eloA, eloB);
+  const { xgA, xgB } = expectedGoals(eloA, eloB, metricsA, metricsB);
   let winA = 0;
   let draw = 0;
   let winB = 0;
@@ -117,7 +130,8 @@ interface GroupStanding {
 function simulateGroup(
   groupTeams: WCTeam[],
   ratings: EloRatings,
-  playedMatches: PlayedMatch[] = []
+  playedMatches: PlayedMatch[] = [],
+  teamMetrics?: Record<string, TeamMetrics>
 ): GroupStanding[] {
   const standings: GroupStanding[] = groupTeams.map((t) => ({
     team: t,
@@ -127,6 +141,8 @@ function simulateGroup(
     ga: 0,
     gd: 0,
   }));
+
+  const h2hMap: Record<string, number> = {};
 
   // Round-robin: each pair plays once
   for (let i = 0; i < standings.length; i++) {
@@ -151,7 +167,13 @@ function simulateGroup(
           goalsB = played.homeScore;
         }
       } else {
-        const sim = simulateMatch(a.elo, b.elo);
+        const sim = simulateMatch(
+          a.elo,
+          b.elo,
+          undefined,
+          teamMetrics?.[a.team.name],
+          teamMetrics?.[b.team.name]
+        );
         goalsA = sim.goalsA;
         goalsB = sim.goalsB;
       }
@@ -162,6 +184,10 @@ function simulateGroup(
       b.ga += goalsA;
       a.gd = a.gf - a.ga;
       b.gd = b.gf - b.ga;
+
+      h2hMap[`${a.team.name}_vs_${b.team.name}`] = goalsA - goalsB;
+      h2hMap[`${b.team.name}_vs_${a.team.name}`] = goalsB - goalsA;
+
       if (goalsA > goalsB) {
         a.points += 3;
       } else if (goalsB > goalsA) {
@@ -173,22 +199,28 @@ function simulateGroup(
     }
   }
 
-  // Sort: points > gd > gf
-  standings.sort((a, b) =>
-    b.points !== a.points
-      ? b.points - a.points
-      : b.gd !== a.gd
-      ? b.gd - a.gd
-      : b.gf - a.gf
-  );
+  // Official FIFA Tiebreakers: Points > GD > GF > Head-to-Head > Elo
+  standings.sort((a, b) => {
+    if (b.points !== a.points) return b.points - a.points;
+    if (b.gd !== a.gd) return b.gd - a.gd;
+    if (b.gf !== a.gf) return b.gf - a.gf;
+    const h2h = h2hMap[`${a.team.name}_vs_${b.team.name}`] ?? 0;
+    if (h2h !== 0) return h2h > 0 ? -1 : 1;
+    return b.elo - a.elo;
+  });
 
   return standings;
 }
 
 // ---------- Knockout ----------
 
-function simulateKnockout(eloA: number, eloB: number): boolean {
-  const { goalsA, goalsB } = simulateMatch(eloA, eloB);
+function simulateKnockout(
+  eloA: number,
+  eloB: number,
+  metricsA?: TeamMetrics,
+  metricsB?: TeamMetrics
+): boolean {
+  const { goalsA, goalsB } = simulateMatch(eloA, eloB, undefined, metricsA, metricsB);
   if (goalsA > goalsB) return true;
   if (goalsB > goalsA) return false;
   const penEdge = Math.min(0.6, 0.5 + (eloA - eloB) / 2000);
@@ -207,7 +239,11 @@ export interface SimResult {
   groupAdvances: Record<string, number>;
 }
 
-export function runSimulations(ratings: EloRatings, playedMatches: PlayedMatch[] = []): SimResult {
+export function runSimulations(
+  ratings: EloRatings,
+  playedMatches: PlayedMatch[] = [],
+  teamMetrics?: Record<string, TeamMetrics>
+): SimResult {
   const result: SimResult = {
     titles: {},
     finals: {},
@@ -237,7 +273,7 @@ export function runSimulations(ratings: EloRatings, playedMatches: PlayedMatch[]
 
     for (const group of GROUPS) {
       const groupTeams = WC2026_TEAMS.filter((t) => t.group === group);
-      const standings = simulateGroup(groupTeams, ratings, playedMatches);
+      const standings = simulateGroup(groupTeams, ratings, playedMatches, teamMetrics);
       groupResults.push(standings);
       groupWinnersMap[group] = standings[0].team;
       groupRunnersMap[group] = standings[1].team;
@@ -292,7 +328,12 @@ export function runSimulations(ratings: EloRatings, playedMatches: PlayedMatch[]
     // Round of 32 → 16 teams
     const r16: WCTeam[] = [];
     for (const [a, b] of r32Matches) {
-      const aWins = simulateKnockout(ratings[a.name] ?? 1000, ratings[b.name] ?? 1000);
+      const aWins = simulateKnockout(
+        ratings[a.name] ?? 1000,
+        ratings[b.name] ?? 1000,
+        teamMetrics?.[a.name],
+        teamMetrics?.[b.name]
+      );
       r16.push(aWins ? a : b);
     }
 
@@ -303,7 +344,12 @@ export function runSimulations(ratings: EloRatings, playedMatches: PlayedMatch[]
     for (let i = 0; i < r16.length; i += 2) {
       const a = r16[i];
       const b = r16[i + 1];
-      const aWins = simulateKnockout(ratings[a.name] ?? 1000, ratings[b.name] ?? 1000);
+      const aWins = simulateKnockout(
+        ratings[a.name] ?? 1000,
+        ratings[b.name] ?? 1000,
+        teamMetrics?.[a.name],
+        teamMetrics?.[b.name]
+      );
       qf.push(aWins ? a : b);
     }
 
@@ -314,7 +360,12 @@ export function runSimulations(ratings: EloRatings, playedMatches: PlayedMatch[]
     for (let i = 0; i < qf.length; i += 2) {
       const a = qf[i];
       const b = qf[i + 1];
-      const aWins = simulateKnockout(ratings[a.name] ?? 1000, ratings[b.name] ?? 1000);
+      const aWins = simulateKnockout(
+        ratings[a.name] ?? 1000,
+        ratings[b.name] ?? 1000,
+        teamMetrics?.[a.name],
+        teamMetrics?.[b.name]
+      );
       sf.push(aWins ? a : b);
     }
 
@@ -325,7 +376,12 @@ export function runSimulations(ratings: EloRatings, playedMatches: PlayedMatch[]
     for (let i = 0; i < sf.length; i += 2) {
       const a = sf[i];
       const b = sf[i + 1];
-      const aWins = simulateKnockout(ratings[a.name] ?? 1000, ratings[b.name] ?? 1000);
+      const aWins = simulateKnockout(
+        ratings[a.name] ?? 1000,
+        ratings[b.name] ?? 1000,
+        teamMetrics?.[a.name],
+        teamMetrics?.[b.name]
+      );
       finalists.push(aWins ? a : b);
     }
 
@@ -333,7 +389,12 @@ export function runSimulations(ratings: EloRatings, playedMatches: PlayedMatch[]
 
     // Final: 2 → 1 champion
     const [f1, f2] = finalists;
-    const aWins = simulateKnockout(ratings[f1.name] ?? 1000, ratings[f2.name] ?? 1000);
+    const aWins = simulateKnockout(
+      ratings[f1.name] ?? 1000,
+      ratings[f2.name] ?? 1000,
+      teamMetrics?.[f1.name],
+      teamMetrics?.[f2.name]
+    );
     result.titles[(aWins ? f1 : f2).name]++;
   }
 

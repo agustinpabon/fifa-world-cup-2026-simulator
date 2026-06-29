@@ -8,6 +8,12 @@ export interface EloRatings {
   [teamName: string]: number;
 }
 
+export interface TeamMetrics {
+  elo: number;
+  attackStrength: number;
+  defenseStrength: number;
+}
+
 interface MatchRow {
   date: string;
   homeTeam: string;
@@ -58,7 +64,11 @@ function parseCSV(raw: string): MatchRow[] {
   return rows;
 }
 
-export async function computeEloRatings(): Promise<{ ratings: EloRatings; matchCount: number }> {
+export async function computeEloRatings(): Promise<{
+  ratings: EloRatings;
+  teamMetrics: Record<string, TeamMetrics>;
+  matchCount: number;
+}> {
   logger.info("Downloading international results CSV...");
 
   const response = await fetch(CSV_URL);
@@ -75,6 +85,9 @@ export async function computeEloRatings(): Promise<{ ratings: EloRatings; matchC
 
   // Initialize all known teams at 1000
   const ratings: EloRatings = {};
+  const recentScored: Record<string, number> = {};
+  const recentConceded: Record<string, number> = {};
+  const recentCount: Record<string, number> = {};
 
   function getRating(team: string): number {
     if (!(team in ratings)) ratings[team] = 1000;
@@ -110,8 +123,20 @@ export async function computeEloRatings(): Promise<{ ratings: EloRatings; matchC
 
     const matchYear = parseInt(date.substring(0, 4), 10) || referenceYear;
     const yearsAgo = Math.max(0, referenceYear - matchYear);
-    // Exponential time-decay factor (half-life ~20 years, min floor 0.2)
-    const recencyWeight = Math.max(0.2, Math.exp(-0.035 * yearsAgo));
+    
+    // Track recent goals (last 8 years) for attack/defense strength estimation
+    if (yearsAgo <= 8) {
+      recentScored[homeTeam] = (recentScored[homeTeam] ?? 0) + homeScore;
+      recentConceded[homeTeam] = (recentConceded[homeTeam] ?? 0) + awayScore;
+      recentCount[homeTeam] = (recentCount[homeTeam] ?? 0) + 1;
+
+      recentScored[awayTeam] = (recentScored[awayTeam] ?? 0) + awayScore;
+      recentConceded[awayTeam] = (recentConceded[awayTeam] ?? 0) + homeScore;
+      recentCount[awayTeam] = (recentCount[awayTeam] ?? 0) + 1;
+    }
+
+    // Exponential time-decay factor (recalibrated half-life ~10-12 years, min floor 0.05)
+    const recencyWeight = Math.max(0.05, Math.exp(-0.055 * yearsAgo));
 
     const K = kFactor(tournament) * recencyWeight;
     const goalDiff = Math.abs(homeScore - awayScore);
@@ -126,7 +151,40 @@ export async function computeEloRatings(): Promise<{ ratings: EloRatings; matchC
     ratings[awayTeam] = (ratings[awayTeam] ?? 1000) + deltaB;
   }
 
-  return { ratings, matchCount: rows.length };
+  const teamMetrics: Record<string, TeamMetrics> = {};
+  for (const team of WC2026_TEAMS) {
+    let baseElo = ratings[team.csvName] ?? 1500;
+    if (HOST_TEAMS.has(team.name)) {
+      baseElo += HOST_BOOST;
+    }
+    const elo = Math.round(baseElo);
+
+    const count = recentCount[team.csvName] ?? 0;
+    let atk = 1.0;
+    let def = 1.0;
+
+    if (count >= 5) {
+      const avgScored = recentScored[team.csvName] / count;
+      const avgConceded = recentConceded[team.csvName] / count;
+      const rawAtk = avgScored / 1.35;
+      const rawDef = avgConceded / 1.35;
+      const eloFactor = Math.pow(10, (elo - 1500) / 600);
+      atk = Math.min(1.5, Math.max(0.6, rawAtk * 0.35 + eloFactor * 0.65));
+      def = Math.min(1.5, Math.max(0.6, rawDef * 0.35 + (1 / eloFactor) * 0.65));
+    } else {
+      const eloFactor = Math.pow(10, (elo - 1500) / 600);
+      atk = Math.min(1.5, Math.max(0.6, eloFactor));
+      def = Math.min(1.5, Math.max(0.6, 1 / eloFactor));
+    }
+
+    teamMetrics[team.name] = {
+      elo,
+      attackStrength: Math.round(atk * 100) / 100,
+      defenseStrength: Math.round(def * 100) / 100,
+    };
+  }
+
+  return { ratings, teamMetrics, matchCount: rows.length };
 }
 
 const HOST_TEAMS = new Set(["USA", "Mexico", "Canada"]);
@@ -143,3 +201,4 @@ export function getWCTeamRatings(allRatings: EloRatings): EloRatings {
   }
   return result;
 }
+

@@ -42,7 +42,8 @@ function dixonColesSample(lambda: number, mu: number, rho = -0.06): { goalsA: nu
 function expectedGoals(eloA: number, eloB: number): { xgA: number; xgB: number } {
   const diff = (eloA - eloB) / ELO_SCALE;
   const mult = Math.pow(10, diff);
-  const ratio = Math.min(Math.max(Math.sqrt(mult), 0.33), 3);
+  // Dynamic scaling without severe artificial truncation (allows dominant teams to reflect true xG superiority)
+  const ratio = Math.min(Math.max(Math.sqrt(mult), 0.15), 6.5);
   const total = BASE_XG * 2;
   const xgA = (total * ratio) / (1 + ratio);
   const xgB = total - xgA;
@@ -268,24 +269,24 @@ export function runSimulations(ratings: EloRatings, playedMatches: PlayedMatch[]
     }
 
     // Build structured Round of 32 pairs following FIFA 48-team bracket principles
-    // Pair group winners against runners-up and best thirds in fixed bracket slots
+    // Pair 12 group winners, 12 runners-up, and 8 best thirds without duplicates
     const r32Matches: [WCTeam, WCTeam][] = [
       [groupWinnersMap["A"], groupRunnersMap["B"]],
-      [groupWinnersMap["C"], best8thirds[0].team],
-      [groupWinnersMap["E"], groupRunnersMap["F"]],
-      [groupWinnersMap["G"], best8thirds[1].team],
-      [groupWinnersMap["I"], groupRunnersMap["J"]],
-      [groupWinnersMap["K"], best8thirds[2].team],
       [groupWinnersMap["B"], groupRunnersMap["A"]],
-      [groupWinnersMap["D"], best8thirds[3].team],
-      [groupWinnersMap["F"], groupRunnersMap["E"]],
-      [groupWinnersMap["H"], best8thirds[4].team],
-      [groupWinnersMap["J"], groupRunnersMap["I"]],
-      [groupWinnersMap["L"], best8thirds[5].team],
-      [groupWinnersMap["D"], groupRunnersMap["C"]],
-      [groupWinnersMap["F"], best8thirds[6].team],
-      [groupWinnersMap["H"], groupRunnersMap["G"]],
+      [groupWinnersMap["K"], groupRunnersMap["L"]],
+      [groupWinnersMap["L"], groupRunnersMap["K"]],
+      [groupWinnersMap["C"], best8thirds[0].team],
+      [groupWinnersMap["D"], best8thirds[1].team],
+      [groupWinnersMap["E"], best8thirds[2].team],
+      [groupWinnersMap["F"], best8thirds[3].team],
+      [groupWinnersMap["G"], best8thirds[4].team],
+      [groupWinnersMap["H"], best8thirds[5].team],
+      [groupWinnersMap["I"], best8thirds[6].team],
       [groupWinnersMap["J"], best8thirds[7].team],
+      [groupRunnersMap["C"], groupRunnersMap["D"]],
+      [groupRunnersMap["E"], groupRunnersMap["F"]],
+      [groupRunnersMap["G"], groupRunnersMap["H"]],
+      [groupRunnersMap["I"], groupRunnersMap["J"]],
     ];
 
     // Round of 32 → 16 teams

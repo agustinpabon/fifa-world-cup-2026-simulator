@@ -5,11 +5,10 @@ const NUM_SIMULATIONS = 10_000;
 const BASE_XG = 1.25; // average goals per team per game
 const ELO_SCALE = 400; // Elo scale factor
 
-// ---------- Math helpers ----------
+// ---------- Dixon-Coles & Math helpers ----------
 
 function poissonSample(lambda: number): number {
   if (lambda <= 0) return 0;
-  // Knuth algorithm
   const L = Math.exp(-lambda);
   let k = 0;
   let p = 1;
@@ -20,27 +19,57 @@ function poissonSample(lambda: number): number {
   return k - 1;
 }
 
+// Dixon-Coles score sampling adjusting low-score draws (0-0, 1-1, 1-0, 0-1)
+function dixonColesSample(lambda: number, mu: number, rho = -0.06): { goalsA: number; goalsB: number } {
+  // Rejection sampling or probability grid for common scores
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const ga = poissonSample(lambda);
+    const gb = poissonSample(mu);
+
+    let tau = 1.0;
+    if (ga === 0 && gb === 0) tau = 1.0 - lambda * mu * rho;
+    else if (ga === 1 && gb === 0) tau = 1.0 + mu * rho;
+    else if (ga === 0 && gb === 1) tau = 1.0 + lambda * rho;
+    else if (ga === 1 && gb === 1) tau = 1.0 - rho;
+
+    if (Math.random() < Math.max(0, Math.min(1, tau))) {
+      return { goalsA: ga, goalsB: gb };
+    }
+  }
+  return { goalsA: poissonSample(lambda), goalsB: poissonSample(mu) };
+}
+
 function expectedGoals(eloA: number, eloB: number): { xgA: number; xgB: number } {
   const diff = (eloA - eloB) / ELO_SCALE;
-  // Convert Elo diff to multiplicative goal scaling
-  const mult = Math.pow(10, diff); // A team x10 stronger would score ~10x more (capped below)
-  const ratio = Math.min(Math.max(Math.sqrt(mult), 0.33), 3); // cap ratio
-  // Share total goals ~2.5 between two teams
+  const mult = Math.pow(10, diff);
+  const ratio = Math.min(Math.max(Math.sqrt(mult), 0.33), 3);
   const total = BASE_XG * 2;
   const xgA = (total * ratio) / (1 + ratio);
   const xgB = total - xgA;
   return { xgA, xgB };
 }
 
-function simulateMatch(
-  eloA: number,
-  eloB: number
-): { goalsA: number; goalsB: number } {
-  const { xgA, xgB } = expectedGoals(eloA, eloB);
-  return { goalsA: poissonSample(xgA), goalsB: poissonSample(xgB) };
+export interface PlayedMatch {
+  homeTeam: string;
+  awayTeam: string;
+  homeScore: number;
+  awayScore: number;
+  stage?: string;
 }
 
-// Win/draw/loss probabilities via Monte Carlo (small sample for prediction)
+function simulateMatch(
+  eloA: number,
+  eloB: number,
+  playedMatch?: PlayedMatch
+): { goalsA: number; goalsB: number } {
+  if (playedMatch) {
+    return { goalsA: playedMatch.homeScore, goalsB: playedMatch.awayScore };
+  }
+  const { xgA, xgB } = expectedGoals(eloA, eloB);
+  return dixonColesSample(xgA, xgB);
+}
+
+// Win/draw/loss probabilities via Monte Carlo
 export function matchProbabilities(
   eloA: number,
   eloB: number,
@@ -53,8 +82,7 @@ export function matchProbabilities(
   const scoreFreq: Record<string, number> = {};
 
   for (let i = 0; i < trials; i++) {
-    const ga = poissonSample(xgA);
-    const gb = poissonSample(xgB);
+    const { goalsA: ga, goalsB: gb } = dixonColesSample(xgA, xgB);
     const key = `${ga}-${gb}`;
     scoreFreq[key] = (scoreFreq[key] ?? 0) + 1;
     if (ga > gb) winA++;
@@ -87,7 +115,8 @@ interface GroupStanding {
 
 function simulateGroup(
   groupTeams: WCTeam[],
-  ratings: EloRatings
+  ratings: EloRatings,
+  playedMatches: PlayedMatch[] = []
 ): GroupStanding[] {
   const standings: GroupStanding[] = groupTeams.map((t) => ({
     team: t,
@@ -103,7 +132,29 @@ function simulateGroup(
     for (let j = i + 1; j < standings.length; j++) {
       const a = standings[i];
       const b = standings[j];
-      const { goalsA, goalsB } = simulateMatch(a.elo, b.elo);
+      const played = playedMatches.find(
+        (m) =>
+          (m.homeTeam === a.team.name && m.awayTeam === b.team.name) ||
+          (m.homeTeam === b.team.name && m.awayTeam === a.team.name)
+      );
+
+      let goalsA: number;
+      let goalsB: number;
+
+      if (played) {
+        if (played.homeTeam === a.team.name) {
+          goalsA = played.homeScore;
+          goalsB = played.awayScore;
+        } else {
+          goalsA = played.awayScore;
+          goalsB = played.homeScore;
+        }
+      } else {
+        const sim = simulateMatch(a.elo, b.elo);
+        goalsA = sim.goalsA;
+        goalsB = sim.goalsB;
+      }
+
       a.gf += goalsA;
       a.ga += goalsB;
       b.gf += goalsB;
@@ -136,11 +187,9 @@ function simulateGroup(
 // ---------- Knockout ----------
 
 function simulateKnockout(eloA: number, eloB: number): boolean {
-  // Returns true if A wins (can't draw - pens decide)
   const { goalsA, goalsB } = simulateMatch(eloA, eloB);
   if (goalsA > goalsB) return true;
   if (goalsB > goalsA) return false;
-  // Penalties: 50/50 slight edge to better team
   const penEdge = Math.min(0.6, 0.5 + (eloA - eloB) / 2000);
   return Math.random() < penEdge;
 }
@@ -157,7 +206,7 @@ export interface SimResult {
   groupAdvances: Record<string, number>;
 }
 
-export function runSimulations(ratings: EloRatings): SimResult {
+export function runSimulations(ratings: EloRatings, playedMatches: PlayedMatch[] = []): SimResult {
   const result: SimResult = {
     titles: {},
     finals: {},
@@ -182,17 +231,18 @@ export function runSimulations(ratings: EloRatings): SimResult {
   for (let sim = 0; sim < NUM_SIMULATIONS; sim++) {
     // Group stage: all 12 groups
     const groupResults: GroupStanding[][] = [];
+    const groupWinnersMap: Record<string, WCTeam> = {};
+    const groupRunnersMap: Record<string, WCTeam> = {};
+
     for (const group of GROUPS) {
       const groupTeams = WC2026_TEAMS.filter((t) => t.group === group);
-      const standings = simulateGroup(groupTeams, ratings);
+      const standings = simulateGroup(groupTeams, ratings, playedMatches);
       groupResults.push(standings);
+      groupWinnersMap[group] = standings[0].team;
+      groupRunnersMap[group] = standings[1].team;
     }
 
-    // Track group wins and advances
-    // Top 2 from each group automatically advance: 12 groups × 2 = 24 teams
-    // Best 8 third-place teams also advance: total = 32 for R32
     const thirdPlacers: GroupStanding[] = [];
-    const advancers: WCTeam[] = [];
 
     for (const standings of groupResults) {
       const winner = standings[0];
@@ -201,11 +251,9 @@ export function runSimulations(ratings: EloRatings): SimResult {
       result.groupWins[winner.team.name]++;
       result.groupAdvances[winner.team.name]++;
       result.groupAdvances[second.team.name]++;
-      advancers.push(winner.team, second.team);
       thirdPlacers.push(third);
     }
 
-    // Pick best 8 third-place teams by points then gd then gf
     thirdPlacers.sort((a, b) =>
       b.points !== a.points
         ? b.points - a.points
@@ -217,19 +265,32 @@ export function runSimulations(ratings: EloRatings): SimResult {
     const best8thirds = thirdPlacers.slice(0, 8);
     for (const t of best8thirds) {
       result.groupAdvances[t.team.name]++;
-      advancers.push(t.team);
     }
 
-    // Now we have 32 teams. Shuffle for seeding simplicity
-    // (real bracket is complex - we use random knockout for demo)
-    const pool = [...advancers];
-    shuffle(pool);
+    // Build structured Round of 32 pairs following FIFA 48-team bracket principles
+    // Pair group winners against runners-up and best thirds in fixed bracket slots
+    const r32Matches: [WCTeam, WCTeam][] = [
+      [groupWinnersMap["A"], groupRunnersMap["B"]],
+      [groupWinnersMap["C"], best8thirds[0].team],
+      [groupWinnersMap["E"], groupRunnersMap["F"]],
+      [groupWinnersMap["G"], best8thirds[1].team],
+      [groupWinnersMap["I"], groupRunnersMap["J"]],
+      [groupWinnersMap["K"], best8thirds[2].team],
+      [groupWinnersMap["B"], groupRunnersMap["A"]],
+      [groupWinnersMap["D"], best8thirds[3].team],
+      [groupWinnersMap["F"], groupRunnersMap["E"]],
+      [groupWinnersMap["H"], best8thirds[4].team],
+      [groupWinnersMap["J"], groupRunnersMap["I"]],
+      [groupWinnersMap["L"], best8thirds[5].team],
+      [groupWinnersMap["D"], groupRunnersMap["C"]],
+      [groupWinnersMap["F"], best8thirds[6].team],
+      [groupWinnersMap["H"], groupRunnersMap["G"]],
+      [groupWinnersMap["J"], best8thirds[7].team],
+    ];
 
     // Round of 32 → 16 teams
     const r16: WCTeam[] = [];
-    for (let i = 0; i < pool.length; i += 2) {
-      const a = pool[i];
-      const b = pool[i + 1];
+    for (const [a, b] of r32Matches) {
       const aWins = simulateKnockout(ratings[a.name] ?? 1000, ratings[b.name] ?? 1000);
       r16.push(aWins ? a : b);
     }
@@ -276,11 +337,4 @@ export function runSimulations(ratings: EloRatings): SimResult {
   }
 
   return result;
-}
-
-function shuffle<T>(arr: T[]): void {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
 }

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { computeEloRatings, getWCTeamRatings } from "../lib/elo.js";
-import { runSimulations, matchProbabilities, type SimResult } from "../lib/simulation.js";
+import { runSimulations, matchProbabilities, type SimResult, type PlayedMatch } from "../lib/simulation.js";
 import { WC2026_TEAMS, getTeamByName } from "../lib/worldcup2026.js";
 
 const router = Router();
@@ -11,6 +11,7 @@ interface OracleCache {
   matchCount: number;
   ratings: Record<string, number>;
   simResult: SimResult | null;
+  playedMatches: PlayedMatch[];
 }
 
 const cache: OracleCache = {
@@ -18,6 +19,7 @@ const cache: OracleCache = {
   matchCount: 0,
   ratings: {},
   simResult: null,
+  playedMatches: [],
 };
 
 // ---- Initialize on startup ----
@@ -28,7 +30,7 @@ export async function initOracle(): Promise<void> {
     cache.matchCount = matchCount;
     cache.ratings = wcRatings;
 
-    const simResult = runSimulations(wcRatings);
+    const simResult = runSimulations(wcRatings, cache.playedMatches);
     cache.simResult = simResult;
     cache.ready = true;
   } catch (err) {
@@ -44,9 +46,45 @@ router.get("/oracle/status", (req, res) => {
     matchesLoaded: cache.matchCount,
     teamsRated: Object.keys(cache.ratings).length,
     simulationsRun: cache.ready ? 10_000 : 0,
+    liveMatchesRecorded: cache.playedMatches.length,
     message: cache.ready
-      ? "Oracle ready. 10,000 simulations complete."
+      ? "Oracle ready. Dixon-Coles & Monte Carlo simulations active."
       : "Loading historical match data and computing Elo ratings...",
+  });
+});
+
+router.post("/oracle/live-match", (req, res) => {
+  const { homeTeam, awayTeam, homeScore, awayScore } = req.body as {
+    homeTeam?: string;
+    awayTeam?: string;
+    homeScore?: number;
+    awayScore?: number;
+  };
+
+  if (!homeTeam || !awayTeam || homeScore === undefined || awayScore === undefined) {
+    return res.status(400).json({ error: "homeTeam, awayTeam, homeScore and awayScore are required" });
+  }
+
+  const home = getTeamByName(homeTeam);
+  const away = getTeamByName(awayTeam);
+
+  if (!home || !away) {
+    return res.status(400).json({ error: "Invalid team name provided" });
+  }
+
+  // Record live match
+  cache.playedMatches = cache.playedMatches.filter(
+    (m) => !(m.homeTeam === homeTeam && m.awayTeam === awayTeam)
+  );
+  cache.playedMatches.push({ homeTeam, awayTeam, homeScore, awayScore });
+
+  // Recalculate simulation with updated live state
+  cache.simResult = runSimulations(cache.ratings, cache.playedMatches);
+
+  return res.json({
+    success: true,
+    message: `Recorded live match: ${homeTeam} ${homeScore} - ${awayScore} ${awayTeam}`,
+    liveMatchesCount: cache.playedMatches.length,
   });
 });
 
@@ -86,7 +124,7 @@ router.get("/oracle/simulation", (req, res) => {
     groupAdvancePct: Math.round(((groupAdvances[t.name] ?? 0) / N) * 1000) / 10,
   })).sort((a, b) => b.titlePct - a.titlePct);
 
-  return res.json({ results, simulationsRun: N });
+  return res.json({ results, simulationsRun: N, liveMatchesRecorded: cache.playedMatches.length });
 });
 
 router.post("/oracle/predict-match", (req, res) => {

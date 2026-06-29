@@ -1,0 +1,130 @@
+import { Router } from "express";
+import { computeEloRatings, getWCTeamRatings } from "../lib/elo.js";
+import { runSimulations, matchProbabilities, type SimResult } from "../lib/simulation.js";
+import { WC2026_TEAMS, getTeamByName } from "../lib/worldcup2026.js";
+
+const router = Router();
+
+// ---- In-memory cache ----
+interface OracleCache {
+  ready: boolean;
+  matchCount: number;
+  ratings: Record<string, number>;
+  simResult: SimResult | null;
+}
+
+const cache: OracleCache = {
+  ready: false,
+  matchCount: 0,
+  ratings: {},
+  simResult: null,
+};
+
+// ---- Initialize on startup ----
+export async function initOracle(): Promise<void> {
+  try {
+    const { ratings: allRatings, matchCount } = await computeEloRatings();
+    const wcRatings = getWCTeamRatings(allRatings);
+    cache.matchCount = matchCount;
+    cache.ratings = wcRatings;
+
+    const simResult = runSimulations(wcRatings);
+    cache.simResult = simResult;
+    cache.ready = true;
+  } catch (err) {
+    console.error("Oracle init failed:", err);
+  }
+}
+
+// ---- Routes ----
+
+router.get("/oracle/status", (req, res) => {
+  res.json({
+    ready: cache.ready,
+    matchesLoaded: cache.matchCount,
+    teamsRated: Object.keys(cache.ratings).length,
+    simulationsRun: cache.ready ? 10_000 : 0,
+    message: cache.ready
+      ? "Oracle ready. 10,000 simulations complete."
+      : "Loading historical match data and computing Elo ratings...",
+  });
+});
+
+router.get("/oracle/teams", (req, res) => {
+  const teams = WC2026_TEAMS.map((t) => ({
+    name: t.name,
+    code: t.code,
+    elo: cache.ratings[t.name] ?? 1000,
+    group: t.group,
+    flagEmoji: t.flagEmoji,
+  })).sort((a, b) => b.elo - a.elo);
+
+  res.json({ teams });
+});
+
+router.get("/oracle/simulation", (req, res) => {
+  if (!cache.ready || !cache.simResult) {
+    return res.json({ results: [], simulationsRun: 0 });
+  }
+
+  const { titles, finals, semiFinals, quarterFinals, roundOf16, groupWins, groupAdvances } =
+    cache.simResult;
+  const N = 10_000;
+
+  const results = WC2026_TEAMS.map((t) => ({
+    name: t.name,
+    code: t.code,
+    group: t.group,
+    flagEmoji: t.flagEmoji,
+    elo: cache.ratings[t.name] ?? 1000,
+    titlePct: Math.round(((titles[t.name] ?? 0) / N) * 1000) / 10,
+    finalPct: Math.round(((finals[t.name] ?? 0) / N) * 1000) / 10,
+    semiFinalPct: Math.round(((semiFinals[t.name] ?? 0) / N) * 1000) / 10,
+    quarterFinalPct: Math.round(((quarterFinals[t.name] ?? 0) / N) * 1000) / 10,
+    roundOf16Pct: Math.round(((roundOf16[t.name] ?? 0) / N) * 1000) / 10,
+    groupWinPct: Math.round(((groupWins[t.name] ?? 0) / N) * 1000) / 10,
+    groupAdvancePct: Math.round(((groupAdvances[t.name] ?? 0) / N) * 1000) / 10,
+  })).sort((a, b) => b.titlePct - a.titlePct);
+
+  return res.json({ results, simulationsRun: N });
+});
+
+router.post("/oracle/predict-match", (req, res) => {
+  const { homeTeam, awayTeam } = req.body as { homeTeam?: string; awayTeam?: string };
+
+  if (!homeTeam || !awayTeam) {
+    return res.status(400).json({ error: "homeTeam and awayTeam are required" });
+  }
+
+  const home = getTeamByName(homeTeam);
+  const away = getTeamByName(awayTeam);
+
+  if (!home) return res.status(400).json({ error: `Unknown team: ${homeTeam}` });
+  if (!away) return res.status(400).json({ error: `Unknown team: ${awayTeam}` });
+  if (homeTeam === awayTeam) return res.status(400).json({ error: "Teams must be different" });
+
+  const eloHome = cache.ratings[homeTeam] ?? 1000;
+  const eloAway = cache.ratings[awayTeam] ?? 1000;
+
+  const { pWinA, pDraw, pWinB, xgA, xgB, mostLikelyScore } = matchProbabilities(
+    eloHome,
+    eloAway
+  );
+
+  res.json({
+    homeTeam,
+    awayTeam,
+    homeWinPct: Math.round(pWinA * 1000) / 10,
+    drawPct: Math.round(pDraw * 1000) / 10,
+    awayWinPct: Math.round(pWinB * 1000) / 10,
+    homeExpectedGoals: xgA,
+    awayExpectedGoals: xgB,
+    mostLikelyScore,
+    homeElo: eloHome,
+    awayElo: eloAway,
+  });
+
+  return;
+});
+
+export default router;

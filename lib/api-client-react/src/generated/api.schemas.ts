@@ -14,6 +14,7 @@ export interface OracleStatus {
   matchesLoaded: number;
   teamsRated: number;
   simulationsRun: number;
+  liveMatchesRecorded: number;
   message: string;
 }
 
@@ -23,6 +24,8 @@ export interface Team {
   elo: number;
   group: string;
   flagEmoji: string;
+  attackStrength: number;
+  defenseStrength: number;
 }
 
 export interface TeamsResponse {
@@ -47,6 +50,7 @@ export interface TeamSimResult {
 export interface SimulationResponse {
   results: TeamSimResult[];
   simulationsRun: number;
+  liveMatchesRecorded: number;
 }
 
 export interface MatchPredictionRequest {
@@ -65,9 +69,53 @@ export interface MatchPredictionResponse {
   mostLikelyScore: string;
   homeElo: number;
   awayElo: number;
+  homeAttackStrength: number;
+  homeDefenseStrength: number;
+  awayAttackStrength: number;
+  awayDefenseStrength: number;
 }
 
 export interface ErrorResponse {
   error: string;
+}
+
+export interface LiveMatchRequest {
+  homeTeam: string;
+  awayTeam: string;
+  homeScore: number;
+  awayScore: number;
+}
+
+export interface LiveMatchResponse {
+  success: boolean;
+  message: string;
+  liveMatchesCount: number;
+}
+
+export interface DeleteLiveMatchRequest {
+  homeTeam: string;
+  awayTeam: string;
+}
+
+export interface DeleteLiveMatchResult {
+  success: boolean;
+  liveMatchesCount: number;
+}
+
+export interface PlayedMatch {
+  homeTeam: string;
+  awayTeam: string;
+  homeScore: number;
+  awayScore: number;
+  stage?: string;
+}
+
+export interface LiveMatchesResponse {
+  playedMatches: PlayedMatch[];
+}
+
+export interface ClearLiveMatchesResult {
+  success: boolean;
+  message: string;
 }
 

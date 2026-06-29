@@ -6,11 +6,18 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './clearLiveMatchesResult';
+export * from './deleteLiveMatchRequest';
+export * from './deleteLiveMatchResult';
 export * from './errorResponse';
 export * from './healthStatus';
+export * from './liveMatchesResponse';
+export * from './liveMatchRequest';
+export * from './liveMatchResponse';
 export * from './matchPredictionRequest';
 export * from './matchPredictionResponse';
 export * from './oracleStatus';
+export * from './playedMatch';
 export * from './simulationResponse';
 export * from './team';
 export * from './teamSimResult';

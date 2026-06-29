@@ -10,4 +10,5 @@ import type { TeamSimResult } from './teamSimResult';
 export interface SimulationResponse {
   results: TeamSimResult[];
   simulationsRun: number;
+  liveMatchesRecorded: number;
 }

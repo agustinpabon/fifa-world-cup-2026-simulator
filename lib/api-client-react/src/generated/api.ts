@@ -20,8 +20,14 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ClearLiveMatchesResult,
+  DeleteLiveMatchRequest,
+  DeleteLiveMatchResult,
   ErrorResponse,
   HealthStatus,
+  LiveMatchRequest,
+  LiveMatchResponse,
+  LiveMatchesResponse,
   MatchPredictionRequest,
   MatchPredictionResponse,
   OracleStatus,
@@ -423,5 +429,298 @@ export const usePredictMatch = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getPredictMatchMutationOptions(options));
+    }
+
+export const getRecordLiveMatchUrl = () => {
+
+
+
+
+  return `/api/oracle/live-match`
+}
+
+/**
+ * Records a match score in-memory and triggers simulation recalculation
+ * @summary Record a live match score
+ */
+export const recordLiveMatch = async (liveMatchRequest: LiveMatchRequest, options?: RequestInit): Promise<LiveMatchResponse> => {
+
+  return customFetch<LiveMatchResponse>(getRecordLiveMatchUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      liveMatchRequest,)
+  }
+);}
+
+
+
+
+export const getRecordLiveMatchMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordLiveMatch>>, TError,{data: BodyType<LiveMatchRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof recordLiveMatch>>, TError,{data: BodyType<LiveMatchRequest>}, TContext> => {
+
+const mutationKey = ['recordLiveMatch'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof recordLiveMatch>>, {data: BodyType<LiveMatchRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  recordLiveMatch(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RecordLiveMatchMutationResult = NonNullable<Awaited<ReturnType<typeof recordLiveMatch>>>
+    export type RecordLiveMatchMutationBody = BodyType<LiveMatchRequest>
+    export type RecordLiveMatchMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Record a live match score
+ */
+export const useRecordLiveMatch = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordLiveMatch>>, TError,{data: BodyType<LiveMatchRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof recordLiveMatch>>,
+        TError,
+        {data: BodyType<LiveMatchRequest>},
+        TContext
+      > => {
+      return useMutation(getRecordLiveMatchMutationOptions(options));
+    }
+
+export const getDeleteLiveMatchUrl = () => {
+
+
+
+
+  return `/api/oracle/live-match`
+}
+
+/**
+ * Removes a recorded match score in-memory and triggers simulation recalculation
+ * @summary Remove a recorded live match
+ */
+export const deleteLiveMatch = async (deleteLiveMatchRequest: DeleteLiveMatchRequest, options?: RequestInit): Promise<DeleteLiveMatchResult> => {
+
+  return customFetch<DeleteLiveMatchResult>(getDeleteLiveMatchUrl(),
+  {
+    ...options,
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      deleteLiveMatchRequest,)
+  }
+);}
+
+
+
+
+export const getDeleteLiveMatchMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteLiveMatch>>, TError,{data: BodyType<DeleteLiveMatchRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteLiveMatch>>, TError,{data: BodyType<DeleteLiveMatchRequest>}, TContext> => {
+
+const mutationKey = ['deleteLiveMatch'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteLiveMatch>>, {data: BodyType<DeleteLiveMatchRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  deleteLiveMatch(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteLiveMatchMutationResult = NonNullable<Awaited<ReturnType<typeof deleteLiveMatch>>>
+    export type DeleteLiveMatchMutationBody = BodyType<DeleteLiveMatchRequest>
+    export type DeleteLiveMatchMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Remove a recorded live match
+ */
+export const useDeleteLiveMatch = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteLiveMatch>>, TError,{data: BodyType<DeleteLiveMatchRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteLiveMatch>>,
+        TError,
+        {data: BodyType<DeleteLiveMatchRequest>},
+        TContext
+      > => {
+      return useMutation(getDeleteLiveMatchMutationOptions(options));
+    }
+
+export const getGetLiveMatchesUrl = () => {
+
+
+
+
+  return `/api/oracle/live-matches`
+}
+
+/**
+ * Returns the current list of recorded live matches
+ * @summary List all recorded live matches
+ */
+export const getLiveMatches = async ( options?: RequestInit): Promise<LiveMatchesResponse> => {
+
+  return customFetch<LiveMatchesResponse>(getGetLiveMatchesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLiveMatchesQueryKey = () => {
+    return [
+    `/api/oracle/live-matches`
+    ] as const;
+    }
+
+
+export const getGetLiveMatchesQueryOptions = <TData = Awaited<ReturnType<typeof getLiveMatches>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLiveMatches>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLiveMatchesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLiveMatches>>> = ({ signal }) => getLiveMatches({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLiveMatches>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLiveMatchesQueryResult = NonNullable<Awaited<ReturnType<typeof getLiveMatches>>>
+export type GetLiveMatchesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all recorded live matches
+ */
+
+export function useGetLiveMatches<TData = Awaited<ReturnType<typeof getLiveMatches>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLiveMatches>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLiveMatchesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getClearLiveMatchesUrl = () => {
+
+
+
+
+  return `/api/oracle/live-matches/clear`
+}
+
+/**
+ * Clears all in-memory live matches and resets simulation recalculation
+ * @summary Clear all recorded live matches
+ */
+export const clearLiveMatches = async ( options?: RequestInit): Promise<ClearLiveMatchesResult> => {
+
+  return customFetch<ClearLiveMatchesResult>(getClearLiveMatchesUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getClearLiveMatchesMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearLiveMatches>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof clearLiveMatches>>, TError,void, TContext> => {
+
+const mutationKey = ['clearLiveMatches'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof clearLiveMatches>>, void> = () => {
+
+
+          return  clearLiveMatches(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ClearLiveMatchesMutationResult = NonNullable<Awaited<ReturnType<typeof clearLiveMatches>>>
+
+    export type ClearLiveMatchesMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Clear all recorded live matches
+ */
+export const useClearLiveMatches = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearLiveMatches>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof clearLiveMatches>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getClearLiveMatchesMutationOptions(options));
     }
 

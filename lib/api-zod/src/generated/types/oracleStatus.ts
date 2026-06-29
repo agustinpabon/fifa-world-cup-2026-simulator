@@ -11,5 +11,6 @@ export interface OracleStatus {
   matchesLoaded: number;
   teamsRated: number;
   simulationsRun: number;
+  liveMatchesRecorded: number;
   message: string;
 }

@@ -17,4 +17,8 @@ export interface MatchPredictionResponse {
   mostLikelyScore: string;
   homeElo: number;
   awayElo: number;
+  homeAttackStrength: number;
+  homeDefenseStrength: number;
+  awayAttackStrength: number;
+  awayDefenseStrength: number;
 }

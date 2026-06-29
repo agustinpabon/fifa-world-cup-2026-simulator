@@ -26,6 +26,7 @@ export const GetOracleStatusResponse = zod.object({
   "matchesLoaded": zod.number(),
   "teamsRated": zod.number(),
   "simulationsRun": zod.number(),
+  "liveMatchesRecorded": zod.number(),
   "message": zod.string()
 })
 
@@ -40,7 +41,9 @@ export const GetTeamsResponse = zod.object({
   "code": zod.string(),
   "elo": zod.number(),
   "group": zod.string(),
-  "flagEmoji": zod.string()
+  "flagEmoji": zod.string(),
+  "attackStrength": zod.number(),
+  "defenseStrength": zod.number()
 }))
 })
 
@@ -64,7 +67,8 @@ export const GetSimulationResponse = zod.object({
   "groupWinPct": zod.number(),
   "groupAdvancePct": zod.number()
 })),
-  "simulationsRun": zod.number()
+  "simulationsRun": zod.number(),
+  "liveMatchesRecorded": zod.number()
 })
 
 
@@ -87,7 +91,69 @@ export const PredictMatchResponse = zod.object({
   "awayExpectedGoals": zod.number(),
   "mostLikelyScore": zod.string(),
   "homeElo": zod.number(),
-  "awayElo": zod.number()
+  "awayElo": zod.number(),
+  "homeAttackStrength": zod.number(),
+  "homeDefenseStrength": zod.number(),
+  "awayAttackStrength": zod.number(),
+  "awayDefenseStrength": zod.number()
+})
+
+
+/**
+ * Records a match score in-memory and triggers simulation recalculation
+ * @summary Record a live match score
+ */
+export const RecordLiveMatchBody = zod.object({
+  "homeTeam": zod.string(),
+  "awayTeam": zod.string(),
+  "homeScore": zod.number(),
+  "awayScore": zod.number()
+})
+
+export const RecordLiveMatchResponse = zod.object({
+  "success": zod.boolean(),
+  "message": zod.string(),
+  "liveMatchesCount": zod.number()
+})
+
+
+/**
+ * Removes a recorded match score in-memory and triggers simulation recalculation
+ * @summary Remove a recorded live match
+ */
+export const DeleteLiveMatchBody = zod.object({
+  "homeTeam": zod.string(),
+  "awayTeam": zod.string()
+})
+
+export const DeleteLiveMatchResponse = zod.object({
+  "success": zod.boolean(),
+  "liveMatchesCount": zod.number()
+})
+
+
+/**
+ * Returns the current list of recorded live matches
+ * @summary List all recorded live matches
+ */
+export const GetLiveMatchesResponse = zod.object({
+  "playedMatches": zod.array(zod.object({
+  "homeTeam": zod.string(),
+  "awayTeam": zod.string(),
+  "homeScore": zod.number(),
+  "awayScore": zod.number(),
+  "stage": zod.string().optional()
+}))
+})
+
+
+/**
+ * Clears all in-memory live matches and resets simulation recalculation
+ * @summary Clear all recorded live matches
+ */
+export const ClearLiveMatchesResponse = zod.object({
+  "success": zod.boolean(),
+  "message": zod.string()
 })
 
 

@@ -1,0 +1,264 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: oracle
+    description: World Cup Oracle simulation endpoints
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /oracle/status:
+    get:
+      operationId: getOracleStatus
+      tags: [oracle]
+      summary: Get oracle initialization status
+      description: Returns whether the Elo ratings and simulation are ready
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OracleStatus"
+
+  /oracle/teams:
+    get:
+      operationId: getTeams
+      tags: [oracle]
+      summary: Get all 48 World Cup teams with Elo ratings
+      description: Returns sorted list of all qualified teams and their computed Elo ratings
+      responses:
+        "200":
+          description: Teams list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamsResponse"
+
+  /oracle/simulation:
+    get:
+      operationId: getSimulation
+      tags: [oracle]
+      summary: Get Monte Carlo simulation results
+      description: Returns pre-computed tournament simulation probabilities for all teams
+      responses:
+        "200":
+          description: Simulation results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulationResponse"
+
+  /oracle/predict-match:
+    post:
+      operationId: predictMatch
+      tags: [oracle]
+      summary: Predict a head-to-head match
+      description: Given two team names, returns win/draw/loss probabilities, expected goals, and most likely scoreline
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MatchPredictionRequest"
+      responses:
+        "200":
+          description: Match prediction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchPredictionResponse"
+        "400":
+          description: Invalid team names
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    OracleStatus:
+      type: object
+      properties:
+        ready:
+          type: boolean
+        matchesLoaded:
+          type: integer
+        teamsRated:
+          type: integer
+        simulationsRun:
+          type: integer
+        message:
+          type: string
+      required:
+        - ready
+        - matchesLoaded
+        - teamsRated
+        - simulationsRun
+        - message
+
+    Team:
+      type: object
+      properties:
+        name:
+          type: string
+        code:
+          type: string
+        elo:
+          type: number
+        group:
+          type: string
+        flagEmoji:
+          type: string
+      required:
+        - name
+        - code
+        - elo
+        - group
+        - flagEmoji
+
+    TeamsResponse:
+      type: object
+      properties:
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/Team"
+      required:
+        - teams
+
+    TeamSimResult:
+      type: object
+      properties:
+        name:
+          type: string
+        code:
+          type: string
+        group:
+          type: string
+        flagEmoji:
+          type: string
+        elo:
+          type: number
+        titlePct:
+          type: number
+        finalPct:
+          type: number
+        semiFinalPct:
+          type: number
+        quarterFinalPct:
+          type: number
+        roundOf16Pct:
+          type: number
+        groupWinPct:
+          type: number
+        groupAdvancePct:
+          type: number
+      required:
+        - name
+        - code
+        - group
+        - flagEmoji
+        - elo
+        - titlePct
+        - finalPct
+        - semiFinalPct
+        - quarterFinalPct
+        - roundOf16Pct
+        - groupWinPct
+        - groupAdvancePct
+
+    SimulationResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamSimResult"
+        simulationsRun:
+          type: integer
+      required:
+        - results
+        - simulationsRun
+
+    MatchPredictionRequest:
+      type: object
+      properties:
+        homeTeam:
+          type: string
+        awayTeam:
+          type: string
+      required:
+        - homeTeam
+        - awayTeam
+
+    MatchPredictionResponse:
+      type: object
+      properties:
+        homeTeam:
+          type: string
+        awayTeam:
+          type: string
+        homeWinPct:
+          type: number
+        drawPct:
+          type: number
+        awayWinPct:
+          type: number
+        homeExpectedGoals:
+          type: number
+        awayExpectedGoals:
+          type: number
+        mostLikelyScore:
+          type: string
+        homeElo:
+          type: number
+        awayElo:
+          type: number
+      required:
+        - homeTeam
+        - awayTeam
+        - homeWinPct
+        - drawPct
+        - awayWinPct
+        - homeExpectedGoals
+        - awayExpectedGoals
+        - mostLikelyScore
+        - homeElo
+        - awayElo
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error

@@ -82,8 +82,10 @@ export async function computeEloRatings(): Promise<{ ratings: EloRatings; matchC
   }
 
   // Process each match
+  const referenceYear = new Date().getFullYear();
+
   for (const row of rows) {
-    const { homeTeam, awayTeam, homeScore, awayScore, tournament, neutral } = row;
+    const { date, homeTeam, awayTeam, homeScore, awayScore, tournament, neutral } = row;
 
     const homeAdv = neutral ? 0 : 75; // Home advantage in Elo points
     const rA = getRating(homeTeam) + homeAdv;
@@ -106,7 +108,12 @@ export async function computeEloRatings(): Promise<{ ratings: EloRatings; matchC
       actualB = 0.5;
     }
 
-    const K = kFactor(tournament);
+    const matchYear = parseInt(date.substring(0, 4), 10) || referenceYear;
+    const yearsAgo = Math.max(0, referenceYear - matchYear);
+    // Exponential time-decay factor (half-life ~20 years, min floor 0.2)
+    const recencyWeight = Math.max(0.2, Math.exp(-0.035 * yearsAgo));
+
+    const K = kFactor(tournament) * recencyWeight;
     const goalDiff = Math.abs(homeScore - awayScore);
     // Goal difference multiplier (FIFA World Football Elo standard)
     const gdMult = goalDiff <= 1 ? 1 : goalDiff === 2 ? 1.5 : (3 + (goalDiff - 2) / 2) / 4;
@@ -119,15 +126,19 @@ export async function computeEloRatings(): Promise<{ ratings: EloRatings; matchC
     ratings[awayTeam] = (ratings[awayTeam] ?? 1000) + deltaB;
   }
 
-  // Final regression to mean & modern adjustment pass for WC teams
   return { ratings, matchCount: rows.length };
 }
+
+const HOST_TEAMS = new Set(["USA", "Mexico", "Canada"]);
+const HOST_BOOST = 50; // Elo boost for World Cup 2026 host nations playing at home
 
 export function getWCTeamRatings(allRatings: EloRatings): EloRatings {
   const result: EloRatings = {};
   for (const team of WC2026_TEAMS) {
     let baseElo = allRatings[team.csvName] ?? 1500;
-    // Ensure realistic baseline scaling for international ratings
+    if (HOST_TEAMS.has(team.name)) {
+      baseElo += HOST_BOOST;
+    }
     result[team.name] = Math.round(baseElo);
   }
   return result;

@@ -1,14 +1,21 @@
 ```text
-           ___________
-          '._==_==_=_.'
-          .-\:      /-.       W O R L D   C U P   2 0 2 6
-         | (|:.     |) |      Monte Carlo Tournament Simulator & Elo Engine
-          '-|:.     |-'       =============================================
-            \::.    /
-             '::. .'          - 49,000+ Historical International Matches
-               ) (            - Exponential Time-Decay Elo Rating Model
-             _.' '._          - Dixon-Coles Goal Probability Distributions
-            `"""""""`         - 25,000+ Tournament Monte Carlo Runs
+             .---.
+           .'     '.            F I F A   W O R L D   C U P   2 0 2 6
+          /  .-"-.  \           =================================
+         |  /  () \  |          Monte Carlo Tournament Simulator & Elo Engine
+          \  '-"-'  /
+           '.     .'            - 49,000+ Historical International Matches
+           / '. ' .\            - Exponential Time-Decay Elo Rating Model
+          / /| | |\ \           - Dixon-Coles Goal Probability Distributions
+         / / | | | \ \          - 25,000+ Tournament Monte Carlo Runs
+        | |  | | |  | |
+         \ \ | | | / /
+          \ \ / \ / /
+           '.'-.-'.'
+         .------------.
+        / FIFA WORLD   \
+       /   C U P        \
+      |==================|
 ```
 
 A high-performance tournament simulator for the 48-team FIFA World Cup 2026 (hosted across USA, Mexico, and Canada). Powered by a custom Time-Decay Elo rating engine, Dixon-Coles Poisson goal modeling, and Monte Carlo tournament simulations.

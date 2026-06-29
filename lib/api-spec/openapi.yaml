@@ -95,6 +95,84 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /oracle/live-match:
+    post:
+      operationId: recordLiveMatch
+      tags: [oracle]
+      summary: Record a live match score
+      description: Records a match score in-memory and triggers simulation recalculation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LiveMatchRequest"
+      responses:
+        "200":
+          description: Live match recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveMatchResponse"
+        "400":
+          description: Invalid inputs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteLiveMatch
+      tags: [oracle]
+      summary: Remove a recorded live match
+      description: Removes a recorded match score in-memory and triggers simulation recalculation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteLiveMatchRequest"
+      responses:
+        "200":
+          description: Live match deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteLiveMatchResult"
+        "400":
+          description: Invalid inputs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /oracle/live-matches:
+    get:
+      operationId: getLiveMatches
+      tags: [oracle]
+      summary: List all recorded live matches
+      description: Returns the current list of recorded live matches
+      responses:
+        "200":
+          description: List of live matches
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveMatchesResponse"
+
+  /oracle/live-matches/clear:
+    post:
+      operationId: clearLiveMatches
+      tags: [oracle]
+      summary: Clear all recorded live matches
+      description: Clears all in-memory live matches and resets simulation recalculation
+      responses:
+        "200":
+          description: All live matches cleared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClearLiveMatchesResult"
+
 components:
   schemas:
     HealthStatus:
@@ -116,6 +194,8 @@ components:
           type: integer
         simulationsRun:
           type: integer
+        liveMatchesRecorded:
+          type: integer
         message:
           type: string
       required:
@@ -123,6 +203,7 @@ components:
         - matchesLoaded
         - teamsRated
         - simulationsRun
+        - liveMatchesRecorded
         - message
 
     Team:
@@ -138,12 +219,18 @@ components:
           type: string
         flagEmoji:
           type: string
+        attackStrength:
+          type: number
+        defenseStrength:
+          type: number
       required:
         - name
         - code
         - elo
         - group
         - flagEmoji
+        - attackStrength
+        - defenseStrength
 
     TeamsResponse:
       type: object
@@ -205,9 +292,12 @@ components:
             $ref: "#/components/schemas/TeamSimResult"
         simulationsRun:
           type: integer
+        liveMatchesRecorded:
+          type: integer
       required:
         - results
         - simulationsRun
+        - liveMatchesRecorded
 
     MatchPredictionRequest:
       type: object
@@ -243,6 +333,14 @@ components:
           type: number
         awayElo:
           type: number
+        homeAttackStrength:
+          type: number
+        homeDefenseStrength:
+          type: number
+        awayAttackStrength:
+          type: number
+        awayDefenseStrength:
+          type: number
       required:
         - homeTeam
         - awayTeam
@@ -254,6 +352,10 @@ components:
         - mostLikelyScore
         - homeElo
         - awayElo
+        - homeAttackStrength
+        - homeDefenseStrength
+        - awayAttackStrength
+        - awayDefenseStrength
 
     ErrorResponse:
       type: object
@@ -262,3 +364,96 @@ components:
           type: string
       required:
         - error
+
+    LiveMatchRequest:
+      type: object
+      properties:
+        homeTeam:
+          type: string
+        awayTeam:
+          type: string
+        homeScore:
+          type: integer
+        awayScore:
+          type: integer
+      required:
+        - homeTeam
+        - awayTeam
+        - homeScore
+        - awayScore
+
+    LiveMatchResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        liveMatchesCount:
+          type: integer
+      required:
+        - success
+        - message
+        - liveMatchesCount
+
+    DeleteLiveMatchRequest:
+      type: object
+      properties:
+        homeTeam:
+          type: string
+        awayTeam:
+          type: string
+      required:
+        - homeTeam
+        - awayTeam
+
+    DeleteLiveMatchResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        liveMatchesCount:
+          type: integer
+      required:
+        - success
+        - liveMatchesCount
+
+    PlayedMatch:
+      type: object
+      properties:
+        homeTeam:
+          type: string
+        awayTeam:
+          type: string
+        homeScore:
+          type: integer
+        awayScore:
+          type: integer
+        stage:
+          type: string
+      required:
+        - homeTeam
+        - awayTeam
+        - homeScore
+        - awayScore
+
+    LiveMatchesResponse:
+      type: object
+      properties:
+        playedMatches:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlayedMatch"
+      required:
+        - playedMatches
+
+    ClearLiveMatchesResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+        - success
+        - message

@@ -91,6 +91,42 @@ router.post("/oracle/live-match", (req, res) => {
   });
 });
 
+router.delete("/oracle/live-match", (req, res) => {
+  const { homeTeam, awayTeam } = req.body as { homeTeam?: string; awayTeam?: string };
+
+  if (!homeTeam || !awayTeam) {
+    return res.status(400).json({ error: "homeTeam and awayTeam are required" });
+  }
+
+  cache.playedMatches = cache.playedMatches.filter(
+    (m) => !(m.homeTeam === homeTeam && m.awayTeam === awayTeam)
+  );
+
+  // Recalculate simulation with updated live state
+  cache.simResult = runSimulations(cache.ratings, cache.playedMatches, cache.teamMetrics);
+
+  return res.json({
+    success: true,
+    liveMatchesCount: cache.playedMatches.length,
+  });
+});
+
+router.get("/oracle/live-matches", (req, res) => {
+  return res.json({
+    playedMatches: cache.playedMatches,
+  });
+});
+
+router.post("/oracle/live-matches/clear", (req, res) => {
+  cache.playedMatches = [];
+  cache.simResult = runSimulations(cache.ratings, cache.playedMatches, cache.teamMetrics);
+
+  return res.json({
+    success: true,
+    message: "All live matches cleared",
+  });
+});
+
 router.get("/oracle/teams", (req, res) => {
   const teams = WC2026_TEAMS.map((t) => ({
     name: t.name,
@@ -98,6 +134,8 @@ router.get("/oracle/teams", (req, res) => {
     elo: cache.ratings[t.name] ?? 1000,
     group: t.group,
     flagEmoji: t.flagEmoji,
+    attackStrength: cache.teamMetrics[t.name]?.attackStrength ?? 1.0,
+    defenseStrength: cache.teamMetrics[t.name]?.defenseStrength ?? 1.0,
   })).sort((a, b) => b.elo - a.elo);
 
   res.json({ teams });
@@ -105,7 +143,7 @@ router.get("/oracle/teams", (req, res) => {
 
 router.get("/oracle/simulation", (req, res) => {
   if (!cache.ready || !cache.simResult) {
-    return res.json({ results: [], simulationsRun: 0 });
+    return res.json({ results: [], simulationsRun: 0, liveMatchesRecorded: 0 });
   }
 
   const { titles, finals, semiFinals, quarterFinals, roundOf16, groupWins, groupAdvances } =
@@ -168,6 +206,10 @@ router.post("/oracle/predict-match", (req, res) => {
     mostLikelyScore,
     homeElo: eloHome,
     awayElo: eloAway,
+    homeAttackStrength: metricsHome?.attackStrength ?? 1.0,
+    homeDefenseStrength: metricsHome?.defenseStrength ?? 1.0,
+    awayAttackStrength: metricsAway?.attackStrength ?? 1.0,
+    awayDefenseStrength: metricsAway?.defenseStrength ?? 1.0,
   });
 
   return;

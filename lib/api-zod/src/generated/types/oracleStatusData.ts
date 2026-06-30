@@ -7,6 +7,7 @@
  */
 import type { HistoricalDatasetMetadata } from './historicalDatasetMetadata';
 import type { OracleLoadError } from './oracleLoadError';
+import type { OracleStatusDataLiveDataProvider } from './oracleStatusDataLiveDataProvider';
 import type { OracleStatusDataState } from './oracleStatusDataState';
 
 export interface OracleStatusData {
@@ -17,6 +18,11 @@ export interface OracleStatusData {
   simulationsRun: number;
   simulationSeed: string;
   liveMatchesRecorded: number;
+  liveDataProvider: OracleStatusDataLiveDataProvider;
+  liveDataMatchesLoaded: number;
+  liveDataLastSyncedAt: string | null;
+  liveDataError: string | null;
+  eliminatedTeams: string[];
   /** True when a recalculation job is pending or running. */
   recalculating: boolean;
   /** ISO timestamp for the last successfully published simulation. */

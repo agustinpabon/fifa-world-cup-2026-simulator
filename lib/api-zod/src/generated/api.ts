@@ -32,6 +32,11 @@ export const GetOracleStatusResponse = zod.object({
   "simulationsRun": zod.number(),
   "simulationSeed": zod.string(),
   "liveMatchesRecorded": zod.number(),
+  "liveDataProvider": zod.enum(['espn', 'disabled']),
+  "liveDataMatchesLoaded": zod.number(),
+  "liveDataLastSyncedAt": zod.string().nullable(),
+  "liveDataError": zod.string().nullable(),
+  "eliminatedTeams": zod.array(zod.string()),
   "recalculating": zod.boolean().describe('True when a recalculation job is pending or running.'),
   "lastUpdated": zod.string().nullable().describe('ISO timestamp for the last successfully published simulation.'),
   "recalculationError": zod.string().nullable().describe('Last simulation recalculation error, if the latest job failed.'),
@@ -120,6 +125,7 @@ export const GetSimulationResponse = zod.object({
   "roundOf16Pct": zod.number(),
   "groupWinPct": zod.number(),
   "groupAdvancePct": zod.number(),
+  "eliminated": zod.boolean(),
   "uncertainty": zod.object({
   "titlePct": zod.object({
   "standardErrorPct": zod.number().describe('Standard error in percentage points.'),
@@ -161,6 +167,7 @@ export const GetSimulationResponse = zod.object({
   "simulationsRun": zod.number(),
   "simulationSeed": zod.string(),
   "liveMatchesRecorded": zod.number(),
+  "eliminatedTeams": zod.array(zod.string()),
   "uncertainty": zod.object({
   "method": zod.enum(['binomial_standard_error']),
   "confidenceLevel": zod.number(),
@@ -313,15 +320,22 @@ export const GetLiveMatchesResponse = zod.object({
   "homeScore": zod.number(),
   "awayScore": zod.number(),
   "stage": zod.string().optional(),
-  "source": zod.enum(['fixture', 'official', 'custom']).optional(),
+  "source": zod.enum(['fixture', 'official', 'espn', 'custom']).optional(),
   "sourceId": zod.string().optional(),
   "date": zod.string().optional(),
   "kickoffTimeEt": zod.string().optional(),
   "status": zod.enum(['scheduled', 'live', 'finished']).optional(),
+  "statusDetail": zod.string().optional(),
   "group": zod.string().optional(),
   "venue": zod.string().optional(),
-  "region": zod.string().optional()
-}))
+  "region": zod.string().optional(),
+  "winnerTeam": zod.string().optional()
+})),
+  "source": zod.object({
+  "provider": zod.enum(['espn', 'disabled']),
+  "lastSyncedAt": zod.string().nullable(),
+  "error": zod.string().nullable()
+})
 }),
   "meta": zod.object({
   "readiness": zod.object({

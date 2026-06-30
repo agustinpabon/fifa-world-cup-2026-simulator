@@ -245,6 +245,36 @@ test("POST /api/oracle/live-match validates valid and invalid payloads", async (
   }, "Unrecognized key");
 });
 
+test("POST /api/oracle/live-match rejects overriding an imported finished result", async () => {
+  seedReadyOracleForTests({
+    fixtureMatches: [
+      {
+        homeTeam: "Germany",
+        awayTeam: "Paraguay",
+        homeScore: 1,
+        awayScore: 1,
+        winnerTeam: "Paraguay",
+        source: "espn",
+        status: "finished",
+      },
+    ],
+  });
+
+  const response = await requestJson("POST", "/api/oracle/live-match", {
+    homeTeam: "Germany",
+    awayTeam: "Paraguay",
+    homeScore: 2,
+    awayScore: 0,
+  });
+  const body = await readJson(response);
+  const error = readError(body);
+
+  assert.equal(response.status, 409);
+  assert.equal(error.code, "match_locked");
+
+  resetOracleForTests();
+});
+
 test("GET /api/oracle/status exposes simulation seed metadata", async () => {
   const response = await requestGet("/api/oracle/status");
   const body = await readJson(response);

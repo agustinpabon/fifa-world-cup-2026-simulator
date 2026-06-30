@@ -22,6 +22,14 @@ export const OracleStatusDataState = {
   error: 'error',
 } as const;
 
+export type OracleStatusDataLiveDataProvider = typeof OracleStatusDataLiveDataProvider[keyof typeof OracleStatusDataLiveDataProvider];
+
+
+export const OracleStatusDataLiveDataProvider = {
+  espn: 'espn',
+  disabled: 'disabled',
+} as const;
+
 export type HistoricalDatasetMetadataSource = typeof HistoricalDatasetMetadataSource[keyof typeof HistoricalDatasetMetadataSource];
 
 
@@ -61,6 +69,11 @@ export interface OracleStatusData {
   simulationsRun: number;
   simulationSeed: string;
   liveMatchesRecorded: number;
+  liveDataProvider: OracleStatusDataLiveDataProvider;
+  liveDataMatchesLoaded: number;
+  liveDataLastSyncedAt: string | null;
+  liveDataError: string | null;
+  eliminatedTeams: string[];
   /** True when a recalculation job is pending or running. */
   recalculating: boolean;
   /** ISO timestamp for the last successfully published simulation. */
@@ -151,6 +164,7 @@ export interface TeamSimResult {
   roundOf16Pct: number;
   groupWinPct: number;
   groupAdvancePct: number;
+  eliminated: boolean;
   uncertainty: TeamSimUncertainty;
 }
 
@@ -175,6 +189,7 @@ export interface SimulationData {
   simulationsRun: number;
   simulationSeed: string;
   liveMatchesRecorded: number;
+  eliminatedTeams: string[];
   uncertainty: SimulationUncertaintyMetadata;
 }
 
@@ -219,6 +234,7 @@ export const ApiErrorCode = {
   invalid_request: 'invalid_request',
   malformed_json: 'malformed_json',
   oracle_not_ready: 'oracle_not_ready',
+  match_locked: 'match_locked',
   internal_error: 'internal_error',
 } as const;
 
@@ -289,6 +305,7 @@ export type PlayedMatchSource = typeof PlayedMatchSource[keyof typeof PlayedMatc
 export const PlayedMatchSource = {
   fixture: 'fixture',
   official: 'official',
+  espn: 'espn',
   custom: 'custom',
 } as const;
 
@@ -313,13 +330,30 @@ export interface PlayedMatch {
   date?: string;
   kickoffTimeEt?: string;
   status?: PlayedMatchStatus;
+  statusDetail?: string;
   group?: string;
   venue?: string;
   region?: string;
+  winnerTeam?: string;
+}
+
+export type LiveMatchesSourceProvider = typeof LiveMatchesSourceProvider[keyof typeof LiveMatchesSourceProvider];
+
+
+export const LiveMatchesSourceProvider = {
+  espn: 'espn',
+  disabled: 'disabled',
+} as const;
+
+export interface LiveMatchesSource {
+  provider: LiveMatchesSourceProvider;
+  lastSyncedAt: string | null;
+  error: string | null;
 }
 
 export interface LiveMatchesData {
   playedMatches: PlayedMatch[];
+  source: LiveMatchesSource;
 }
 
 export interface LiveMatchesResponse {

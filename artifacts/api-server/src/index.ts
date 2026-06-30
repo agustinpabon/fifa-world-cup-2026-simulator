@@ -1,5 +1,4 @@
 import app from "./app.js";
-import type { LoadHistoricalDatasetOptions } from "./lib/elo.js";
 import { logger } from "./lib/logger.js";
 import { initOracle } from "./routes/oracle.js";
 
@@ -23,13 +22,23 @@ function readIntegerEnv(name: string, options: { min: number }): number | undefi
   return value;
 }
 
-function getOracleInitOptionsFromEnv(): LoadHistoricalDatasetOptions {
+function getOracleInitOptionsFromEnv(): Parameters<typeof initOracle>[0] {
   const maxAttempts = readIntegerEnv("HISTORICAL_DATA_MAX_ATTEMPTS", { min: 0 });
   const timeoutMs = readIntegerEnv("HISTORICAL_DATA_TIMEOUT_MS", { min: 1 });
+  const liveDataTimeoutMs = readIntegerEnv("LIVE_DATA_TIMEOUT_MS", { min: 1 });
+  const liveDataRefreshIntervalMs = readIntegerEnv("LIVE_DATA_REFRESH_INTERVAL_MS", { min: 1000 });
+  const liveDataProvider = process.env["LIVE_DATA_PROVIDER"] === "disabled" ? "disabled" : "espn";
 
   return {
     ...(maxAttempts === undefined ? {} : { maxAttempts }),
     ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    liveData: {
+      provider: liveDataProvider,
+      ...(liveDataTimeoutMs === undefined ? {} : { timeoutMs: liveDataTimeoutMs }),
+      ...(liveDataRefreshIntervalMs === undefined
+        ? {}
+        : { refreshIntervalMs: liveDataRefreshIntervalMs }),
+    },
   };
 }
 

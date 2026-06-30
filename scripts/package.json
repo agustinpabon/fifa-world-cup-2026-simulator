@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
+    "@workspace/oracle-model": "workspace:*",
     "@types/node": "catalog:",
     "tsx": "catalog:"
   }

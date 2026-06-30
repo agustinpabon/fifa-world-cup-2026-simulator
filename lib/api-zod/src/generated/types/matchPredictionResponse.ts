@@ -5,20 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { MatchPredictionData } from './matchPredictionData';
+import type { OracleResponseMeta } from './oracleResponseMeta';
 
 export interface MatchPredictionResponse {
-  homeTeam: string;
-  awayTeam: string;
-  homeWinPct: number;
-  drawPct: number;
-  awayWinPct: number;
-  homeExpectedGoals: number;
-  awayExpectedGoals: number;
-  mostLikelyScore: string;
-  homeElo: number;
-  awayElo: number;
-  homeAttackStrength: number;
-  homeDefenseStrength: number;
-  awayAttackStrength: number;
-  awayDefenseStrength: number;
+  data: MatchPredictionData;
+  meta: OracleResponseMeta;
 }

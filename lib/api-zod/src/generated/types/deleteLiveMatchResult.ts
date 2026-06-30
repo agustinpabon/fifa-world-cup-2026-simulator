@@ -5,8 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { DeleteLiveMatchData } from './deleteLiveMatchData';
+import type { OracleResponseMeta } from './oracleResponseMeta';
 
 export interface DeleteLiveMatchResult {
-  success: boolean;
-  liveMatchesCount: number;
+  data: DeleteLiveMatchData;
+  meta: OracleResponseMeta;
 }

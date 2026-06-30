@@ -7,8 +7,18 @@
  */
 
 export interface LiveMatchRequest {
+  /** @minLength 1 */
   homeTeam: string;
+  /** @minLength 1 */
   awayTeam: string;
+  /**
+     * @minimum 0
+     * @maximum 30
+     */
   homeScore: number;
+  /**
+     * @minimum 0
+     * @maximum 30
+     */
   awayScore: number;
 }

@@ -7,6 +7,8 @@
  */
 
 export interface DeleteLiveMatchRequest {
+  /** @minLength 1 */
   homeTeam: string;
+  /** @minLength 1 */
   awayTeam: string;
 }

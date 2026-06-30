@@ -5,9 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { LiveMatchData } from './liveMatchData';
+import type { OracleResponseMeta } from './oracleResponseMeta';
 
 export interface LiveMatchResponse {
-  success: boolean;
-  message: string;
-  liveMatchesCount: number;
+  data: LiveMatchData;
+  meta: OracleResponseMeta;
 }

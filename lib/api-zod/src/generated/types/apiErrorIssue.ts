@@ -5,8 +5,9 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { ApiError } from './apiError';
 
-export interface ErrorResponse {
-  error: ApiError;
+export interface ApiErrorIssue {
+  path?: string;
+  message: string;
+  code?: string;
 }

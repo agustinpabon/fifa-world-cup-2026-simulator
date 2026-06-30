@@ -5,11 +5,22 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { PlayedMatchSource } from './playedMatchSource';
+import type { PlayedMatchStatus } from './playedMatchStatus';
 
 export interface PlayedMatch {
+  matchNumber?: number;
   homeTeam: string;
   awayTeam: string;
   homeScore: number;
   awayScore: number;
   stage?: string;
+  source?: PlayedMatchSource;
+  sourceId?: string;
+  date?: string;
+  kickoffTimeEt?: string;
+  status?: PlayedMatchStatus;
+  group?: string;
+  venue?: string;
+  region?: string;
 }

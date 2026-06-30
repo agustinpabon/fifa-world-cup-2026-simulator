@@ -5,8 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { ApiError } from './apiError';
+import type { PlayedMatch } from './playedMatch';
 
-export interface ErrorResponse {
-  error: ApiError;
+export interface LiveMatchesData {
+  playedMatches: PlayedMatch[];
 }

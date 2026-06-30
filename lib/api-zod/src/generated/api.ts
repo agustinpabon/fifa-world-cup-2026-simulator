@@ -13,7 +13,9 @@ import * as zod from 'zod';
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
+  "data": zod.object({
   "status": zod.string()
+})
 })
 
 
@@ -22,12 +24,42 @@ export const HealthCheckResponse = zod.object({
  * @summary Get oracle initialization status
  */
 export const GetOracleStatusResponse = zod.object({
+  "data": zod.object({
+  "state": zod.enum(['loading', 'ready', 'error']),
   "ready": zod.boolean(),
   "matchesLoaded": zod.number(),
   "teamsRated": zod.number(),
   "simulationsRun": zod.number(),
+  "simulationSeed": zod.string(),
   "liveMatchesRecorded": zod.number(),
+  "recalculating": zod.boolean().describe('True when a recalculation job is pending or running.'),
+  "lastUpdated": zod.string().nullable().describe('ISO timestamp for the last successfully published simulation.'),
+  "recalculationError": zod.string().nullable().describe('Last simulation recalculation error, if the latest job failed.'),
+  "dataset": zod.object({
+  "source": zod.enum(['remote', 'snapshot']),
+  "date": zod.string().describe('Latest completed match date included in the loaded dataset.'),
+  "hash": zod.string().describe('SHA-256 hash of the raw CSV used for this runtime.'),
+  "loadedAt": zod.string(),
+  "remoteUrl": zod.string().optional(),
+  "fallbackReason": zod.string().optional()
+}).nullable(),
+  "error": zod.object({
+  "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
   "message": zod.string()
+}).optional(),
+  "message": zod.string()
+}),
+  "meta": zod.object({
+  "readiness": zod.object({
+  "state": zod.enum(['loading', 'ready', 'error']),
+  "ready": zod.boolean(),
+  "message": zod.string(),
+  "error": zod.object({
+  "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
+  "message": zod.string()
+}).optional()
+})
+})
 })
 
 
@@ -36,6 +68,7 @@ export const GetOracleStatusResponse = zod.object({
  * @summary Get all 48 World Cup teams with Elo ratings
  */
 export const GetTeamsResponse = zod.object({
+  "data": zod.object({
   "teams": zod.array(zod.object({
   "name": zod.string(),
   "code": zod.string(),
@@ -45,6 +78,18 @@ export const GetTeamsResponse = zod.object({
   "attackStrength": zod.number(),
   "defenseStrength": zod.number()
 }))
+}),
+  "meta": zod.object({
+  "readiness": zod.object({
+  "state": zod.enum(['loading', 'ready', 'error']),
+  "ready": zod.boolean(),
+  "message": zod.string(),
+  "error": zod.object({
+  "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
+  "message": zod.string()
+}).optional()
+})
+})
 })
 
 
@@ -52,7 +97,16 @@ export const GetTeamsResponse = zod.object({
  * Returns pre-computed tournament simulation probabilities for all teams
  * @summary Get Monte Carlo simulation results
  */
+export const getSimulationQuerySeedMax = 128;
+
+
+
+export const GetSimulationQueryParams = zod.object({
+  "seed": zod.coerce.string().min(1).max(getSimulationQuerySeedMax).optional().describe('Optional seed for an ad hoc reproducible simulation response. Omit it to use the cached seed.')
+})
+
 export const GetSimulationResponse = zod.object({
+  "data": zod.object({
   "results": zod.array(zod.object({
   "name": zod.string(),
   "code": zod.string(),
@@ -65,10 +119,67 @@ export const GetSimulationResponse = zod.object({
   "quarterFinalPct": zod.number(),
   "roundOf16Pct": zod.number(),
   "groupWinPct": zod.number(),
-  "groupAdvancePct": zod.number()
+  "groupAdvancePct": zod.number(),
+  "uncertainty": zod.object({
+  "titlePct": zod.object({
+  "standardErrorPct": zod.number().describe('Standard error in percentage points.'),
+  "confidenceIntervalLowPct": zod.number().describe('Lower bound of the approximate confidence interval in percentage points.'),
+  "confidenceIntervalHighPct": zod.number().describe('Upper bound of the approximate confidence interval in percentage points.')
+}).describe('Binomial Monte Carlo uncertainty for a displayed probability percentage.'),
+  "finalPct": zod.object({
+  "standardErrorPct": zod.number().describe('Standard error in percentage points.'),
+  "confidenceIntervalLowPct": zod.number().describe('Lower bound of the approximate confidence interval in percentage points.'),
+  "confidenceIntervalHighPct": zod.number().describe('Upper bound of the approximate confidence interval in percentage points.')
+}).describe('Binomial Monte Carlo uncertainty for a displayed probability percentage.'),
+  "semiFinalPct": zod.object({
+  "standardErrorPct": zod.number().describe('Standard error in percentage points.'),
+  "confidenceIntervalLowPct": zod.number().describe('Lower bound of the approximate confidence interval in percentage points.'),
+  "confidenceIntervalHighPct": zod.number().describe('Upper bound of the approximate confidence interval in percentage points.')
+}).describe('Binomial Monte Carlo uncertainty for a displayed probability percentage.'),
+  "quarterFinalPct": zod.object({
+  "standardErrorPct": zod.number().describe('Standard error in percentage points.'),
+  "confidenceIntervalLowPct": zod.number().describe('Lower bound of the approximate confidence interval in percentage points.'),
+  "confidenceIntervalHighPct": zod.number().describe('Upper bound of the approximate confidence interval in percentage points.')
+}).describe('Binomial Monte Carlo uncertainty for a displayed probability percentage.'),
+  "roundOf16Pct": zod.object({
+  "standardErrorPct": zod.number().describe('Standard error in percentage points.'),
+  "confidenceIntervalLowPct": zod.number().describe('Lower bound of the approximate confidence interval in percentage points.'),
+  "confidenceIntervalHighPct": zod.number().describe('Upper bound of the approximate confidence interval in percentage points.')
+}).describe('Binomial Monte Carlo uncertainty for a displayed probability percentage.'),
+  "groupWinPct": zod.object({
+  "standardErrorPct": zod.number().describe('Standard error in percentage points.'),
+  "confidenceIntervalLowPct": zod.number().describe('Lower bound of the approximate confidence interval in percentage points.'),
+  "confidenceIntervalHighPct": zod.number().describe('Upper bound of the approximate confidence interval in percentage points.')
+}).describe('Binomial Monte Carlo uncertainty for a displayed probability percentage.'),
+  "groupAdvancePct": zod.object({
+  "standardErrorPct": zod.number().describe('Standard error in percentage points.'),
+  "confidenceIntervalLowPct": zod.number().describe('Lower bound of the approximate confidence interval in percentage points.'),
+  "confidenceIntervalHighPct": zod.number().describe('Upper bound of the approximate confidence interval in percentage points.')
+}).describe('Binomial Monte Carlo uncertainty for a displayed probability percentage.')
+})
 })),
   "simulationsRun": zod.number(),
-  "liveMatchesRecorded": zod.number()
+  "simulationSeed": zod.string(),
+  "liveMatchesRecorded": zod.number(),
+  "uncertainty": zod.object({
+  "method": zod.enum(['binomial_standard_error']),
+  "confidenceLevel": zod.number(),
+  "zScore": zod.number(),
+  "maxStandardErrorPct": zod.number().describe('Largest possible standard error in percentage points for this simulation count.'),
+  "description": zod.string()
+})
+}),
+  "meta": zod.object({
+  "readiness": zod.object({
+  "state": zod.enum(['loading', 'ready', 'error']),
+  "ready": zod.boolean(),
+  "message": zod.string(),
+  "error": zod.object({
+  "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
+  "message": zod.string()
+}).optional()
+})
+})
 })
 
 
@@ -76,12 +187,17 @@ export const GetSimulationResponse = zod.object({
  * Given two team names, returns win/draw/loss probabilities, expected goals, and most likely scoreline
  * @summary Predict a head-to-head match
  */
+
+
+
+
 export const PredictMatchBody = zod.object({
-  "homeTeam": zod.string(),
-  "awayTeam": zod.string()
+  "homeTeam": zod.string().min(1),
+  "awayTeam": zod.string().min(1)
 })
 
 export const PredictMatchResponse = zod.object({
+  "data": zod.object({
   "homeTeam": zod.string(),
   "awayTeam": zod.string(),
   "homeWinPct": zod.number(),
@@ -96,64 +212,151 @@ export const PredictMatchResponse = zod.object({
   "homeDefenseStrength": zod.number(),
   "awayAttackStrength": zod.number(),
   "awayDefenseStrength": zod.number()
+}),
+  "meta": zod.object({
+  "readiness": zod.object({
+  "state": zod.enum(['loading', 'ready', 'error']),
+  "ready": zod.boolean(),
+  "message": zod.string(),
+  "error": zod.object({
+  "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
+  "message": zod.string()
+}).optional()
+})
+})
 })
 
 
 /**
- * Records a match score in-memory and triggers simulation recalculation
- * @summary Record a live match score
+ * Records a manual match score override in-memory and queues simulation recalculation
+ * @summary Record a manual scenario override
  */
+
+
+export const recordLiveMatchBodyHomeScoreMin = 0;
+export const recordLiveMatchBodyHomeScoreMax = 30;
+
+export const recordLiveMatchBodyAwayScoreMin = 0;
+export const recordLiveMatchBodyAwayScoreMax = 30;
+
+
+
 export const RecordLiveMatchBody = zod.object({
-  "homeTeam": zod.string(),
-  "awayTeam": zod.string(),
-  "homeScore": zod.number(),
-  "awayScore": zod.number()
+  "homeTeam": zod.string().min(1),
+  "awayTeam": zod.string().min(1),
+  "homeScore": zod.number().min(recordLiveMatchBodyHomeScoreMin).max(recordLiveMatchBodyHomeScoreMax),
+  "awayScore": zod.number().min(recordLiveMatchBodyAwayScoreMin).max(recordLiveMatchBodyAwayScoreMax)
 })
 
 export const RecordLiveMatchResponse = zod.object({
+  "data": zod.object({
   "success": zod.boolean(),
   "message": zod.string(),
   "liveMatchesCount": zod.number()
+}),
+  "meta": zod.object({
+  "readiness": zod.object({
+  "state": zod.enum(['loading', 'ready', 'error']),
+  "ready": zod.boolean(),
+  "message": zod.string(),
+  "error": zod.object({
+  "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
+  "message": zod.string()
+}).optional()
+})
+})
 })
 
 
 /**
- * Removes a recorded match score in-memory and triggers simulation recalculation
- * @summary Remove a recorded live match
+ * Removes a manual match score override in-memory and queues simulation recalculation
+ * @summary Remove a manual scenario override
  */
+
+
+
+
 export const DeleteLiveMatchBody = zod.object({
-  "homeTeam": zod.string(),
-  "awayTeam": zod.string()
+  "homeTeam": zod.string().min(1),
+  "awayTeam": zod.string().min(1)
 })
 
 export const DeleteLiveMatchResponse = zod.object({
+  "data": zod.object({
   "success": zod.boolean(),
   "liveMatchesCount": zod.number()
+}),
+  "meta": zod.object({
+  "readiness": zod.object({
+  "state": zod.enum(['loading', 'ready', 'error']),
+  "ready": zod.boolean(),
+  "message": zod.string(),
+  "error": zod.object({
+  "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
+  "message": zod.string()
+}).optional()
+})
+})
 })
 
 
 /**
- * Returns the current list of recorded live matches
- * @summary List all recorded live matches
+ * Returns the imported fixture list plus any in-memory manual scenario overrides
+ * @summary List imported fixtures and manual scenario overrides
  */
 export const GetLiveMatchesResponse = zod.object({
+  "data": zod.object({
   "playedMatches": zod.array(zod.object({
+  "matchNumber": zod.number().optional(),
   "homeTeam": zod.string(),
   "awayTeam": zod.string(),
   "homeScore": zod.number(),
   "awayScore": zod.number(),
-  "stage": zod.string().optional()
+  "stage": zod.string().optional(),
+  "source": zod.enum(['fixture', 'official', 'custom']).optional(),
+  "sourceId": zod.string().optional(),
+  "date": zod.string().optional(),
+  "kickoffTimeEt": zod.string().optional(),
+  "status": zod.enum(['scheduled', 'live', 'finished']).optional(),
+  "group": zod.string().optional(),
+  "venue": zod.string().optional(),
+  "region": zod.string().optional()
 }))
+}),
+  "meta": zod.object({
+  "readiness": zod.object({
+  "state": zod.enum(['loading', 'ready', 'error']),
+  "ready": zod.boolean(),
+  "message": zod.string(),
+  "error": zod.object({
+  "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
+  "message": zod.string()
+}).optional()
+})
+})
 })
 
 
 /**
- * Clears all in-memory live matches and resets simulation recalculation
- * @summary Clear all recorded live matches
+ * Clears all in-memory manual score overrides and queues simulation recalculation
+ * @summary Clear all manual scenario overrides
  */
 export const ClearLiveMatchesResponse = zod.object({
+  "data": zod.object({
   "success": zod.boolean(),
   "message": zod.string()
+}),
+  "meta": zod.object({
+  "readiness": zod.object({
+  "state": zod.enum(['loading', 'ready', 'error']),
+  "ready": zod.boolean(),
+  "message": zod.string(),
+  "error": zod.object({
+  "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
+  "message": zod.string()
+}).optional()
+})
+})
 })
 
 

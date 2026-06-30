@@ -24,6 +24,7 @@ import type {
   DeleteLiveMatchRequest,
   DeleteLiveMatchResult,
   ErrorResponse,
+  GetSimulationParams,
   HealthStatus,
   LiveMatchRequest,
   LiveMatchResponse,
@@ -281,21 +282,28 @@ export function useGetTeams<TData = Awaited<ReturnType<typeof getTeams>>, TError
 
 
 
-export const getGetSimulationUrl = () => {
+export const getGetSimulationUrl = (params?: GetSimulationParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/oracle/simulation`
+  return stringifiedParams.length > 0 ? `/api/oracle/simulation?${stringifiedParams}` : `/api/oracle/simulation`
 }
 
 /**
  * Returns pre-computed tournament simulation probabilities for all teams
  * @summary Get Monte Carlo simulation results
  */
-export const getSimulation = async ( options?: RequestInit): Promise<SimulationResponse> => {
+export const getSimulation = async (params?: GetSimulationParams, options?: RequestInit): Promise<SimulationResponse> => {
 
-  return customFetch<SimulationResponse>(getGetSimulationUrl(),
+  return customFetch<SimulationResponse>(getGetSimulationUrl(params),
   {
     ...options,
     method: 'GET'
@@ -308,23 +316,23 @@ export const getSimulation = async ( options?: RequestInit): Promise<SimulationR
 
 
 
-export const getGetSimulationQueryKey = () => {
+export const getGetSimulationQueryKey = (params?: GetSimulationParams,) => {
     return [
-    `/api/oracle/simulation`
+    `/api/oracle/simulation`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetSimulationQueryOptions = <TData = Awaited<ReturnType<typeof getSimulation>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSimulation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetSimulationQueryOptions = <TData = Awaited<ReturnType<typeof getSimulation>>, TError = ErrorType<ErrorResponse>>(params?: GetSimulationParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSimulation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetSimulationQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetSimulationQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSimulation>>> = ({ signal }) => getSimulation({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSimulation>>> = ({ signal }) => getSimulation(params, { signal, ...requestOptions });
 
 
 
@@ -334,19 +342,19 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type GetSimulationQueryResult = NonNullable<Awaited<ReturnType<typeof getSimulation>>>
-export type GetSimulationQueryError = ErrorType<unknown>
+export type GetSimulationQueryError = ErrorType<ErrorResponse>
 
 
 /**
  * @summary Get Monte Carlo simulation results
  */
 
-export function useGetSimulation<TData = Awaited<ReturnType<typeof getSimulation>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSimulation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export function useGetSimulation<TData = Awaited<ReturnType<typeof getSimulation>>, TError = ErrorType<ErrorResponse>>(
+ params?: GetSimulationParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSimulation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetSimulationQueryOptions(options)
+  const queryOptions = getGetSimulationQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -440,8 +448,8 @@ export const getRecordLiveMatchUrl = () => {
 }
 
 /**
- * Records a match score in-memory and triggers simulation recalculation
- * @summary Record a live match score
+ * Records a manual match score override in-memory and queues simulation recalculation
+ * @summary Record a manual scenario override
  */
 export const recordLiveMatch = async (liveMatchRequest: LiveMatchRequest, options?: RequestInit): Promise<LiveMatchResponse> => {
 
@@ -490,7 +498,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type RecordLiveMatchMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Record a live match score
+ * @summary Record a manual scenario override
  */
 export const useRecordLiveMatch = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordLiveMatch>>, TError,{data: BodyType<LiveMatchRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -512,8 +520,8 @@ export const getDeleteLiveMatchUrl = () => {
 }
 
 /**
- * Removes a recorded match score in-memory and triggers simulation recalculation
- * @summary Remove a recorded live match
+ * Removes a manual match score override in-memory and queues simulation recalculation
+ * @summary Remove a manual scenario override
  */
 export const deleteLiveMatch = async (deleteLiveMatchRequest: DeleteLiveMatchRequest, options?: RequestInit): Promise<DeleteLiveMatchResult> => {
 
@@ -562,7 +570,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type DeleteLiveMatchMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Remove a recorded live match
+ * @summary Remove a manual scenario override
  */
 export const useDeleteLiveMatch = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteLiveMatch>>, TError,{data: BodyType<DeleteLiveMatchRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -584,8 +592,8 @@ export const getGetLiveMatchesUrl = () => {
 }
 
 /**
- * Returns the current list of recorded live matches
- * @summary List all recorded live matches
+ * Returns the imported fixture list plus any in-memory manual scenario overrides
+ * @summary List imported fixtures and manual scenario overrides
  */
 export const getLiveMatches = async ( options?: RequestInit): Promise<LiveMatchesResponse> => {
 
@@ -632,7 +640,7 @@ export type GetLiveMatchesQueryError = ErrorType<unknown>
 
 
 /**
- * @summary List all recorded live matches
+ * @summary List imported fixtures and manual scenario overrides
  */
 
 export function useGetLiveMatches<TData = Awaited<ReturnType<typeof getLiveMatches>>, TError = ErrorType<unknown>>(
@@ -662,8 +670,8 @@ export const getClearLiveMatchesUrl = () => {
 }
 
 /**
- * Clears all in-memory live matches and resets simulation recalculation
- * @summary Clear all recorded live matches
+ * Clears all in-memory manual score overrides and queues simulation recalculation
+ * @summary Clear all manual scenario overrides
  */
 export const clearLiveMatches = async ( options?: RequestInit): Promise<ClearLiveMatchesResult> => {
 
@@ -679,7 +687,7 @@ export const clearLiveMatches = async ( options?: RequestInit): Promise<ClearLiv
 
 
 
-export const getClearLiveMatchesMutationOptions = <TError = ErrorType<unknown>,
+export const getClearLiveMatchesMutationOptions = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearLiveMatches>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof clearLiveMatches>>, TError,void, TContext> => {
 
@@ -708,12 +716,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type ClearLiveMatchesMutationResult = NonNullable<Awaited<ReturnType<typeof clearLiveMatches>>>
 
-    export type ClearLiveMatchesMutationError = ErrorType<unknown>
+    export type ClearLiveMatchesMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Clear all recorded live matches
+ * @summary Clear all manual scenario overrides
  */
-export const useClearLiveMatches = <TError = ErrorType<unknown>,
+export const useClearLiveMatches = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearLiveMatches>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof clearLiveMatches>>,

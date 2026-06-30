@@ -5,10 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { TeamSimResult } from './teamSimResult';
+import type { OracleResponseMeta } from './oracleResponseMeta';
+import type { SimulationData } from './simulationData';
 
 export interface SimulationResponse {
-  results: TeamSimResult[];
-  simulationsRun: number;
-  liveMatchesRecorded: number;
+  data: SimulationData;
+  meta: OracleResponseMeta;
 }

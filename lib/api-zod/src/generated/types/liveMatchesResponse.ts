@@ -5,8 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { PlayedMatch } from './playedMatch';
+import type { LiveMatchesData } from './liveMatchesData';
+import type { OracleResponseMeta } from './oracleResponseMeta';
 
 export interface LiveMatchesResponse {
-  playedMatches: PlayedMatch[];
+  data: LiveMatchesData;
+  meta: OracleResponseMeta;
 }

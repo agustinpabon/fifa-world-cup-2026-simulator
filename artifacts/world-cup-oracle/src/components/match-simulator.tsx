@@ -1,12 +1,11 @@
-import React, { useState } from "react";
-import { useGetTeams, usePredictMatch, type MatchPredictionData } from "@workspace/api-client-react";
+import React, { useMemo, useState } from "react";
+import { useGetTeams, usePredictMatch, type MatchPredictionData, type Team } from "@workspace/api-client-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AnimatedNumber } from "@/components/ui/animated-number";
-import { AlertTriangle, Home, Zap } from "lucide-react";
+import { AlertTriangle, Search, X, Zap } from "lucide-react";
 
 const MIN_LOADING_MS = 2200;
-const HOST_TEAMS = new Set(["USA", "Mexico", "Canada"]);
 
 export function MatchSimulator() {
   const { data: teamsResponse, isLoading: teamsLoading, isError: teamsError } = useGetTeams();
@@ -18,6 +17,10 @@ export function MatchSimulator() {
   const predictMatch = usePredictMatch();
 
   const teams = teamsResponse?.data.teams ?? [];
+  const sortedTeams = useMemo(
+    () => [...teams].sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name)),
+    [teams]
+  );
   const readiness = teamsResponse?.meta.readiness;
   const isOracleUnavailable = readiness ? readiness.state !== "ready" : false;
 
@@ -50,16 +53,13 @@ export function MatchSimulator() {
   const homeFlag = homeTeamInfo?.flagEmoji ?? "";
   const awayFlag = awayTeamInfo?.flagEmoji ?? "";
 
-  const isHomeHost = HOST_TEAMS.has(homeTeam);
-  const isAwayHost = HOST_TEAMS.has(awayTeam);
-
   return (
     <Card data-testid="match-predictor" className="border-card-border bg-card/50 backdrop-blur-sm">
       <CardHeader>
         <CardTitle className="text-xl uppercase tracking-wider text-muted-foreground font-mono flex items-center justify-between">
           <span>Match Predictor</span>
           <span className="text-[10px] text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded font-bold uppercase tracking-widest font-mono">
-            Poisson & Dixon-Coles
+            Elo + Strength
           </span>
         </CardTitle>
       </CardHeader>
@@ -77,51 +77,35 @@ export function MatchSimulator() {
 
         {/* Controls row */}
         <div className="flex flex-col md:flex-row gap-4 items-end mb-8">
-          <div className="flex-1 w-full">
-            <label htmlFor="predictor-home-team" className="text-xs text-muted-foreground uppercase font-mono mb-2 block">Team 1 (Home)</label>
-            <select
-              id="predictor-home-team"
-              data-testid="predictor-home-team"
-              value={homeTeam}
-              onChange={(e) => {
-                setHomeTeam(e.target.value);
-                setResult(undefined);
-              }}
-              disabled={teamsLoading || teamsError || isOracleUnavailable || isSimulating}
-              className="w-full h-9 rounded-md border border-border bg-background/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <option value="">Select team...</option>
-              {teams.map((team) => (
-                <option key={team.code} value={team.name} disabled={team.name === awayTeam}>
-                  {team.flagEmoji} {team.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <TeamPicker
+            id="predictor-home-team"
+            label="Team 1"
+            testId="predictor-home-team"
+            teams={sortedTeams}
+            value={homeTeam}
+            opponentValue={awayTeam}
+            disabled={teamsLoading || teamsError || isOracleUnavailable || isSimulating}
+            onChange={(teamName) => {
+              setHomeTeam(teamName);
+              setResult(undefined);
+            }}
+          />
 
           <div className="text-muted-foreground pb-2 px-2 font-mono text-sm hidden md:block">VS</div>
 
-          <div className="flex-1 w-full">
-            <label htmlFor="predictor-away-team" className="text-xs text-muted-foreground uppercase font-mono mb-2 block">Team 2 (Away)</label>
-            <select
-              id="predictor-away-team"
-              data-testid="predictor-away-team"
-              value={awayTeam}
-              onChange={(e) => {
-                setAwayTeam(e.target.value);
-                setResult(undefined);
-              }}
-              disabled={teamsLoading || teamsError || isOracleUnavailable || isSimulating}
-              className="w-full h-9 rounded-md border border-border bg-background/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <option value="">Select team...</option>
-              {teams.map((team) => (
-                <option key={team.code} value={team.name} disabled={team.name === homeTeam}>
-                  {team.flagEmoji} {team.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <TeamPicker
+            id="predictor-away-team"
+            label="Team 2"
+            testId="predictor-away-team"
+            teams={sortedTeams}
+            value={awayTeam}
+            opponentValue={homeTeam}
+            disabled={teamsLoading || teamsError || isOracleUnavailable || isSimulating}
+            onChange={(teamName) => {
+              setAwayTeam(teamName);
+              setResult(undefined);
+            }}
+          />
 
           <Button
             data-testid="predict-match-button"
@@ -133,6 +117,13 @@ export function MatchSimulator() {
           </Button>
         </div>
 
+        <div
+          data-testid="predictor-team-count"
+          className="mb-8 -mt-4 text-[11px] text-muted-foreground font-mono uppercase tracking-wider"
+        >
+          {sortedTeams.length} teams available for neutral-site prediction.
+        </div>
+
         {/* Pre-simulation Comparative Strengths Panel */}
         {!isSimulating && !result && homeTeamInfo && awayTeamInfo && (
           <div className="animate-in fade-in duration-300 rounded-lg bg-background/30 p-6 border border-card-border mb-4 font-mono text-xs">
@@ -140,15 +131,10 @@ export function MatchSimulator() {
               Matchup Strength Comparison
             </div>
             <div className="grid grid-cols-3 items-center gap-4 text-center">
-              {/* Home Team Stats */}
+              {/* Team 1 Stats */}
               <div>
                 <span className="text-2xl block mb-1">{homeFlag}</span>
                 <span className="font-bold text-sm font-sans block text-foreground truncate">{homeTeam}</span>
-                {isHomeHost && (
-                  <span className="inline-flex items-center gap-0.5 text-[9px] bg-primary/20 text-primary border border-primary/30 px-1.5 py-0.5 rounded-full mt-1.5 font-bold uppercase tracking-wider">
-                    <Home className="w-2.5 h-2.5" /> Host Boost
-                  </span>
-                )}
                 <div className="mt-4 space-y-2 text-left">
                   <div className="flex justify-between border-b border-border/30 pb-1">
                     <span className="text-muted-foreground">Elo Rating:</span>
@@ -171,19 +157,14 @@ export function MatchSimulator() {
                   VS
                 </div>
                 <div className="text-[10px] text-muted-foreground leading-normal max-w-[120px]">
-                  Compare Elo and goal-strength multipliers before calculating probabilities.
+                  Neutral-site Elo comparison with attack and defense adjustments.
                 </div>
               </div>
 
-              {/* Away Team Stats */}
+              {/* Team 2 Stats */}
               <div>
                 <span className="text-2xl block mb-1">{awayFlag}</span>
                 <span className="font-bold text-sm font-sans block text-foreground truncate">{awayTeam}</span>
-                {isAwayHost && (
-                  <span className="inline-flex items-center gap-0.5 text-[9px] bg-primary/20 text-primary border border-primary/30 px-1.5 py-0.5 rounded-full mt-1.5 font-bold uppercase tracking-wider">
-                    <Home className="w-2.5 h-2.5" /> Host Boost
-                  </span>
-                )}
                 <div className="mt-4 space-y-2 text-left">
                   <div className="flex justify-between border-b border-border/30 pb-1">
                     <span className="text-muted-foreground">Elo Rating:</span>
@@ -223,7 +204,7 @@ export function MatchSimulator() {
               </div>
 
               <div className="text-xs text-muted-foreground leading-relaxed max-w-sm">
-                Using the exact Dixon-Coles-adjusted Poisson score matrix from the current Elo ratings and goal-strength multipliers.
+                Using the validated Elo + attack/defense Poisson model.
               </div>
 
               {/* Scanning dots */}
@@ -254,21 +235,11 @@ export function MatchSimulator() {
               <div className="flex flex-col items-center">
                 <span className="text-3xl mb-1">{homeFlag}</span>
                 <span className="text-base font-bold font-sans text-foreground truncate max-w-[150px]">{result.homeTeam}</span>
-                {isHomeHost && (
-                  <span className="inline-flex items-center gap-0.5 text-[8px] bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.5 rounded-full mt-1 font-bold uppercase tracking-wider font-mono">
-                    Host
-                  </span>
-                )}
               </div>
               <div className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Prediction Results</div>
               <div className="flex flex-col items-center">
                 <span className="text-3xl mb-1">{awayFlag}</span>
                 <span className="text-base font-bold font-sans text-foreground truncate max-w-[150px]">{result.awayTeam}</span>
-                {isAwayHost && (
-                  <span className="inline-flex items-center gap-0.5 text-[8px] bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.5 rounded-full mt-1 font-bold uppercase tracking-wider font-mono">
-                    Host
-                  </span>
-                )}
               </div>
             </div>
 
@@ -302,7 +273,7 @@ export function MatchSimulator() {
             {/* Win/Draw/Win values */}
             <div className="grid grid-cols-3 gap-4 text-center mb-8">
               <div>
-                <div className="text-xs text-muted-foreground font-mono uppercase mb-1">Home Win</div>
+                <div className="text-xs text-muted-foreground font-mono uppercase mb-1">Team 1 Win</div>
                 <div className="text-4xl md:text-5xl font-bold font-mono text-primary">
                   <AnimatedNumber value={result.homeWinPct} format={(v) => v.toFixed(1) + "%"} />
                 </div>
@@ -314,7 +285,7 @@ export function MatchSimulator() {
                 </div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground font-mono uppercase mb-1">Away Win</div>
+                <div className="text-xs text-muted-foreground font-mono uppercase mb-1">Team 2 Win</div>
                 <div className="text-4xl md:text-5xl font-bold font-mono text-indigo-500">
                   <AnimatedNumber value={result.awayWinPct} format={(v) => v.toFixed(1) + "%"} />
                 </div>
@@ -376,5 +347,134 @@ export function MatchSimulator() {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+interface TeamPickerProps {
+  id: string;
+  label: string;
+  testId: string;
+  teams: Team[];
+  value: string;
+  opponentValue: string;
+  disabled: boolean;
+  onChange: (teamName: string) => void;
+}
+
+function TeamPicker({ id, label, testId, teams, value, opponentValue, disabled, onChange }: TeamPickerProps) {
+  const [query, setQuery] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const selectedTeam = teams.find((team) => team.name === value);
+
+  const filteredTeams = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) return teams;
+
+    return teams.filter((team) =>
+      `${team.name} ${team.code} group ${team.group}`.toLowerCase().includes(normalizedQuery)
+    );
+  }, [query, teams]);
+
+  const inputValue = isOpen ? query : selectedTeam ? `${selectedTeam.flagEmoji} ${selectedTeam.name}` : "";
+
+  const handleSelect = (teamName: string) => {
+    if (teamName === opponentValue) return;
+    onChange(teamName);
+    setQuery("");
+    setIsOpen(false);
+  };
+
+  return (
+    <div className="flex-1 w-full relative">
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <label htmlFor={id} className="text-xs text-muted-foreground uppercase font-mono block">
+          {label}
+        </label>
+        <span className="text-[10px] text-muted-foreground/70 font-mono uppercase">
+          {filteredTeams.length}/{teams.length}
+        </span>
+      </div>
+      <div className="relative">
+        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground/60 pointer-events-none" />
+        <input
+          id={id}
+          data-testid={testId}
+          value={inputValue}
+          onFocus={() => {
+            if (!disabled) {
+              setIsOpen(true);
+              setQuery("");
+            }
+          }}
+          onBlur={() => window.setTimeout(() => setIsOpen(false), 120)}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setIsOpen(true);
+          }}
+          disabled={disabled}
+          placeholder="Search all 48 teams..."
+          className="w-full h-9 rounded-md border border-border bg-background/50 pl-9 pr-9 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+          autoComplete="off"
+        />
+        {selectedTeam && !disabled && (
+          <button
+            type="button"
+            aria-label={`Clear ${label}`}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              onChange("");
+              setQuery("");
+              setIsOpen(false);
+            }}
+            className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
+      {isOpen && !disabled && (
+        <div
+          role="listbox"
+          aria-label={`${label} teams`}
+          className="absolute z-30 mt-2 max-h-72 w-full overflow-y-auto rounded-md border border-border bg-background shadow-xl"
+        >
+          {filteredTeams.length === 0 ? (
+            <div className="px-3 py-4 text-sm text-muted-foreground">No teams found.</div>
+          ) : (
+            filteredTeams.map((team) => {
+              const isOpponent = team.name === opponentValue;
+              const isSelected = team.name === value;
+
+              return (
+                <button
+                  key={team.code}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  data-testid={`${testId}-option`}
+                  disabled={isOpponent}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => handleSelect(team.name)}
+                  className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors ${
+                    isSelected
+                      ? "bg-primary/15 text-foreground"
+                      : "hover:bg-secondary/70 text-foreground"
+                  } ${isOpponent ? "opacity-45 cursor-not-allowed hover:bg-transparent" : "cursor-pointer"}`}
+                >
+                  <span className="min-w-0 flex items-center gap-2">
+                    <span className="text-lg leading-none">{team.flagEmoji}</span>
+                    <span className="truncate font-sans">{team.name}</span>
+                  </span>
+                  <span className="shrink-0 text-[10px] uppercase tracking-wider text-muted-foreground font-mono">
+                    {isOpponent ? "Selected" : `Group ${team.group} · ${team.code}`}
+                  </span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
   );
 }

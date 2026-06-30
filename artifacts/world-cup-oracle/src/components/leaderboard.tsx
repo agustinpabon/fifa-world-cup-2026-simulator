@@ -121,13 +121,15 @@ export function Leaderboard() {
   }
 
   const results = simulationResponse?.data.results ?? [];
+  const activeResults = results.filter((team) => !team.eliminated);
+  const hiddenEliminatedCount = results.length - activeResults.length;
   const teamsInfo = teamsResponse?.data.teams ?? [];
   const uncertainty = simulationResponse?.data.uncertainty;
   const confidenceLevelPct = Math.round((uncertainty?.confidenceLevel ?? 0.95) * 100);
   const maxConfidenceMarginPct = (uncertainty?.zScore ?? 1.96) * (uncertainty?.maxStandardErrorPct ?? 0);
 
   // Precompute absolute global ranks (based on win title % then Elo)
-  const globalSorted = [...results].sort((a, b) => b.titlePct - a.titlePct || b.elo - a.elo);
+  const globalSorted = [...activeResults].sort((a, b) => b.titlePct - a.titlePct || b.elo - a.elo);
   const absoluteRanks = new Map<string, number>();
   const titleTies = new Map<string, boolean>();
   globalSorted.forEach((team, index) => {
@@ -152,6 +154,7 @@ export function Leaderboard() {
   };
 
   const filteredAndSorted = results
+    .filter((t) => !t.eliminated)
     .filter((t) => t.name.toLowerCase().includes(searchTerm.toLowerCase()))
     .sort((a, b) => {
       const valA = a[sortKey] ?? 0;
@@ -237,6 +240,15 @@ export function Leaderboard() {
           <span>
             Probabilities are Monte Carlo estimates. {confidenceLevelPct}% intervals are at most ±
             {maxConfidenceMarginPct.toFixed(1)} pts; ≈ marks title odds statistically tied with the team above.
+          </span>
+        </div>
+      )}
+
+      {hiddenEliminatedCount > 0 && (
+        <div className="flex items-start gap-2 rounded-md border border-card-border bg-card/30 px-3 py-2 text-xs text-muted-foreground">
+          <Shield className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+          <span>
+            {hiddenEliminatedCount} eliminated teams hidden from the leaderboard.
           </span>
         </div>
       )}

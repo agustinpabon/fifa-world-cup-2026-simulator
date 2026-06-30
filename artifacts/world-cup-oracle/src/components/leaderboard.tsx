@@ -1,11 +1,16 @@
 import React, { useState } from "react";
-import { useGetSimulation, useGetTeams } from "@workspace/api-client-react";
+import {
+  useGetSimulation,
+  useGetTeams,
+  type ProbabilityUncertainty,
+  type TeamSimResult,
+} from "@workspace/api-client-react";
 import { AnimatedBar } from "@/components/ui/animated-bar";
 import { AnimatedNumber } from "@/components/ui/animated-number";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, ChevronUp, ChevronDown, SlidersHorizontal, Info, Shield, Zap } from "lucide-react";
+import { AlertTriangle, Search, ChevronUp, ChevronDown, SlidersHorizontal, Info, Shield, Zap } from "lucide-react";
 
 type ColumnKey = "elo" | "groupWinPct" | "groupAdvancePct" | "roundOf16Pct" | "quarterFinalPct" | "semiFinalPct" | "finalPct" | "titlePct";
 
@@ -27,9 +32,43 @@ const COLUMNS: ColumnDef[] = [
   { key: "titlePct", label: "Win Title", shortLabel: "Champion", defaultVisible: true },
 ];
 
+function formatProbability(value: number): string {
+  return `${value.toFixed(1)}%`;
+}
+
+function formatInterval(uncertainty: ProbabilityUncertainty): string {
+  return `${uncertainty.confidenceIntervalLowPct.toFixed(1)}-${uncertainty.confidenceIntervalHighPct.toFixed(1)}%`;
+}
+
+function getConfidenceMargin(probabilityPct: number, uncertainty: ProbabilityUncertainty): number {
+  return Math.max(
+    probabilityPct - uncertainty.confidenceIntervalLowPct,
+    uncertainty.confidenceIntervalHighPct - probabilityPct
+  );
+}
+
+function isNonSignificantTitleDifference(
+  current: TeamSimResult,
+  previous: TeamSimResult | undefined,
+  zScore: number
+): boolean {
+  if (!previous) return false;
+
+  const standardError = Math.hypot(
+    current.uncertainty.titlePct.standardErrorPct,
+    previous.uncertainty.titlePct.standardErrorPct
+  );
+
+  if (standardError === 0) {
+    return current.titlePct === previous.titlePct;
+  }
+
+  return Math.abs(previous.titlePct - current.titlePct) <= zScore * standardError;
+}
+
 export function Leaderboard() {
-  const { data: simulationData, isLoading: simLoading } = useGetSimulation();
-  const { data: teamsData, isLoading: teamsLoading } = useGetTeams();
+  const { data: simulationResponse, isLoading: simLoading, isError: simError } = useGetSimulation();
+  const { data: teamsResponse, isLoading: teamsLoading, isError: teamsError } = useGetTeams();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [sortKey, setSortKey] = useState<ColumnKey>("titlePct");
@@ -45,10 +84,11 @@ export function Leaderboard() {
   const [expandedTeamCode, setExpandedTeamCode] = useState<string | null>(null);
 
   const isLoading = simLoading || teamsLoading;
+  const readiness = simulationResponse?.meta.readiness ?? teamsResponse?.meta.readiness;
 
   if (isLoading) {
     return (
-      <div className="space-y-4">
+      <div data-testid="leaderboard-loading" className="space-y-4">
         {[...Array(10)].map((_, i) => (
           <Skeleton key={i} className="h-16 w-full bg-card-border/50" />
         ))}
@@ -56,14 +96,43 @@ export function Leaderboard() {
     );
   }
 
-  const results = simulationData?.results ?? [];
-  const teamsInfo = teamsData?.teams ?? [];
+  if (simError || teamsError) {
+    return (
+      <div
+        data-testid="leaderboard-error"
+        className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive"
+      >
+        <AlertTriangle className="h-4 w-4 shrink-0" />
+        <span>Unable to load tournament predictions.</span>
+      </div>
+    );
+  }
+
+  if (readiness && readiness.state !== "ready") {
+    return (
+      <div
+        data-testid="leaderboard-readiness"
+        className="flex items-center gap-3 rounded-lg border border-border bg-card/40 p-4 text-sm text-muted-foreground"
+      >
+        <AlertTriangle className="h-4 w-4 shrink-0 text-yellow-500" />
+        <span>{readiness.message}</span>
+      </div>
+    );
+  }
+
+  const results = simulationResponse?.data.results ?? [];
+  const teamsInfo = teamsResponse?.data.teams ?? [];
+  const uncertainty = simulationResponse?.data.uncertainty;
+  const confidenceLevelPct = Math.round((uncertainty?.confidenceLevel ?? 0.95) * 100);
+  const maxConfidenceMarginPct = (uncertainty?.zScore ?? 1.96) * (uncertainty?.maxStandardErrorPct ?? 0);
 
   // Precompute absolute global ranks (based on win title % then Elo)
   const globalSorted = [...results].sort((a, b) => b.titlePct - a.titlePct || b.elo - a.elo);
   const absoluteRanks = new Map<string, number>();
+  const titleTies = new Map<string, boolean>();
   globalSorted.forEach((team, index) => {
     absoluteRanks.set(team.code, index + 1);
+    titleTies.set(team.code, isNonSignificantTitleDifference(team, globalSorted[index - 1], uncertainty?.zScore ?? 1.96));
   });
 
   const handleSort = (key: ColumnKey) => {
@@ -115,6 +184,7 @@ export function Leaderboard() {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
+              data-testid="leaderboard-search"
               placeholder="Search team..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -161,8 +231,21 @@ export function Leaderboard() {
         )}
       </div>
 
+      {uncertainty && results.length > 0 && (
+        <div className="flex items-start gap-2 rounded-md border border-card-border bg-card/30 px-3 py-2 text-xs text-muted-foreground">
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+          <span>
+            Probabilities are Monte Carlo estimates. {confidenceLevelPct}% intervals are at most ±
+            {maxConfidenceMarginPct.toFixed(1)} pts; ≈ marks title odds statistically tied with the team above.
+          </span>
+        </div>
+      )}
+
       {/* Leaderboard Table */}
-      <div className="w-full overflow-x-auto border border-card-border rounded-lg bg-card/50 backdrop-blur-sm">
+      <div
+        data-testid="leaderboard-table"
+        className="w-full overflow-x-auto border border-card-border rounded-lg bg-card/50 backdrop-blur-sm"
+      >
         <table className="w-full text-sm text-left">
           <thead className="text-xs uppercase bg-background text-muted-foreground font-mono border-b border-card-border">
             <tr>
@@ -192,17 +275,30 @@ export function Leaderboard() {
               const isExpanded = expandedTeamCode === team.code;
               const absRank = absoluteRanks.get(team.code) ?? 0;
               const details = getTeamStats(team.name);
+              const isTitleTie = titleTies.get(team.code) ?? false;
+              const titleUncertainty = team.uncertainty.titlePct;
+              const titleMargin = getConfidenceMargin(team.titlePct, titleUncertainty);
 
               return (
                 <React.Fragment key={team.code}>
                   <tr
+                    data-testid="leaderboard-row"
+                    data-team-name={team.name}
                     onClick={() => toggleExpandRow(team.code)}
                     className={`hover:bg-background/40 transition-colors cursor-pointer select-none ${
                       isExpanded ? "bg-secondary/40 border-b-0" : ""
                     }`}
                   >
                     <td className="px-4 py-4 text-center text-muted-foreground font-bold">
-                      {absRank}
+                      <span>{absRank}</span>
+                      {isTitleTie && (
+                        <span
+                          className="ml-1 text-primary"
+                          title={`${confidenceLevelPct}% title interval overlaps the team above`}
+                        >
+                          ≈
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-4 font-sans font-medium text-foreground">
                       <span className="mr-2 text-lg">{team.flagEmoji}</span>
@@ -248,7 +344,15 @@ export function Leaderboard() {
                     )}
                     {visibleCols["titlePct"] && (
                       <td className="px-4 py-4 text-right text-primary font-bold text-base">
-                        <AnimatedNumber value={team.titlePct} format={(v) => v.toFixed(1) + "%"} />
+                        <span
+                          className="inline-flex flex-col items-end leading-tight"
+                          title={`${confidenceLevelPct}% interval ${formatInterval(titleUncertainty)}`}
+                        >
+                          <AnimatedNumber value={team.titlePct} format={formatProbability} />
+                          <span className="text-[10px] font-normal text-muted-foreground">
+                            ±{titleMargin.toFixed(1)}
+                          </span>
+                        </span>
                       </td>
                     )}
 
@@ -261,7 +365,10 @@ export function Leaderboard() {
 
                   {/* Expanded Row details */}
                   {isExpanded && (
-                    <tr className="bg-secondary/20 hover:bg-secondary/20 border-b border-card-border">
+                    <tr
+                      data-testid="leaderboard-details"
+                      className="bg-secondary/20 hover:bg-secondary/20 border-b border-card-border"
+                    >
                       <td colSpan={11} className="p-4 font-sans">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 animate-in fade-in duration-300">
                           {/* Profile Card */}
@@ -276,21 +383,22 @@ export function Leaderboard() {
                               </div>
                             </div>
                             <div className="mt-2 text-sm text-muted-foreground">
-                              Ranked <span className="font-mono font-bold text-foreground">#{absRank}</span> in simulations.
+                              Ranked <span className="font-mono font-bold text-foreground">#{absRank}</span> in simulations
+                              {isTitleTie ? "; title odds are statistically tied with the team above." : "."}
                             </div>
                           </div>
 
-                          {/* Dixon-Coles Strengths */}
+                          {/* Goal strength multipliers */}
                           <div className="p-4 rounded-lg bg-card/60 border border-card-border">
                             <h5 className="font-mono text-xs uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1">
                               <Zap className="w-3.5 h-3.5 text-yellow-500" />
-                              Dixon-Coles Factors
+                              Goal Multipliers
                             </h5>
                             <div className="space-y-3">
                               <div>
                                 <div className="flex justify-between text-xs font-mono mb-1 text-muted-foreground">
-                                  <span>Attack Strength (xG Mult)</span>
-                                  <span className="text-foreground font-bold">{details?.attackStrength ? details.attackStrength.toFixed(2) : "1.00"}x</span>
+                                  <span>Attack Multiplier</span>
+                                  <span className="text-foreground font-bold">{details?.attackStrength ? details.attackStrength.toFixed(1) : "1.0"}x</span>
                                 </div>
                                 <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
                                   <div
@@ -301,8 +409,8 @@ export function Leaderboard() {
                               </div>
                               <div>
                                 <div className="flex justify-between text-xs font-mono mb-1 text-muted-foreground">
-                                  <span>Defense Strength (Goals Conceded Mult)</span>
-                                  <span className="text-foreground font-bold">{details?.defenseStrength ? details.defenseStrength.toFixed(2) : "1.00"}x</span>
+                                  <span>Defense Multiplier</span>
+                                  <span className="text-foreground font-bold">{details?.defenseStrength ? details.defenseStrength.toFixed(1) : "1.0"}x</span>
                                 </div>
                                 <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
                                   <div
@@ -337,7 +445,12 @@ export function Leaderboard() {
                             </div>
                             <div className="flex justify-between border-t border-border pt-1.5">
                               <span className="text-primary font-bold">Win World Cup:</span>
-                              <span className="text-primary font-bold">{team.titlePct.toFixed(1)}%</span>
+                              <span className="text-right text-primary font-bold">
+                                {team.titlePct.toFixed(1)}%
+                                <span className="block text-[10px] font-normal text-muted-foreground">
+                                  {confidenceLevelPct}% CI {formatInterval(titleUncertainty)}
+                                </span>
+                              </span>
                             </div>
                           </div>
                         </div>

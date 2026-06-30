@@ -6,7 +6,7 @@
           \  '-"-'  /
            '.     .'            - 49,000+ Historical International Matches
            / '. ' .\            - Exponential Time-Decay Elo Rating Model
-          / /| | |\ \           - Dixon-Coles-adjusted Poisson Score Model
+          / /| | |\ \           - Validated Elo + Attack/Defense Poisson Model
          / / | | | \ \          - 10,000 Tournament Monte Carlo Runs
         | |  | | |  | |
          \ \ | | | / /
@@ -18,7 +18,7 @@
       |==================|
 ```
 
-A local tournament simulator for the 48-team FIFA World Cup 2026 (hosted across USA, Mexico, and Canada). It combines a time-decay Elo rating engine, Dixon-Coles-adjusted Poisson goal modeling, and Monte Carlo tournament simulations.
+A local tournament simulator for the 48-team FIFA World Cup 2026 (hosted across USA, Mexico, and Canada). It combines a time-decay Elo rating engine, validated attack/defense Poisson goal modeling, and Monte Carlo tournament simulations.
 
 ---
 
@@ -49,21 +49,21 @@ For the current mathematical notes, core equations, parameter options, and valid
 #### Core Model Components
 1. **Time-Decay Elo Ratings**: Evaluates overall team strength using exponential recency weighting. Modern matches heavily outweigh results from past decades based on an exponential decay function. Applies host-advantage boosts ($+50$ Elo) for 2026 hosts (USA, Mexico, Canada).
 2. **Attack/Defense Strength**: Recent goals scored and conceded are adjusted by opponent Elo at match time and competition weight. To handle small sample sizes, these are shrunk toward Elo-only factors before affecting expected goals (xG).
-3. **Dixon-Coles Poisson Model**: Translates rating disparities into Expected Goals (xG) and applies draw correction parameters ($\rho = -0.06$) to better model low-scoring matches (0-0, 1-1, 1-0, 0-1).
+3. **Validated Poisson Score Model**: Translates rating disparities into Expected Goals (xG), applies conservative attack/defense multipliers, and samples from the same normalized score matrix used for match probabilities. Dixon-Coles remains implemented as an experimental variant but is not active because it did not improve validation metrics.
 4. **2026 Tournament Structure & Simulation**: Simulates all group stage and knockout bracket matches. Evaluates group standings using FIFA tiebreakers and best third-place team rankings across 10,000 Monte Carlo iterations.
 
 #### Model Assumptions & Key Parameters
 - **K-Factor Weights**: Ranges from 60 (World Cup finals) down to 20 (Friendlies).
 - **Time-Decay Half-Life**: Set to ~12.6 years (decay parameter $= 0.055$) to balance historical depth with modern relevance.
 - **Home/Host Advantage**: Baseline $+75$ Elo for standard home matches, and $+50$ Elo host boost for USA, Mexico, and Canada playing in their home countries (with Quarter-Finals onwards restricted to USA).
-- **Correlation Param ($\rho$)**: Set to $-0.06$ to calibrate low-scoring draw frequencies.
+- **Dixon-Coles Param ($\rho$)**: Set to $-0.06$ for the experimental Dixon-Coles variant, which is currently disabled by model selection.
 
 > [!WARNING]
 > **Important Disclaimer & Limitations**
 > The model's predictions represent statistical probabilities based purely on historical results and current rating parameters. They are **not official betting odds** and do not promise unmeasured accuracy. The model does not account for rosters, injuries, weather, tactical modifications, resting players, or other real-world factors.
 
 #### Model Verification & Backtesting
-Run `pnpm backtest` to produce a rolling historical report with Brier score, log loss, accuracy, and calibration buckets. The report compares the adjusted strength model against the legacy raw-goal strength model, an Elo-only baseline, and a uniform baseline.
+Run `pnpm backtest` to produce a rolling historical report with Brier score, log loss, accuracy, and calibration buckets. The report compares Elo-only, Elo + Poisson, Elo + Poisson + Dixon-Coles, Elo + attack/defense Poisson, and a uniform baseline.
 
 ---
 

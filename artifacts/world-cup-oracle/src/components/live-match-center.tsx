@@ -25,21 +25,30 @@ interface PlayedMatch {
   homeScore: number;
   awayScore: number;
   stage?: string;
-  source?: "fixture" | "official" | "custom";
+  source?: "fixture" | "official" | "espn" | "custom";
   date?: string;
   kickoffTimeEt?: string;
   status?: "scheduled" | "live" | "finished";
+  statusDetail?: string;
   group?: string;
   venue?: string;
   region?: string;
+  winnerTeam?: string;
 }
+
+type MatchStageTab = "results" | "group" | "knockout";
 
 export function LiveMatchCenter() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const { data: teamsResponse, isLoading: teamsLoading } = useGetTeams();
-  const { data: matchesResponse, isLoading: matchesLoading } = useGetLiveMatches();
+  const { data: matchesResponse, isLoading: matchesLoading } = useGetLiveMatches({
+    query: {
+      queryKey: getGetLiveMatchesQueryKey(),
+      refetchInterval: 15_000,
+    },
+  });
   const { data: oracleStatus } = useGetOracleStatus({
     query: {
       queryKey: getGetOracleStatusQueryKey(),
@@ -51,7 +60,7 @@ export function LiveMatchCenter() {
   const deleteLiveMatch = useDeleteLiveMatch();
   const clearLiveMatches = useClearLiveMatches();
 
-  const [stageTab, setStageTab] = useState<"knockout" | "group">("knockout");
+  const [stageTab, setStageTab] = useState<MatchStageTab>("results");
   const [activeGroup, setActiveGroup] = useState<string>("A");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -187,6 +196,28 @@ export function LiveMatchCenter() {
       .sort((a, b) => (a.matchNumber ?? Number.MAX_SAFE_INTEGER) - (b.matchNumber ?? Number.MAX_SAFE_INTEGER));
   }, [playedMatches, teams]);
 
+  const resultMatches = useMemo(() => {
+    return playedMatches
+      .filter((match) => {
+        const hasScore = match.homeScore >= 0 && match.awayScore >= 0;
+        const isLiveOrFinal = match.status === "live" || match.status === "finished" || hasScore;
+        return isLiveOrFinal && match.source !== "fixture";
+      })
+      .map((match) => {
+        const isKnockout = match.stage === "Knockout" || isKnockoutMatch(match.homeTeam, match.awayTeam);
+        return {
+          ...match,
+          group: match.group ?? getTeamGroup(match.homeTeam) ?? "",
+          stage: isKnockout ? ("Knockout" as const) : ("Group Stage" as const),
+        };
+      })
+      .sort((a, b) => {
+        if (a.status === "live" && b.status !== "live") return -1;
+        if (b.status === "live" && a.status !== "live") return 1;
+        return (b.matchNumber ?? 0) - (a.matchNumber ?? 0);
+      });
+  }, [playedMatches, teams]);
+
   // Extract knockout matches currently in the match list from manual scenario overrides.
   const knockoutMatches = useMemo(() => {
     return playedMatches.filter((m) => m.stage === "Knockout" || isKnockoutMatch(m.homeTeam, m.awayTeam));
@@ -196,7 +227,13 @@ export function LiveMatchCenter() {
   const matchesToDisplay = useMemo(() => {
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      // In search mode, search across all matches (group + knockout)
+      // In search mode, search across all matches (results + group + knockout)
+      const resultsFiltered = resultMatches.filter(
+        (m) =>
+          m.homeTeam.toLowerCase().includes(query) ||
+          m.awayTeam.toLowerCase().includes(query)
+      );
+
       const groupFiltered = scheduledGroupMatches.filter(
         (m) =>
           m.homeTeam.toLowerCase().includes(query) ||
@@ -209,7 +246,11 @@ export function LiveMatchCenter() {
           m.awayTeam.toLowerCase().includes(query)
       ).map(m => ({ ...m, group: getTeamGroup(m.homeTeam) || "", stage: "Knockout" as const }));
 
-      return [...knockoutFiltered, ...groupFiltered];
+      return [...resultsFiltered, ...knockoutFiltered, ...groupFiltered];
+    }
+
+    if (stageTab === "results") {
+      return resultMatches;
     }
 
     if (stageTab === "knockout") {
@@ -217,13 +258,15 @@ export function LiveMatchCenter() {
     } else {
       return scheduledGroupMatches.filter((m) => m.group === activeGroup).map(m => ({ ...m, stage: "Group Stage" as const }));
     }
-  }, [scheduledGroupMatches, knockoutMatches, stageTab, activeGroup, searchQuery, teams]);
+  }, [resultMatches, scheduledGroupMatches, knockoutMatches, stageTab, activeGroup, searchQuery, teams]);
 
   // Statistics calculations
   const totalTournamentMatches = 104; // 72 group stage + 32 knockout matches
   const finishedMatches = playedMatches.filter((m) => m.homeScore >= 0 && m.awayScore >= 0);
   const importedFixtureCount = playedMatches.filter((m) => m.source === "fixture").length;
+  const externalFeedCount = playedMatches.filter((m) => m.source === "espn" || m.source === "official").length;
   const customCount = finishedMatches.filter((m) => m.source === "custom").length;
+  const resultCount = resultMatches.length;
   const progressPct = Math.min(100, Math.max(0, (customCount / totalTournamentMatches) * 100));
   const isRecalculating = oracleStatus?.data.recalculating ?? false;
 
@@ -265,7 +308,8 @@ export function LiveMatchCenter() {
               />
             </div>
             <p className="text-[11px] text-muted-foreground font-sans">
-              {importedFixtureCount} imported group-stage fixtures loaded. {customCount} manual scenario overrides active.
+              {importedFixtureCount} local fixtures and {externalFeedCount} feed matches loaded.{" "}
+              {customCount > 0 ? "Manual overrides active." : "No manual overrides active."}
             </p>
           </CardContent>
         </Card>
@@ -310,6 +354,17 @@ export function LiveMatchCenter() {
           {/* Main Stage Tabs */}
           {!searchQuery && (
             <div className="flex items-center gap-2 bg-secondary/20 p-1 rounded-lg border border-border/40">
+              <button
+                data-testid="match-stage-results"
+                onClick={() => setStageTab("results")}
+                className={`px-4 py-1.5 rounded-md text-xs font-semibold font-sans transition-all ${
+                  stageTab === "results"
+                    ? "bg-primary text-primary-foreground shadow-sm font-bold"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Results & Live
+              </button>
               <button
                 data-testid="match-stage-knockout"
                 onClick={() => setStageTab("knockout")}
@@ -374,6 +429,18 @@ export function LiveMatchCenter() {
           </div>
         )}
 
+        {stageTab === "results" && !searchQuery && (
+          <div
+            data-testid="match-results-summary"
+            className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-muted-foreground font-sans"
+          >
+            <span className="font-mono font-bold uppercase tracking-wider text-primary">
+              {resultCount} {resultCount === 1 ? "result" : "results"}
+            </span>{" "}
+            loaded from live feed, official imports, and manual scenario overrides.
+          </div>
+        )}
+
         {/* Match cards list */}
         {isLoading ? (
           <div className="py-24 text-center text-muted-foreground font-mono text-sm uppercase tracking-widest animate-pulse">
@@ -386,7 +453,9 @@ export function LiveMatchCenter() {
               No matches found
             </span>
             <p className="text-xs text-muted-foreground/80 max-w-sm px-4">
-              Try searching for another country or select a different stage.
+              {stageTab === "results"
+                ? "No live or finished results are loaded yet. The group tab still shows the full fixture schedule."
+                : "Try searching for another country or select a different stage."}
             </p>
           </div>
         ) : (
@@ -489,7 +558,9 @@ function MatchCard({
   const hasRecorded = !!playedMatch;
   const isUnplayed = playedMatch?.homeScore === -1 && playedMatch?.awayScore === -1;
   const isImportedResult = playedMatch?.source === "official";
+  const isEspnResult = playedMatch?.source === "espn";
   const isCustom = playedMatch?.source === "custom";
+  const isLive = playedMatch?.status === "live";
 
   // Display mode for imported results or manual overrides with actual scores.
   if (hasRecorded && !isUnplayed && !isEditing) {
@@ -501,7 +572,7 @@ function MatchCard({
         className={`p-4 rounded-xl border transition-all ${
           isCustom
             ? "border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10 shadow-sm"
-            : isImportedResult
+            : isImportedResult || isEspnResult
             ? "border-emerald-500/20 bg-emerald-500/3 hover:bg-emerald-500/8"
             : "border-emerald-500/20 bg-emerald-500/3 hover:bg-emerald-500/8"
         }`}
@@ -511,9 +582,19 @@ function MatchCard({
             {stage === "Group Stage" ? `Group ${group}` : "Knockout"}
           </span>
           <div className="flex items-center gap-1.5">
+            {isLive && (
+              <span className="text-[10px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full flex items-center gap-1">
+                Live {playedMatch?.statusDetail ? `· ${playedMatch.statusDetail}` : ""}
+              </span>
+            )}
             {isImportedResult && (
               <span className="text-[10px] font-semibold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full flex items-center gap-1">
                 Imported Result
+              </span>
+            )}
+            {isEspnResult && !isLive && (
+              <span className="text-[10px] font-semibold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full flex items-center gap-1">
+                ESPN Feed
               </span>
             )}
             {isCustom && (
@@ -566,6 +647,11 @@ function MatchCard({
             >
               Restore
             </Button>
+          </div>
+        )}
+        {!isCustom && playedMatch?.winnerTeam && (
+          <div className="text-[11px] text-muted-foreground mt-2 pt-2 border-t border-border/40 text-right font-sans">
+            Winner: <span className="text-foreground font-semibold">{playedMatch.winnerTeam}</span>
           </div>
         )}
       </div>

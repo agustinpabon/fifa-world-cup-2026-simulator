@@ -2,10 +2,12 @@ import { randomUUID } from "node:crypto";
 import { Router, type Response } from "express";
 import { DeleteLiveMatchBody, PredictMatchBody, RecordLiveMatchBody } from "@workspace/api-zod";
 import {
+  DEFAULT_MODEL_CONFIG,
   computeEloRatings,
   getWCTeamRatings,
   type HistoricalDatasetMetadata,
   type LoadHistoricalDatasetOptions,
+  type ModelConfig,
   type TeamMetrics,
 } from "../lib/elo.js";
 import { logger } from "../lib/logger.js";
@@ -14,12 +16,16 @@ import {
   createSeededRng,
   runSimulations,
   matchProbabilities,
-  getHomeStatus,
   getSimulationUncertaintyMetadata,
   toPublishedSimulationResults,
   type SimResult,
   type PlayedMatch,
 } from "../lib/simulation.js";
+import {
+  fetchEspnTournamentFeed,
+  type FetchLiveTournamentFeedOptions,
+  type LiveDataProviderMetadata,
+} from "../lib/live-results.js";
 import { WC2026_TEAMS } from "../lib/worldcup2026.js";
 import { sendApiError, sendApiSuccess, type ApiErrorIssue } from "../lib/api-response.js";
 import { rateLimiter } from "../middlewares/rate-limiter.js";
@@ -33,6 +39,7 @@ const mutableRateLimiter = rateLimiter({
 const MAX_REASONABLE_SCORE = 30;
 const MAX_SEED_LENGTH = 128;
 const RECALCULATION_BATCH_SIZE = 500;
+const DEFAULT_LIVE_DATA_REFRESH_INTERVAL_MS = 30_000;
 const TEAM_NAMES = new Set(WC2026_TEAMS.map((team) => team.name));
 
 type ValidationIssuePath = Array<string | number>;
@@ -88,8 +95,28 @@ type SimulationRecalculationSnapshot = {
   ratings: Record<string, number>;
   teamMetrics: Record<string, TeamMetrics>;
   playedMatches: PlayedMatch[];
+  modelConfig: ModelConfig;
 };
 type SimulationRunner = (snapshot: SimulationRecalculationSnapshot) => Promise<SimResult>;
+type LiveDataProviderName = "espn" | "disabled";
+type LiveDataOptions = FetchLiveTournamentFeedOptions & {
+  provider?: LiveDataProviderName;
+  refreshIntervalMs?: number;
+};
+type OracleInitOptions = LoadHistoricalDatasetOptions & {
+  liveData?: LiveDataOptions;
+};
+type LiveDataCacheState = {
+  provider: LiveDataProviderName;
+  refreshIntervalMs: number;
+  matches: PlayedMatch[];
+  eliminatedTeams: Set<string>;
+  metadata: LiveDataProviderMetadata | null;
+  lastRefreshAttemptAt: string | null;
+  error: string | null;
+  running: boolean;
+  signature: string | null;
+};
 
 const matchTeamsSchema = PredictMatchBody.strict().superRefine((payload, ctx) => {
   addTeamValidationIssues(payload, ctx);
@@ -223,12 +250,14 @@ interface OracleCache {
   matchCount: number;
   ratings: Record<string, number>;
   teamMetrics: Record<string, TeamMetrics>;
+  modelConfig: ModelConfig;
   simResult: SimResult | null;
   simulationSeed: string;
   recalculation: SimulationRecalculationState;
   dataset: HistoricalDatasetMetadata | null;
   loadingError: OracleLoadError | null;
   fixtureMatches: PlayedMatch[];
+  liveData: LiveDataCacheState;
   playedMatches: PlayedMatch[];
 }
 
@@ -238,18 +267,21 @@ function createInitialCache(): OracleCache {
     matchCount: 0,
     ratings: {},
     teamMetrics: {},
+    modelConfig: DEFAULT_MODEL_CONFIG,
     simResult: null,
     simulationSeed: createSimulationSeed(),
     recalculation: createInitialRecalculationState(),
     dataset: null,
     loadingError: null,
     fixtureMatches: [],
+    liveData: createInitialLiveDataState(),
     playedMatches: [],
   };
 }
 
 const cache: OracleCache = createInitialCache();
 let simulationRunner: SimulationRunner = runSimulationRecalculationInBatches;
+let liveDataFetchOptions: FetchLiveTournamentFeedOptions = {};
 
 function createInitialRecalculationState(): SimulationRecalculationState {
   return {
@@ -260,6 +292,40 @@ function createInitialRecalculationState(): SimulationRecalculationState {
     running: false,
     lastUpdated: null,
     error: null,
+  };
+}
+
+function createInitialLiveDataState(): LiveDataCacheState {
+  return {
+    provider: "disabled",
+    refreshIntervalMs: DEFAULT_LIVE_DATA_REFRESH_INTERVAL_MS,
+    matches: [],
+    eliminatedTeams: new Set(),
+    metadata: null,
+    lastRefreshAttemptAt: null,
+    error: null,
+    running: false,
+    signature: null,
+  };
+}
+
+function configureLiveData(options: LiveDataOptions | undefined): void {
+  const provider = options?.provider ?? "espn";
+  const refreshIntervalMs = Math.max(
+    1_000,
+    Math.trunc(options?.refreshIntervalMs ?? DEFAULT_LIVE_DATA_REFRESH_INTERVAL_MS)
+  );
+
+  cache.liveData = {
+    ...createInitialLiveDataState(),
+    provider,
+    refreshIntervalMs,
+  };
+  liveDataFetchOptions = {
+    fetchImpl: options?.fetchImpl,
+    scoreboardUrl: options?.scoreboardUrl,
+    standingsUrl: options?.standingsUrl,
+    timeoutMs: options?.timeoutMs,
   };
 }
 
@@ -319,6 +385,7 @@ async function runSimulationRecalculationInBatches(
     const partialResult = runSimulations(snapshot.ratings, snapshot.playedMatches, snapshot.teamMetrics, {
       random,
       simulationsRun,
+      modelConfig: snapshot.modelConfig,
     });
 
     aggregate = mergeSimulationResults(aggregate, partialResult);
@@ -335,31 +402,128 @@ async function runSimulationRecalculationInBatches(
 function getMergedPlayedMatches(): PlayedMatch[] {
   const merged: PlayedMatch[] = cache.fixtureMatches.map((m) => ({ ...m }));
 
+  for (const liveMatch of cache.liveData.matches) {
+    upsertMatch(merged, { ...liveMatch });
+  }
+
   for (const custom of cache.playedMatches) {
     const customMatch = { ...custom, source: "custom" as const, status: "finished" as const };
-    const idx = merged.findIndex(
-      (m) =>
-        (m.homeTeam === custom.homeTeam && m.awayTeam === custom.awayTeam) ||
-        (m.homeTeam === custom.awayTeam && m.awayTeam === custom.homeTeam)
-    );
-    if (idx !== -1) {
-      merged[idx] = { ...merged[idx], ...customMatch };
-    } else {
-      merged.push(customMatch);
-    }
+    const existing = findMatch(merged, custom.homeTeam, custom.awayTeam);
+    if (existing && isLockedExternalMatch(existing)) continue;
+    upsertMatch(merged, customMatch);
   }
 
   return merged;
 }
 
 function getSimulationMatches(): PlayedMatch[] {
-  return getMergedPlayedMatches().filter((m) => m.homeScore >= 0 && m.awayScore >= 0);
+  return getMergedPlayedMatches().filter(
+    (m) => m.homeScore >= 0 && m.awayScore >= 0 && (m.status ?? "finished") === "finished"
+  );
+}
+
+function createLiveDataSignature(matches: readonly PlayedMatch[], eliminatedTeams: ReadonlySet<string>): string {
+  return JSON.stringify({
+    matches: matches.map((match) => ({
+      sourceId: match.sourceId,
+      homeTeam: match.homeTeam,
+      awayTeam: match.awayTeam,
+      homeScore: match.homeScore,
+      awayScore: match.awayScore,
+      status: match.status,
+      statusDetail: match.statusDetail,
+      winnerTeam: match.winnerTeam,
+    })),
+    eliminatedTeams: [...eliminatedTeams].sort(),
+  });
+}
+
+function shouldRefreshLiveData(force: boolean): boolean {
+  if (force) return true;
+  if (!cache.liveData.lastRefreshAttemptAt) return true;
+
+  const lastAttemptAt = new Date(cache.liveData.lastRefreshAttemptAt).getTime();
+  return Date.now() - lastAttemptAt >= cache.liveData.refreshIntervalMs;
+}
+
+async function refreshLiveDataIfNeeded(
+  options: { force?: boolean; scheduleRecalculation?: boolean } = {}
+): Promise<void> {
+  const force = options.force ?? false;
+  const scheduleRecalculation = options.scheduleRecalculation ?? true;
+
+  if (cache.liveData.provider === "disabled" || cache.liveData.running || !shouldRefreshLiveData(force)) {
+    return;
+  }
+
+  cache.liveData = {
+    ...cache.liveData,
+    running: true,
+    lastRefreshAttemptAt: new Date().toISOString(),
+  };
+
+  try {
+    const feed = await fetchEspnTournamentFeed({
+      ...liveDataFetchOptions,
+      timeoutMs: liveDataFetchOptions.timeoutMs ?? 3_000,
+    });
+    const signature = createLiveDataSignature(feed.matches, feed.eliminatedTeams);
+    const changed = signature !== cache.liveData.signature;
+
+    cache.liveData = {
+      ...cache.liveData,
+      matches: feed.matches.map((match) => ({ ...match })),
+      eliminatedTeams: new Set(feed.eliminatedTeams),
+      metadata: feed.metadata,
+      error: null,
+      running: false,
+      signature,
+    };
+
+    if (changed && scheduleRecalculation) {
+      scheduleCachedSimulationRecalculation();
+    }
+  } catch (err) {
+    logger.warn({ err }, "Live tournament data refresh failed; using local fixtures");
+    cache.liveData = {
+      ...cache.liveData,
+      error: "Live tournament data refresh failed. Local fixtures and manual overrides remain available.",
+      running: false,
+    };
+  }
+}
+
+function findMatch(matches: readonly PlayedMatch[], homeTeam: string, awayTeam: string): PlayedMatch | undefined {
+  return matches.find(
+    (m) =>
+      (m.homeTeam === homeTeam && m.awayTeam === awayTeam) ||
+      (m.homeTeam === awayTeam && m.awayTeam === homeTeam)
+  );
+}
+
+function upsertMatch(matches: PlayedMatch[], match: PlayedMatch): void {
+  const idx = matches.findIndex(
+    (m) =>
+      (m.homeTeam === match.homeTeam && m.awayTeam === match.awayTeam) ||
+      (m.homeTeam === match.awayTeam && m.awayTeam === match.homeTeam)
+  );
+
+  if (idx !== -1) {
+    matches[idx] = { ...matches[idx], ...match };
+  } else {
+    matches.push(match);
+  }
+}
+
+function isLockedExternalMatch(match: PlayedMatch): boolean {
+  return (match.source === "official" || match.source === "espn") && match.status !== "scheduled";
 }
 
 function recalculateCachedSimulation(): void {
   cache.simulationSeed = createSimulationSeed();
   cache.simResult = runSimulations(cache.ratings, getSimulationMatches(), cache.teamMetrics, {
     seed: cache.simulationSeed,
+    modelConfig: cache.modelConfig,
   });
   cache.recalculation = {
     ...cache.recalculation,
@@ -387,6 +551,7 @@ function createRecalculationSnapshot(version: number): SimulationRecalculationSn
     ratings: { ...cache.ratings },
     teamMetrics: { ...cache.teamMetrics },
     playedMatches: getSimulationMatches().map((match) => ({ ...match })),
+    modelConfig: { ...cache.modelConfig },
   };
 }
 
@@ -492,7 +657,7 @@ function getOracleStatusMessage(state: OracleState, recalculating: boolean): str
       return "Oracle ready. Last valid simulation active; latest recalculation failed.";
     }
 
-    return "Oracle ready. Dixon-Coles & Monte Carlo simulations active.";
+    return "Oracle ready. Elo + attack/defense Poisson match model and Monte Carlo tournament simulations active.";
   }
 
   if (cache.loadingError) {
@@ -544,6 +709,8 @@ export function seedReadyOracleForTests(
     ratings?: Record<string, number>;
     teamMetrics?: Record<string, TeamMetrics>;
     fixtureMatches?: PlayedMatch[];
+    liveDataMatches?: PlayedMatch[];
+    eliminatedTeams?: string[];
     playedMatches?: PlayedMatch[];
   } = {}
 ): void {
@@ -557,6 +724,7 @@ export function seedReadyOracleForTests(
     ready: true,
     ratings,
     teamMetrics: overrides.teamMetrics ?? {},
+    modelConfig: DEFAULT_MODEL_CONFIG,
     simResult: overrides.simResult ?? createZeroedSimulationResult(),
     simulationSeed,
     recalculation: {
@@ -564,14 +732,20 @@ export function seedReadyOracleForTests(
       lastUpdated: overrides.lastUpdated ?? new Date().toISOString(),
     },
     fixtureMatches: overrides.fixtureMatches ?? [],
+    liveData: {
+      ...createInitialLiveDataState(),
+      matches: overrides.liveDataMatches ?? [],
+      eliminatedTeams: new Set(overrides.eliminatedTeams ?? []),
+    },
     playedMatches: overrides.playedMatches ?? [],
   });
 }
 
 // ---- Initialize on startup ----
-export async function initOracle(options: LoadHistoricalDatasetOptions = {}): Promise<void> {
+export async function initOracle(options: OracleInitOptions = {}): Promise<void> {
   cache.ready = false;
   cache.loadingError = null;
+  configureLiveData(options.liveData);
 
   try {
     const {
@@ -580,14 +754,17 @@ export async function initOracle(options: LoadHistoricalDatasetOptions = {}): Pr
       matchCount,
       fixtureMatches,
       dataset,
+      modelConfig,
     } = await computeEloRatings(options);
     const wcRatings = getWCTeamRatings(allRatings);
     cache.matchCount = matchCount;
     cache.ratings = wcRatings;
     cache.teamMetrics = teamMetrics;
+    cache.modelConfig = modelConfig;
     cache.fixtureMatches = fixtureMatches;
     cache.dataset = dataset;
 
+    await refreshLiveDataIfNeeded({ force: true, scheduleRecalculation: false });
     recalculateCachedSimulation();
     cache.ready = true;
   } catch (err) {
@@ -612,10 +789,16 @@ router.get("/oracle/status", (req, res) => {
     simulationsRun: cache.ready ? NUM_SIMULATIONS : 0,
     simulationSeed: cache.simulationSeed,
     liveMatchesRecorded: cache.playedMatches.length,
+    liveDataProvider: cache.liveData.provider,
+    liveDataMatchesLoaded: cache.liveData.matches.length,
+    liveDataLastSyncedAt: cache.liveData.metadata?.loadedAt ?? null,
+    liveDataError: cache.liveData.error,
+    eliminatedTeams: [...cache.liveData.eliminatedTeams].sort(),
     recalculating,
     lastUpdated: cache.recalculation.lastUpdated,
     recalculationError: cache.recalculation.error,
     dataset: cache.dataset,
+    activeModel: cache.modelConfig.variant,
     error: cache.loadingError ?? undefined,
     message,
   });
@@ -629,6 +812,15 @@ router.post("/oracle/live-match", mutableRateLimiter, (req, res) => {
   }
 
   const { homeTeam, awayTeam, homeScore, awayScore } = parsed.data;
+  const existingMatch = findMatch(getMergedPlayedMatches(), homeTeam, awayTeam);
+
+  if (existingMatch && isLockedExternalMatch(existingMatch)) {
+    return sendApiError(res, 409, {
+      code: "match_locked",
+      message:
+        "This match already has an external live or final result. Manual scenario overrides are only allowed for unplayed matches.",
+    });
+  }
 
   // Record manual scenario override.
   cache.playedMatches = [
@@ -668,9 +860,18 @@ router.delete("/oracle/live-match", mutableRateLimiter, (req, res) => {
   });
 });
 
-router.get("/oracle/live-matches", (req, res) => {
+router.get("/oracle/live-matches", async (req, res) => {
+  if (cache.ready) {
+    await refreshLiveDataIfNeeded();
+  }
+
   return sendOracleSuccess(res, {
     playedMatches: getMergedPlayedMatches(),
+    source: {
+      provider: cache.liveData.provider,
+      lastSyncedAt: cache.liveData.metadata?.loadedAt ?? null,
+      error: cache.liveData.error,
+    },
   });
 });
 
@@ -698,7 +899,7 @@ router.get("/oracle/teams", (req, res) => {
   return sendOracleSuccess(res, { teams });
 });
 
-router.get("/oracle/simulation", (req, res) => {
+router.get("/oracle/simulation", async (req, res) => {
   const parsedSeed = parseOptionalSeed(req.query.seed);
 
   if (!parsedSeed.success) {
@@ -708,6 +909,10 @@ router.get("/oracle/simulation", (req, res) => {
   const requestedSeed = parsedSeed.data;
   const simulationSeed = requestedSeed ?? cache.simulationSeed;
   const uncertainty = getSimulationUncertaintyMetadata(NUM_SIMULATIONS);
+
+  if (cache.ready) {
+    await refreshLiveDataIfNeeded();
+  }
 
   if (!cache.ready || !cache.simResult) {
     return sendOracleSuccess(res, {
@@ -720,15 +925,24 @@ router.get("/oracle/simulation", (req, res) => {
   }
 
   const simResult = requestedSeed
-    ? runSimulations(cache.ratings, getSimulationMatches(), cache.teamMetrics, { seed: requestedSeed })
+    ? runSimulations(cache.ratings, getSimulationMatches(), cache.teamMetrics, {
+        seed: requestedSeed,
+        modelConfig: cache.modelConfig,
+      })
     : cache.simResult;
-  const results = toPublishedSimulationResults(simResult, cache.ratings, NUM_SIMULATIONS);
+  const results = toPublishedSimulationResults(
+    simResult,
+    cache.ratings,
+    NUM_SIMULATIONS,
+    cache.liveData.eliminatedTeams
+  );
 
   return sendOracleSuccess(res, {
     results,
     simulationsRun: NUM_SIMULATIONS,
     simulationSeed,
     liveMatchesRecorded: cache.playedMatches.length,
+    eliminatedTeams: [...cache.liveData.eliminatedTeams].sort(),
     uncertainty,
   });
 });
@@ -747,15 +961,16 @@ router.post("/oracle/predict-match", (req, res) => {
   const metricsHome = cache.teamMetrics[homeTeam];
   const metricsAway = cache.teamMetrics[awayTeam];
 
-  const { isHomeA, isHomeB } = getHomeStatus(homeTeam, awayTeam, "R32");
   const { pWinA, pDraw, pWinB, xgA, xgB, mostLikelyScore } = matchProbabilities(
     eloHome,
     eloAway,
     undefined,
     metricsHome,
     metricsAway,
-    isHomeA,
-    isHomeB
+    false,
+    false,
+    {},
+    cache.modelConfig
   );
 
   return sendOracleSuccess(res, {

@@ -5,8 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { LiveMatchesSource } from './liveMatchesSource';
 import type { PlayedMatch } from './playedMatch';
 
 export interface LiveMatchesData {
   playedMatches: PlayedMatch[];
+  source: LiveMatchesSource;
 }

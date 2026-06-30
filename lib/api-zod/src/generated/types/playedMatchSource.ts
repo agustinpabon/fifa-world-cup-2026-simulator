@@ -12,5 +12,6 @@ export type PlayedMatchSource = typeof PlayedMatchSource[keyof typeof PlayedMatc
 export const PlayedMatchSource = {
   fixture: 'fixture',
   official: 'official',
+  espn: 'espn',
   custom: 'custom',
 } as const;

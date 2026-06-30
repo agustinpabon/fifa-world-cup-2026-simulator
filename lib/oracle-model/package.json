@@ -1,16 +1,16 @@
 {
-  "name": "@workspace/scripts",
+  "name": "@workspace/oracle-model",
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
-    "backtest": "tsx ./src/backtest.ts",
-    "hello": "tsx ./src/hello.ts",
     "test": "tsx --test \"src/**/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
-    "@workspace/oracle-model": "workspace:*",
     "@types/node": "catalog:",
     "tsx": "catalog:"
   }

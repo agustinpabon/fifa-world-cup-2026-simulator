@@ -84,6 +84,9 @@ importers:
       '@workspace/api-zod':
         specifier: workspace:*
         version: link:../../lib/api-zod
+      '@workspace/oracle-model':
+        specifier: workspace:*
+        version: link:../../lib/oracle-model
       cookie-parser:
         specifier: ^1.4.7
         version: 1.4.7
@@ -357,11 +360,23 @@ importers:
         specifier: ^0.31.10
         version: 0.31.10
 
+  lib/oracle-model:
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.6.2
+      tsx:
+        specifier: 'catalog:'
+        version: 4.21.0
+
   scripts:
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
         version: 25.6.2
+      '@workspace/oracle-model':
+        specifier: workspace:*
+        version: link:../lib/oracle-model
       tsx:
         specifier: 'catalog:'
         version: 4.21.0

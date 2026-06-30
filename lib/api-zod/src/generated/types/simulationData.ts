@@ -13,5 +13,6 @@ export interface SimulationData {
   simulationsRun: number;
   simulationSeed: string;
   liveMatchesRecorded: number;
+  eliminatedTeams: string[];
   uncertainty: SimulationUncertaintyMetadata;
 }

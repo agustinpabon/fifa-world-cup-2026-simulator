@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { predictMatch } from "@workspace/oracle-model";
 
 import {
   calculateProbabilityUncertainty,
   createSeededRng,
+  getPlayedKnockoutWinner,
   matchProbabilities,
   rankGroupStandingsByFifaCriteria,
   rankThirdPlacedTeamsByFifaCriteria,
@@ -102,6 +104,66 @@ test("match probabilities remain valid with attack and defense multipliers", () 
   }
   assert.ok(probabilities.xgA > 0);
   assert.ok(probabilities.xgB > 0);
+});
+
+test("production match probabilities use the shared oracle-model predictor", () => {
+  const metricsA = { elo: 1650, attackStrength: 1.12, defenseStrength: 0.91 };
+  const metricsB = { elo: 1580, attackStrength: 1.04, defenseStrength: 0.96 };
+  const production = matchProbabilities(
+    1650,
+    1580,
+    undefined,
+    metricsA,
+    metricsB,
+    true,
+    false,
+    {},
+    { variant: "elo-poisson-strength", drawRate: 0.25 }
+  );
+  const shared = predictMatch({
+    ratingA: 1650,
+    ratingB: 1580,
+    metricsA,
+    metricsB,
+    neutral: true,
+    isHomeA: true,
+    isHomeB: false,
+    modelConfig: { variant: "elo-poisson-strength", drawRate: 0.25 },
+  });
+
+  assertAlmostEqual(production.pWinA, shared.probabilities.pWinA);
+  assertAlmostEqual(production.pDraw, shared.probabilities.pDraw);
+  assertAlmostEqual(production.pWinB, shared.probabilities.pWinB);
+  assert.equal(production.mostLikelyScore, shared.mostLikelyScore);
+});
+
+test("played knockout winner honors penalty or provider winner when scores are level", () => {
+  assert.equal(
+    getPlayedKnockoutWinner("Germany", "Paraguay", {
+      homeTeam: "Germany",
+      awayTeam: "Paraguay",
+      homeScore: 1,
+      awayScore: 1,
+      winnerTeam: "Paraguay",
+      status: "finished",
+      source: "espn",
+    }),
+    "Paraguay"
+  );
+});
+
+test("played knockout winner falls back to scoreline for completed non-draws", () => {
+  assert.equal(
+    getPlayedKnockoutWinner("Germany", "Paraguay", {
+      homeTeam: "Germany",
+      awayTeam: "Paraguay",
+      homeScore: 2,
+      awayScore: 0,
+      status: "finished",
+      source: "espn",
+    }),
+    "Germany"
+  );
 });
 
 test("FIFA group ranking orders by points first", () => {

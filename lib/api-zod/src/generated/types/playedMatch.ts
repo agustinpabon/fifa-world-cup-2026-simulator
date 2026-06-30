@@ -20,7 +20,9 @@ export interface PlayedMatch {
   date?: string;
   kickoffTimeEt?: string;
   status?: PlayedMatchStatus;
+  statusDetail?: string;
   group?: string;
   venue?: string;
   region?: string;
+  winnerTeam?: string;
 }

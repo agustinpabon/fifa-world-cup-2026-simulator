@@ -241,6 +241,21 @@ components:
           type: string
         liveMatchesRecorded:
           type: integer
+        liveDataProvider:
+          type: string
+          enum: [espn, disabled]
+        liveDataMatchesLoaded:
+          type: integer
+        liveDataLastSyncedAt:
+          type: string
+          nullable: true
+        liveDataError:
+          type: string
+          nullable: true
+        eliminatedTeams:
+          type: array
+          items:
+            type: string
         recalculating:
           type: boolean
           description: True when a recalculation job is pending or running.
@@ -268,6 +283,11 @@ components:
         - simulationsRun
         - simulationSeed
         - liveMatchesRecorded
+        - liveDataProvider
+        - liveDataMatchesLoaded
+        - liveDataLastSyncedAt
+        - liveDataError
+        - eliminatedTeams
         - recalculating
         - lastUpdated
         - recalculationError
@@ -409,6 +429,8 @@ components:
           type: number
         groupAdvancePct:
           type: number
+        eliminated:
+          type: boolean
         uncertainty:
           $ref: "#/components/schemas/TeamSimUncertainty"
       required:
@@ -424,6 +446,7 @@ components:
         - roundOf16Pct
         - groupWinPct
         - groupAdvancePct
+        - eliminated
         - uncertainty
 
     ProbabilityUncertainty:
@@ -516,6 +539,10 @@ components:
           type: string
         liveMatchesRecorded:
           type: integer
+        eliminatedTeams:
+          type: array
+          items:
+            type: string
         uncertainty:
           $ref: "#/components/schemas/SimulationUncertaintyMetadata"
       required:
@@ -523,6 +550,7 @@ components:
         - simulationsRun
         - simulationSeed
         - liveMatchesRecorded
+        - eliminatedTeams
         - uncertainty
 
     MatchPredictionRequest:
@@ -610,7 +638,7 @@ components:
       properties:
         code:
           type: string
-          enum: [invalid_request, malformed_json, oracle_not_ready, internal_error]
+          enum: [invalid_request, malformed_json, oracle_not_ready, match_locked, internal_error]
         message:
           type: string
         issues:
@@ -735,7 +763,7 @@ components:
           type: string
         source:
           type: string
-          enum: [fixture, official, custom]
+          enum: [fixture, official, espn, custom]
         sourceId:
           type: string
         date:
@@ -745,11 +773,15 @@ components:
         status:
           type: string
           enum: [scheduled, live, finished]
+        statusDetail:
+          type: string
         group:
           type: string
         venue:
           type: string
         region:
+          type: string
+        winnerTeam:
           type: string
       required:
         - homeTeam
@@ -775,8 +807,28 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PlayedMatch"
+        source:
+          $ref: "#/components/schemas/LiveMatchesSource"
       required:
         - playedMatches
+        - source
+
+    LiveMatchesSource:
+      type: object
+      properties:
+        provider:
+          type: string
+          enum: [espn, disabled]
+        lastSyncedAt:
+          type: string
+          nullable: true
+        error:
+          type: string
+          nullable: true
+      required:
+        - provider
+        - lastSyncedAt
+        - error
 
     ClearLiveMatchesResult:
       type: object

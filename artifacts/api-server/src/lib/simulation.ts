@@ -1,5 +1,12 @@
 import { WC2026_GROUPS, WC2026_TEAMS, type WCGroup, type WCTeam } from "./worldcup2026.js";
-import { type EloRatings, type TeamMetrics, HOST_BOOST } from "./elo.js";
+import {
+  DEFAULT_MODEL_CONFIG,
+  createModelConfig,
+  predictMatch,
+  sampleMatchScore,
+  type ModelConfig,
+} from "@workspace/oracle-model";
+import { type EloRatings, type TeamMetrics } from "./elo.js";
 import {
   buildMatchesFromPreviousWinners,
   buildRoundOf32Matches,
@@ -14,10 +21,6 @@ import {
 
 export const NUM_SIMULATIONS = 10_000;
 export const DEFAULT_SIMULATION_SEED = "world-cup-oracle-simulation-v1";
-const BASE_XG = 1.25; // average goals per team per game
-const ELO_SCALE = 400; // Elo scale factor
-const DIXON_COLES_RHO = -0.06;
-const SCORE_MATRIX_MAX_GOALS = 10; // Exact match predictions normalize the truncated 0..10 score grid.
 
 export type Rng = () => number;
 export type SimulationSeed = string | number;
@@ -29,136 +32,7 @@ export interface RandomSourceOptions {
 
 export interface SimulationOptions extends RandomSourceOptions {
   simulationsRun?: number;
-}
-
-// ---------- Dixon-Coles & Math helpers ----------
-
-function poissonSample(lambda: number, random: Rng): number {
-  if (lambda <= 0) return 0;
-  const L = Math.exp(-lambda);
-  let k = 0;
-  let p = 1;
-  do {
-    k++;
-    p *= random();
-  } while (p > L);
-  return k - 1;
-}
-
-function poissonProbability(lambda: number, goals: number): number {
-  if (goals < 0 || !Number.isInteger(goals)) return 0;
-  if (lambda <= 0) return goals === 0 ? 1 : 0;
-
-  let probability = Math.exp(-lambda);
-  for (let index = 1; index <= goals; index++) {
-    probability *= lambda / index;
-  }
-
-  return probability;
-}
-
-function dixonColesAdjustment(
-  lambda: number,
-  mu: number,
-  goalsA: number,
-  goalsB: number,
-  rho = DIXON_COLES_RHO
-): number {
-  if (goalsA === 0 && goalsB === 0) return 1.0 - lambda * mu * rho;
-  if (goalsA === 1 && goalsB === 0) return 1.0 + mu * rho;
-  if (goalsA === 0 && goalsB === 1) return 1.0 + lambda * rho;
-  if (goalsA === 1 && goalsB === 1) return 1.0 - rho;
-
-  return 1.0;
-}
-
-function dixonColesAcceptanceWeight(
-  lambda: number,
-  mu: number,
-  goalsA: number,
-  goalsB: number,
-  rho = DIXON_COLES_RHO
-): number {
-  return Math.max(0, Math.min(1, dixonColesAdjustment(lambda, mu, goalsA, goalsB, rho)));
-}
-
-// Dixon-Coles score sampling adjusting low-score draws (0-0, 1-1, 1-0, 0-1)
-function dixonColesSample(
-  lambda: number,
-  mu: number,
-  random: Rng,
-  rho = DIXON_COLES_RHO
-): { goalsA: number; goalsB: number } {
-  for (let attempt = 0; attempt < 50; attempt++) {
-    const ga = poissonSample(lambda, random);
-    const gb = poissonSample(mu, random);
-
-    const tau = dixonColesAcceptanceWeight(lambda, mu, ga, gb, rho);
-
-    if (random() < tau) {
-      return { goalsA: ga, goalsB: gb };
-    }
-  }
-  return { goalsA: poissonSample(lambda, random), goalsB: poissonSample(mu, random) };
-}
-
-function expectedGoals(
-  eloA: number,
-  eloB: number,
-  metricsA?: TeamMetrics,
-  metricsB?: TeamMetrics,
-  isHomeA = false,
-  isHomeB = false
-): { xgA: number; xgB: number } {
-  const effectiveEloA = eloA + (isHomeA ? HOST_BOOST : 0);
-  const effectiveEloB = eloB + (isHomeB ? HOST_BOOST : 0);
-
-  const diff = (effectiveEloA - effectiveEloB) / ELO_SCALE;
-  const mult = Math.pow(10, diff);
-  const ratio = Math.min(Math.max(Math.sqrt(mult), 0.15), 6.5);
-  const total = BASE_XG * 2;
-  let xgA = (total * ratio) / (1 + ratio);
-  let xgB = total - xgA;
-
-  if (metricsA && metricsB) {
-    xgA = xgA * metricsA.attackStrength * metricsB.defenseStrength;
-    xgB = xgB * metricsB.attackStrength * metricsA.defenseStrength;
-  }
-
-  return { xgA: Math.max(0.05, xgA), xgB: Math.max(0.05, xgB) };
-}
-
-interface ScoreProbability {
-  goalsA: number;
-  goalsB: number;
-  probability: number;
-}
-
-function buildScoreProbabilityMatrix(lambda: number, mu: number): ScoreProbability[] {
-  const rawCells: ScoreProbability[] = [];
-  let rawMass = 0;
-
-  for (let goalsA = 0; goalsA <= SCORE_MATRIX_MAX_GOALS; goalsA++) {
-    const probabilityA = poissonProbability(lambda, goalsA);
-
-    for (let goalsB = 0; goalsB <= SCORE_MATRIX_MAX_GOALS; goalsB++) {
-      const rawProbability =
-        probabilityA *
-        poissonProbability(mu, goalsB) *
-        dixonColesAcceptanceWeight(lambda, mu, goalsA, goalsB);
-      rawCells.push({ goalsA, goalsB, probability: rawProbability });
-      rawMass += rawProbability;
-    }
-  }
-
-  if (rawMass <= 0) {
-    throw new Error("Score probability matrix has no probability mass");
-  }
-
-  return rawCells.map((cell) => ({
-    ...cell,
-    probability: cell.probability / rawMass,
-  }));
+  modelConfig?: Partial<ModelConfig>;
 }
 
 export interface PlayedMatch {
@@ -168,14 +42,16 @@ export interface PlayedMatch {
   homeScore: number;
   awayScore: number;
   stage?: string;
-  source?: "fixture" | "official" | "custom";
+  source?: "fixture" | "official" | "espn" | "custom";
   sourceId?: string;
   date?: string;
   kickoffTimeEt?: string;
   status?: "scheduled" | "live" | "finished";
+  statusDetail?: string;
   group?: string;
   venue?: string;
   region?: string;
+  winnerTeam?: string;
 }
 
 function simulateMatch(
@@ -186,13 +62,26 @@ function simulateMatch(
   metricsB?: TeamMetrics,
   isHomeA = false,
   isHomeB = false,
-  random: Rng = createSeededRng(DEFAULT_SIMULATION_SEED)
+  random: Rng = createSeededRng(DEFAULT_SIMULATION_SEED),
+  modelConfig: Partial<ModelConfig> = DEFAULT_MODEL_CONFIG
 ): { goalsA: number; goalsB: number } {
   if (playedMatch) {
     return { goalsA: playedMatch.homeScore, goalsB: playedMatch.awayScore };
   }
-  const { xgA, xgB } = expectedGoals(eloA, eloB, metricsA, metricsB, isHomeA, isHomeB);
-  return dixonColesSample(xgA, xgB, random);
+
+  return sampleMatchScore(
+    {
+      ratingA: eloA,
+      ratingB: eloB,
+      metricsA,
+      metricsB,
+      neutral: true,
+      isHomeA,
+      isHomeB,
+      modelConfig,
+    },
+    random
+  );
 }
 
 // Win/draw/loss probabilities from a normalized exact score matrix.
@@ -205,41 +94,27 @@ export function matchProbabilities(
   metricsB?: TeamMetrics,
   isHomeA = false,
   isHomeB = false,
-  _options: RandomSourceOptions = {}
+  _options: RandomSourceOptions = {},
+  modelConfig: Partial<ModelConfig> = DEFAULT_MODEL_CONFIG
 ): { pWinA: number; pDraw: number; pWinB: number; xgA: number; xgB: number; mostLikelyScore: string } {
-  const { xgA, xgB } = expectedGoals(eloA, eloB, metricsA, metricsB, isHomeA, isHomeB);
-  const matrix = buildScoreProbabilityMatrix(xgA, xgB);
-  let pWinA = 0;
-  let pDraw = 0;
-  let pWinB = 0;
-  let matrixXgA = 0;
-  let matrixXgB = 0;
-  let mostLikelyCell = matrix[0];
-
-  for (const cell of matrix) {
-    matrixXgA += cell.goalsA * cell.probability;
-    matrixXgB += cell.goalsB * cell.probability;
-
-    if (cell.goalsA > cell.goalsB) {
-      pWinA += cell.probability;
-    } else if (cell.goalsA < cell.goalsB) {
-      pWinB += cell.probability;
-    } else {
-      pDraw += cell.probability;
-    }
-
-    if (cell.probability > mostLikelyCell.probability) {
-      mostLikelyCell = cell;
-    }
-  }
+  const prediction = predictMatch({
+    ratingA: eloA,
+    ratingB: eloB,
+    metricsA,
+    metricsB,
+    neutral: true,
+    isHomeA,
+    isHomeB,
+    modelConfig,
+  });
 
   return {
-    pWinA,
-    pDraw,
-    pWinB,
-    xgA: Math.round(matrixXgA * 100) / 100,
-    xgB: Math.round(matrixXgB * 100) / 100,
-    mostLikelyScore: `${mostLikelyCell.goalsA}-${mostLikelyCell.goalsB}`,
+    pWinA: prediction.probabilities.pWinA,
+    pDraw: prediction.probabilities.pDraw,
+    pWinB: prediction.probabilities.pWinB,
+    xgA: prediction.xgA,
+    xgB: prediction.xgB,
+    mostLikelyScore: prediction.mostLikelyScore,
   };
 }
 
@@ -481,7 +356,8 @@ function simulateGroup(
   ratings: EloRatings,
   playedMatches: PlayedMatch[] = [],
   teamMetrics?: Record<string, TeamMetrics>,
-  rankingOptions: FifaRankingOptions = {}
+  rankingOptions: FifaRankingOptions = {},
+  modelConfig: Partial<ModelConfig> = DEFAULT_MODEL_CONFIG
 ): GroupStanding[] {
   const standings: GroupStanding[] = group.teams.map((t) => ({
     team: t,
@@ -520,7 +396,7 @@ function simulateGroup(
         goalsAway = played.homeScore;
       }
     } else {
-      const { isHomeA, isHomeB } = getHomeStatus(home.team.name, away.team.name, "group");
+      const { isHomeA, isHomeB } = getHomeStatus(home.team.name, away.team.name, "group", fixture.venue);
       const sim = simulateMatch(
         home.elo,
         away.elo,
@@ -529,7 +405,8 @@ function simulateGroup(
         teamMetrics?.[away.team.name],
         isHomeA,
         isHomeB,
-        random
+        random,
+        modelConfig
       );
       goalsHome = sim.goalsA;
       goalsAway = sim.goalsB;
@@ -572,7 +449,8 @@ function simulateKnockout(
   playedMatches: PlayedMatch[] = [],
   teamMetrics?: Record<string, TeamMetrics>,
   stage: "R32" | "R16" | "QF" | "SF" | "F" = "R32",
-  random: Rng = createSeededRng(DEFAULT_SIMULATION_SEED)
+  random: Rng = createSeededRng(DEFAULT_SIMULATION_SEED),
+  modelConfig: Partial<ModelConfig> = DEFAULT_MODEL_CONFIG
 ): boolean {
   const played = playedMatches.find(
     (m) =>
@@ -581,23 +459,47 @@ function simulateKnockout(
   );
 
   if (played) {
-    if (played.homeTeam === a.name) {
-      if (played.homeScore > played.awayScore) return true;
-      if (played.awayScore > played.homeScore) return false;
-    } else {
-      if (played.awayScore > played.homeScore) return true;
-      if (played.homeScore > played.awayScore) return false;
-    }
+    const winner = getPlayedKnockoutWinner(a.name, b.name, played);
+    if (winner) return winner === a.name;
   }
 
   const metricsA = teamMetrics?.[a.name];
   const metricsB = teamMetrics?.[b.name];
   const { isHomeA, isHomeB } = getHomeStatus(a.name, b.name, stage);
-  const { goalsA, goalsB } = simulateMatch(eloA, eloB, undefined, metricsA, metricsB, isHomeA, isHomeB, random);
+  const { goalsA, goalsB } = simulateMatch(
+    eloA,
+    eloB,
+    undefined,
+    metricsA,
+    metricsB,
+    isHomeA,
+    isHomeB,
+    random,
+    modelConfig
+  );
   if (goalsA > goalsB) return true;
   if (goalsB > goalsA) return false;
-  const penEdge = Math.min(0.6, 0.5 + (eloA - eloB) / 2000);
-  return random() < penEdge;
+  return random() < 0.5;
+}
+
+export function getPlayedKnockoutWinner(
+  teamA: string,
+  teamB: string,
+  played: PlayedMatch
+): string | null {
+  if (played.winnerTeam === teamA || played.winnerTeam === teamB) {
+    return played.winnerTeam;
+  }
+
+  if (played.homeTeam === teamA) {
+    if (played.homeScore > played.awayScore) return teamA;
+    if (played.awayScore > played.homeScore) return teamB;
+  } else if (played.homeTeam === teamB) {
+    if (played.homeScore > played.awayScore) return teamB;
+    if (played.awayScore > played.homeScore) return teamA;
+  }
+
+  return null;
 }
 
 function simulateKnockoutRound(
@@ -605,7 +507,8 @@ function simulateKnockoutRound(
   ratings: EloRatings,
   playedMatches: PlayedMatch[] = [],
   teamMetrics?: Record<string, TeamMetrics>,
-  random: Rng = createSeededRng(DEFAULT_SIMULATION_SEED)
+  random: Rng = createSeededRng(DEFAULT_SIMULATION_SEED),
+  modelConfig: Partial<ModelConfig> = DEFAULT_MODEL_CONFIG
 ): Map<number, WCTeam> {
   const winners = new Map<number, WCTeam>();
 
@@ -618,7 +521,8 @@ function simulateKnockoutRound(
       playedMatches,
       teamMetrics,
       match.stage,
-      random
+      random,
+      modelConfig
     );
     winners.set(match.matchNumber, aWins ? match.home : match.away);
   }
@@ -661,6 +565,7 @@ export interface PublishedSimulationResult {
   roundOf16Pct: number;
   groupWinPct: number;
   groupAdvancePct: number;
+  eliminated: boolean;
   uncertainty: PublishedSimulationUncertainty;
 }
 
@@ -756,33 +661,46 @@ function toProbabilityUncertainty(
 export function toPublishedSimulationResults(
   simResult: SimResult,
   ratings: EloRatings = {},
-  simulationsRun = NUM_SIMULATIONS
+  simulationsRun = NUM_SIMULATIONS,
+  eliminatedTeams: ReadonlySet<string> = new Set()
 ): PublishedSimulationResult[] {
   const { titles, finals, semiFinals, quarterFinals, roundOf16, groupWins, groupAdvances } = simResult;
 
-  return WC2026_TEAMS.map((team) => ({
-    name: team.name,
-    code: team.code,
-    group: team.group,
-    flagEmoji: team.flagEmoji,
-    elo: ratings[team.name] ?? 1000,
-    titlePct: toPercent(titles[team.name], simulationsRun),
-    finalPct: toPercent(finals[team.name], simulationsRun),
-    semiFinalPct: toPercent(semiFinals[team.name], simulationsRun),
-    quarterFinalPct: toPercent(quarterFinals[team.name], simulationsRun),
-    roundOf16Pct: toPercent(roundOf16[team.name], simulationsRun),
-    groupWinPct: toPercent(groupWins[team.name], simulationsRun),
-    groupAdvancePct: toPercent(groupAdvances[team.name], simulationsRun),
-    uncertainty: {
-      titlePct: toProbabilityUncertainty(titles[team.name], simulationsRun),
-      finalPct: toProbabilityUncertainty(finals[team.name], simulationsRun),
-      semiFinalPct: toProbabilityUncertainty(semiFinals[team.name], simulationsRun),
-      quarterFinalPct: toProbabilityUncertainty(quarterFinals[team.name], simulationsRun),
-      roundOf16Pct: toProbabilityUncertainty(roundOf16[team.name], simulationsRun),
-      groupWinPct: toProbabilityUncertainty(groupWins[team.name], simulationsRun),
-      groupAdvancePct: toProbabilityUncertainty(groupAdvances[team.name], simulationsRun),
-    },
-  })).sort((a, b) => b.titlePct - a.titlePct);
+  return WC2026_TEAMS.map((team) => {
+    const eliminated = eliminatedTeams.has(team.name);
+    const titleCount = eliminated ? 0 : titles[team.name];
+    const finalCount = eliminated ? 0 : finals[team.name];
+    const semiFinalCount = eliminated ? 0 : semiFinals[team.name];
+    const quarterFinalCount = eliminated ? 0 : quarterFinals[team.name];
+    const roundOf16Count = eliminated ? 0 : roundOf16[team.name];
+    const groupWinCount = eliminated ? 0 : groupWins[team.name];
+    const groupAdvanceCount = eliminated ? 0 : groupAdvances[team.name];
+
+    return {
+      name: team.name,
+      code: team.code,
+      group: team.group,
+      flagEmoji: team.flagEmoji,
+      elo: ratings[team.name] ?? 1000,
+      titlePct: toPercent(titleCount, simulationsRun),
+      finalPct: toPercent(finalCount, simulationsRun),
+      semiFinalPct: toPercent(semiFinalCount, simulationsRun),
+      quarterFinalPct: toPercent(quarterFinalCount, simulationsRun),
+      roundOf16Pct: toPercent(roundOf16Count, simulationsRun),
+      groupWinPct: toPercent(groupWinCount, simulationsRun),
+      groupAdvancePct: toPercent(groupAdvanceCount, simulationsRun),
+      eliminated,
+      uncertainty: {
+        titlePct: toProbabilityUncertainty(titleCount, simulationsRun),
+        finalPct: toProbabilityUncertainty(finalCount, simulationsRun),
+        semiFinalPct: toProbabilityUncertainty(semiFinalCount, simulationsRun),
+        quarterFinalPct: toProbabilityUncertainty(quarterFinalCount, simulationsRun),
+        roundOf16Pct: toProbabilityUncertainty(roundOf16Count, simulationsRun),
+        groupWinPct: toProbabilityUncertainty(groupWinCount, simulationsRun),
+        groupAdvancePct: toProbabilityUncertainty(groupAdvanceCount, simulationsRun),
+      },
+    };
+  }).sort((a, b) => b.titlePct - a.titlePct);
 }
 
 export function runSimulations(
@@ -793,6 +711,7 @@ export function runSimulations(
 ): SimResult {
   const simulationsRun = getSimulationCount(options);
   const random = createRandomSource(options, DEFAULT_SIMULATION_SEED);
+  const modelConfig = createModelConfig(options.modelConfig);
   const result: SimResult = {
     titles: {},
     finals: {},
@@ -824,7 +743,7 @@ export function runSimulations(
       const standings = simulateGroup(group, ratings, playedMatches, teamMetrics, {
         random,
         fallbackSeed: `${DEFAULT_TIEBREAKER_SEED}:simulation:${sim}:group:${group.id}`,
-      });
+      }, modelConfig);
       groupResults.push(standings);
       groupWinnersMap[group.id] = standings[0].team;
       groupRunnersMap[group.id] = standings[1].team;
@@ -858,23 +777,37 @@ export function runSimulations(
     ) as Partial<Record<GroupId, WCTeam>>;
 
     const r32Matches = buildRoundOf32Matches(groupWinnersMap, groupRunnersMap, thirdPlaceTeamsByGroup);
-    const r32Winners = simulateKnockoutRound(r32Matches, ratings, playedMatches, teamMetrics, random);
+    const r32Winners = simulateKnockoutRound(r32Matches, ratings, playedMatches, teamMetrics, random, modelConfig);
     for (const team of r32Winners.values()) result.roundOf16[team.name]++;
 
     const r16Matches = buildMatchesFromPreviousWinners(ROUND_OF_16_MATCHES, r32Winners);
-    const r16Winners = simulateKnockoutRound(r16Matches, ratings, playedMatches, teamMetrics, random);
+    const r16Winners = simulateKnockoutRound(r16Matches, ratings, playedMatches, teamMetrics, random, modelConfig);
     for (const team of r16Winners.values()) result.quarterFinals[team.name]++;
 
     const quarterFinalMatches = buildMatchesFromPreviousWinners(QUARTER_FINAL_MATCHES, r16Winners);
-    const quarterFinalWinners = simulateKnockoutRound(quarterFinalMatches, ratings, playedMatches, teamMetrics, random);
+    const quarterFinalWinners = simulateKnockoutRound(
+      quarterFinalMatches,
+      ratings,
+      playedMatches,
+      teamMetrics,
+      random,
+      modelConfig
+    );
     for (const team of quarterFinalWinners.values()) result.semiFinals[team.name]++;
 
     const semiFinalMatches = buildMatchesFromPreviousWinners(SEMI_FINAL_MATCHES, quarterFinalWinners);
-    const semiFinalWinners = simulateKnockoutRound(semiFinalMatches, ratings, playedMatches, teamMetrics, random);
+    const semiFinalWinners = simulateKnockoutRound(
+      semiFinalMatches,
+      ratings,
+      playedMatches,
+      teamMetrics,
+      random,
+      modelConfig
+    );
     for (const team of semiFinalWinners.values()) result.finals[team.name]++;
 
     const finalMatches = buildMatchesFromPreviousWinners(FINAL_MATCHES, semiFinalWinners);
-    const finalWinners = simulateKnockoutRound(finalMatches, ratings, playedMatches, teamMetrics, random);
+    const finalWinners = simulateKnockoutRound(finalMatches, ratings, playedMatches, teamMetrics, random, modelConfig);
     const champion = finalWinners.get(FINAL_MATCHES[0].matchNumber);
     if (!champion) {
       throw new Error("Final did not produce a champion");
@@ -888,12 +821,16 @@ export function runSimulations(
 export function getHomeStatus(
   teamNameA: string,
   teamNameB: string,
-  stage: "group" | "R32" | "R16" | "QF" | "SF" | "F" | "neutral"
+  stage: "group" | "R32" | "R16" | "QF" | "SF" | "F" | "neutral",
+  venue?: string
 ): { isHomeA: boolean; isHomeB: boolean } {
   let isHomeA = false;
   let isHomeB = false;
 
-  if (stage === "group" || stage === "R32" || stage === "R16") {
+  if (venue) {
+    isHomeA = isHostTeamInVenueCountry(teamNameA, venue);
+    isHomeB = isHostTeamInVenueCountry(teamNameB, venue);
+  } else if (stage === "group" || stage === "R32" || stage === "R16") {
     // In group stage, R32, and R16, host teams play in their respective countries
     if (teamNameA === "USA" || teamNameA === "Mexico" || teamNameA === "Canada") isHomeA = true;
     if (teamNameB === "USA" || teamNameB === "Mexico" || teamNameB === "Canada") isHomeB = true;
@@ -910,4 +847,33 @@ export function getHomeStatus(
   }
 
   return { isHomeA, isHomeB };
+}
+
+const VENUE_HOST_COUNTRY = new Map<string, "Canada" | "Mexico" | "United States">([
+  ["Toronto", "Canada"],
+  ["Vancouver", "Canada"],
+  ["Mexico City", "Mexico"],
+  ["Guadalajara", "Mexico"],
+  ["Monterrey", "Mexico"],
+  ["Atlanta", "United States"],
+  ["Boston", "United States"],
+  ["Dallas", "United States"],
+  ["Houston", "United States"],
+  ["Kansas City", "United States"],
+  ["Los Angeles", "United States"],
+  ["Miami", "United States"],
+  ["New York New Jersey", "United States"],
+  ["Philadelphia", "United States"],
+  ["San Francisco Bay Area", "United States"],
+  ["Seattle", "United States"],
+]);
+
+function isHostTeamInVenueCountry(teamName: string, venue: string): boolean {
+  const country = VENUE_HOST_COUNTRY.get(venue);
+
+  return (
+    (teamName === "Canada" && country === "Canada") ||
+    (teamName === "Mexico" && country === "Mexico") ||
+    (teamName === "USA" && country === "United States")
+  );
 }

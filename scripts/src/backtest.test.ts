@@ -6,6 +6,7 @@ import {
   poissonOutcomeProbabilities,
   parseResultsCsv,
   runHistoricalBacktest,
+  runRollingBacktest,
   scoreForecasts,
   splitMatchesForBacktest,
   type HistoricalMatch,
@@ -126,19 +127,20 @@ test("runHistoricalBacktest evaluates a dated holdout against model and baseline
   assert.equal(report.dataset.trainMatches, 2);
   assert.equal(report.dataset.testMatches, 2);
   assert.deepEqual(Object.keys(report.metrics).sort(), [
-    "eloBaseline",
-    "legacyStrengthModel",
-    "model",
-    "uniformBaseline",
+    "elo-baseline",
+    "elo-poisson",
+    "elo-poisson-dixon-coles",
+    "elo-poisson-strength",
+    "uniform-baseline",
   ]);
-  assert.ok(Math.abs(report.metrics.uniformBaseline.brierScore - 2 / 3) < 1e-12);
-  assert.ok(Math.abs(report.metrics.uniformBaseline.logLoss - Math.log(3)) < 1e-12);
+  assert.ok(Math.abs(report.metrics["uniform-baseline"].brierScore - 2 / 3) < 1e-12);
+  assert.ok(Math.abs(report.metrics["uniform-baseline"].logLoss - Math.log(3)) < 1e-12);
   assert.equal(report.sampleForecasts.length, 2);
   assert.equal(report.sampleForecasts[0]?.date, "2021-01-01");
-  assert.ok(report.sampleForecasts[0]?.probabilities.legacyStrengthModel);
+  assert.ok(report.sampleForecasts[0]?.probabilities["elo-baseline"]);
 });
 
-test("runHistoricalBacktest compares adjusted strength metrics against the legacy raw-goal metric", () => {
+test("runHistoricalBacktest compares attack/defense strength variant against plain Poisson", () => {
   const report = runHistoricalBacktest(
     [
       match("2020-01-01", "Elite", "Weak", 5, 0, "FIFA World Cup", true),
@@ -157,9 +159,36 @@ test("runHistoricalBacktest compares adjusted strength metrics against the legac
     }
   );
 
-  assert.equal(report.metrics.model.matches, report.metrics.legacyStrengthModel.matches);
+  assert.equal(report.metrics["elo-poisson-strength"].matches, report.metrics["elo-poisson"].matches);
   assert.notDeepEqual(
-    report.sampleForecasts[0]?.probabilities.model,
-    report.sampleForecasts[0]?.probabilities.legacyStrengthModel
+    report.sampleForecasts[0]?.probabilities["elo-poisson-strength"],
+    report.sampleForecasts[0]?.probabilities["elo-poisson"]
   );
+});
+
+test("runRollingBacktest selects an active model no worse than the Elo baseline", () => {
+  const report = runRollingBacktest(
+    [
+      match("2020-01-01", "Alpha", "Beta", 2, 0, "Friendly", false),
+      match("2020-02-01", "Gamma", "Delta", 0, 0, "Friendly", true),
+      match("2021-01-01", "Alpha", "Gamma", 1, 0, "Friendly", false),
+      match("2021-02-01", "Beta", "Delta", 0, 1, "Friendly", false),
+      match("2022-01-01", "Alpha", "Delta", 2, 1, "Friendly", false),
+      match("2022-02-01", "Gamma", "Beta", 1, 1, "Friendly", false),
+    ],
+    [
+      { testStart: "2021-01-01", testEnd: "2021-12-31" },
+      { testStart: "2022-01-01", testEnd: "2022-12-31" },
+    ],
+    { sampleForecastLimit: 0 }
+  );
+
+  for (const window of report.windows) {
+    assert.ok(
+      window.metrics[report.activeModel].brierScore <= window.metrics["elo-baseline"].brierScore
+    );
+    assert.ok(
+      window.metrics[report.activeModel].logLoss <= window.metrics["elo-baseline"].logLoss
+    );
+  }
 });

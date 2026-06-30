@@ -39,6 +39,7 @@ export default defineConfig({
       env: {
         PORT: String(apiPort),
         HISTORICAL_DATA_MAX_ATTEMPTS: "0",
+        LIVE_DATA_PROVIDER: "disabled",
       },
     },
     {

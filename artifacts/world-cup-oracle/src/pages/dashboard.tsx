@@ -29,7 +29,8 @@ export default function Dashboard() {
   const readiness = statusResponse?.meta.readiness;
   const isReady = status?.ready;
   const isRecalculating = status?.recalculating ?? false;
-  const liveCount = status?.liveMatchesRecorded ?? 0;
+  const manualOverrideCount = status?.liveMatchesRecorded ?? 0;
+  const liveFeedCount = status?.liveDataMatchesLoaded ?? 0;
   const isOracleLoadError = readiness?.state === "error";
 
   return (
@@ -126,17 +127,21 @@ export default function Dashboard() {
           </Card>
 
           <Card className={`border-card-border bg-card/30 backdrop-blur-sm transition-all duration-300 ${
-            liveCount > 0 ? "border-primary/45 shadow-sm shadow-primary/5 bg-primary/5" : ""
+            liveFeedCount > 0 || manualOverrideCount > 0 ? "border-primary/45 shadow-sm shadow-primary/5 bg-primary/5" : ""
           }`}>
             <CardContent className="p-4 flex items-center gap-4">
-              <CalendarDays className={`w-8 h-8 hidden sm:block ${liveCount > 0 ? "text-primary animate-bounce" : "text-muted-foreground/80"}`} />
+              <CalendarDays className={`w-8 h-8 hidden sm:block ${liveFeedCount > 0 ? "text-primary animate-bounce" : "text-muted-foreground/80"}`} />
               <div>
                 <span className="text-xs font-mono text-muted-foreground uppercase block">Match Center</span>
-                <span className={`text-lg sm:text-xl font-bold font-mono ${liveCount > 0 ? "text-primary" : ""}`}>
-                  {liveCount}
+                <span className={`text-lg sm:text-xl font-bold font-mono ${liveFeedCount > 0 ? "text-primary" : ""}`}>
+                  {liveFeedCount}
                 </span>
                 <span className="text-[10px] text-muted-foreground font-mono block">
-                  {liveCount > 0 ? "Manual overrides active" : "No manual overrides"}
+                  {manualOverrideCount > 0
+                    ? `${manualOverrideCount} manual overrides`
+                    : liveFeedCount > 0
+                    ? "Feed matches synced"
+                    : "Local fixtures only"}
                 </span>
               </div>
             </CardContent>
@@ -160,7 +165,7 @@ export default function Dashboard() {
                 Tournament Simulation
               </h2>
               <p className="text-xs text-muted-foreground">
-                Rows show simulated tournament probabilities for each team. Click a row to see the Elo rating and goal-strength multipliers used by the model.
+                Rows show simulated tournament probabilities for each team. Click a row to see Elo ratings and attack/defense model inputs.
               </p>
             </div>
             <Leaderboard />
@@ -191,7 +196,7 @@ export default function Dashboard() {
       {/* Footer */}
       <footer className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-24 pt-8 pb-12 border-t border-border text-center">
         <p className="text-muted-foreground font-mono text-xs uppercase tracking-widest">
-          Data: 49,000+ international matches since 1872 · Model: Elo ratings + Poisson distribution + Dixon-Coles adjustments
+          Data: 49,000+ international matches since 1872 · Active model: Elo + attack/defense Poisson
         </p>
         <p className="text-muted-foreground/60 text-[10px] sm:text-xs mt-3 max-w-xl mx-auto leading-relaxed">
           Disclaimer: Tournament simulations and match predictions use historical results and current model parameters. They are not official betting odds, carry statistical uncertainty, and do not promise unmeasured accuracy.

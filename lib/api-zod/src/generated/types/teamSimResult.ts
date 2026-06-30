@@ -20,5 +20,6 @@ export interface TeamSimResult {
   roundOf16Pct: number;
   groupWinPct: number;
   groupAdvancePct: number;
+  eliminated: boolean;
   uncertainty: TeamSimUncertainty;
 }

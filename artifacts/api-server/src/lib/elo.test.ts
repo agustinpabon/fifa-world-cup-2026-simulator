@@ -12,6 +12,7 @@ import {
   loadHistoricalDataset,
   type RatingMatchRow,
 } from "./elo.js";
+import { WC2026_TEAMS } from "./worldcup2026.js";
 
 function match(
   date: string,
@@ -67,8 +68,13 @@ test("team metrics reward goals scored against stronger opponents at match time"
     [
       match("2024-01-01", "Elite", "Weak", 5, 0, "FIFA World Cup"),
       match("2024-02-01", "Elite", "Weak", 4, 0, "FIFA World Cup"),
-      match("2025-01-01", "Target", "Elite", 1, 0, "Friendly"),
+      match("2024-03-01", "Elite", "Weak", 5, 0, "FIFA World Cup"),
+      match("2025-01-01", "Target", "Elite", 3, 0, "FIFA World Cup"),
+      match("2025-02-01", "Target", "Elite", 2, 0, "FIFA World Cup"),
+      match("2025-03-01", "Target", "Elite", 2, 0, "FIFA World Cup"),
       match("2025-01-02", "Peer", "Weak", 1, 0, "Friendly"),
+      match("2025-02-02", "Peer", "Weak", 1, 0, "Friendly"),
+      match("2025-03-02", "Peer", "Weak", 1, 0, "Friendly"),
     ],
     metricTeams,
     { referenceYear: 2026, initialRating: 1500 }
@@ -89,6 +95,26 @@ test("team metrics shrink small-sample goal spikes instead of maxing out immedia
 
   assert.ok(teamMetrics.Flash.attackStrength < 1.5);
   assert.ok(teamMetrics.Opponent.defenseStrength < 1.5);
+});
+
+test("qualified team attack and defense metrics do not collapse onto clamp boundaries", async () => {
+  const dataset = await loadHistoricalDataset({ maxAttempts: 0 });
+  const { teamMetrics } = computeRatingsAndTeamMetrics(dataset.rows, WC2026_TEAMS, {
+    referenceYear: 2026,
+  });
+  const metrics = Object.values(teamMetrics);
+  const boundaryTeams = metrics.filter(
+    (metric) =>
+      metric.attackStrength === 0.6 ||
+      metric.attackStrength === 1.5 ||
+      metric.defenseStrength === 0.6 ||
+      metric.defenseStrength === 1.5
+  );
+
+  assert.ok(
+    boundaryTeams.length <= Math.floor(metrics.length * 0.1),
+    `expected clamps to be safeguards; ${boundaryTeams.length}/${metrics.length} teams are exactly on a clamp`
+  );
 });
 
 test("historical dataset loader uses remote CSV with date, source, and hash metadata", async () => {

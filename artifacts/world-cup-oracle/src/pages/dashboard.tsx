@@ -10,20 +10,27 @@ import { LiveMatchCenter } from "@/components/live-match-center";
 import { useEnforceDarkMode } from "@/hooks/use-dark-mode";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
-import { Activity, Database, Flame, Trophy, CalendarDays } from "lucide-react";
+import { Activity, AlertTriangle, Database, Flame, Trophy, CalendarDays } from "lucide-react";
 
 export default function Dashboard() {
   useEnforceDarkMode();
 
-  const { data: status } = useGetOracleStatus({
+  const { data: statusResponse, isLoading: statusLoading, isError: statusQueryError } = useGetOracleStatus({
     query: {
       queryKey: getGetOracleStatusQueryKey(),
-      refetchInterval: (query) => (query.state.data?.ready ? false : 2000),
+      refetchInterval: (query) => {
+        const currentStatus = query.state.data?.data;
+        return currentStatus?.ready && !currentStatus.recalculating ? false : 2000;
+      },
     }
   });
 
+  const status = statusResponse?.data;
+  const readiness = statusResponse?.meta.readiness;
   const isReady = status?.ready;
+  const isRecalculating = status?.recalculating ?? false;
   const liveCount = status?.liveMatchesRecorded ?? 0;
+  const isOracleLoadError = readiness?.state === "error";
 
   return (
     <div className="min-h-screen bg-background text-foreground pb-20 selection:bg-primary/30">
@@ -38,13 +45,35 @@ export default function Dashboard() {
                   World Cup <span className="text-primary font-extrabold">Oracle</span>
                 </h1>
                 <p className="text-muted-foreground font-mono text-xs uppercase tracking-widest">
-                  2026 FIFA World Cup · AI Simulation Portal
+                  2026 FIFA World Cup · Elo Probability Dashboard
                 </p>
               </div>
             </div>
             
-            <div className="flex items-center gap-3 bg-secondary/50 px-4 py-2 rounded-full border border-border self-start md:self-auto">
-              {isReady ? (
+            <div
+              data-testid="oracle-status"
+              className="flex items-center gap-3 bg-secondary/50 px-4 py-2 rounded-full border border-border self-start md:self-auto"
+            >
+              {statusQueryError ? (
+                <>
+                  <AlertTriangle className="w-4 h-4 text-destructive" />
+                  <span className="font-mono text-xs uppercase text-destructive font-bold tracking-wider">
+                    API Error
+                  </span>
+                </>
+              ) : isOracleLoadError ? (
+                <>
+                  <AlertTriangle className="w-4 h-4 text-destructive" />
+                  <span className="font-mono text-xs uppercase text-destructive font-bold tracking-wider">
+                    Dataset Unavailable
+                  </span>
+                </>
+              ) : isReady && isRecalculating ? (
+                <>
+                  <Activity className="w-4 h-4 text-primary animate-spin" />
+                  <span className="font-mono text-xs uppercase text-primary font-bold tracking-wider">Recalculating</span>
+                </>
+              ) : isReady ? (
                 <>
                   <div className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
                   <span className="font-mono text-xs uppercase text-primary font-bold tracking-wider">Oracle Active</span>
@@ -53,7 +82,7 @@ export default function Dashboard() {
                 <>
                   <Activity className="w-4 h-4 text-yellow-500 animate-spin" />
                   <span className="font-mono text-xs uppercase text-yellow-500 tracking-wider">
-                    {status?.message || "Loading Database..."}
+                    {statusLoading ? "Connecting..." : readiness?.message || status?.message || "Loading Database..."}
                   </span>
                 </>
               )}
@@ -102,12 +131,12 @@ export default function Dashboard() {
             <CardContent className="p-4 flex items-center gap-4">
               <CalendarDays className={`w-8 h-8 hidden sm:block ${liveCount > 0 ? "text-primary animate-bounce" : "text-muted-foreground/80"}`} />
               <div>
-                <span className="text-xs font-mono text-muted-foreground uppercase block">Live Match Center</span>
+                <span className="text-xs font-mono text-muted-foreground uppercase block">Match Center</span>
                 <span className={`text-lg sm:text-xl font-bold font-mono ${liveCount > 0 ? "text-primary" : ""}`}>
                   {liveCount}
                 </span>
                 <span className="text-[10px] text-muted-foreground font-mono block">
-                  {liveCount > 0 ? "Active simulation overrides" : "No results overridden"}
+                  {liveCount > 0 ? "Manual overrides active" : "No manual overrides"}
                 </span>
               </div>
             </CardContent>
@@ -120,7 +149,7 @@ export default function Dashboard() {
             <TabsList className="bg-secondary/40 border border-border p-1 w-full max-w-2xl grid grid-cols-4 font-mono text-xs uppercase tracking-wider">
               <TabsTrigger value="leaderboard" className="cursor-pointer">Leaderboard</TabsTrigger>
               <TabsTrigger value="groups" className="cursor-pointer">Groups</TabsTrigger>
-              <TabsTrigger value="simulator" className="cursor-pointer">Simulator</TabsTrigger>
+              <TabsTrigger value="simulator" className="cursor-pointer">Predictor</TabsTrigger>
               <TabsTrigger value="livecenter" className="cursor-pointer">Match Center</TabsTrigger>
             </TabsList>
           </div>
@@ -128,10 +157,10 @@ export default function Dashboard() {
           <TabsContent value="leaderboard" className="space-y-6 outline-none animate-in fade-in duration-300">
             <div>
               <h2 className="text-xl font-bold font-mono uppercase tracking-wider text-muted-foreground mb-1">
-                Tournament Predictions
+                Tournament Simulation
               </h2>
               <p className="text-xs text-muted-foreground">
-                Rankings represent the simulated probability of each team winning the World Cup 2026. Click a row to see detailed offensive/defensive multipliers.
+                Rows show simulated tournament probabilities for each team. Click a row to see the Elo rating and goal-strength multipliers used by the model.
               </p>
             </div>
             <Leaderboard />
@@ -143,7 +172,7 @@ export default function Dashboard() {
                 Group Standings
               </h2>
               <p className="text-xs text-muted-foreground">
-                Simulated probabilities for winning and advancing from the 12 groups (A to L) under official FIFA 2026 tiebreakers.
+                Simulated probabilities for winning and advancing from the 12 groups (A to L). Unmodeled conduct and ranking tiebreakers use a seeded fallback.
               </p>
             </div>
             <GroupStandings />
@@ -160,9 +189,12 @@ export default function Dashboard() {
       </div>
 
       {/* Footer */}
-      <footer className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-24 pt-8 border-t border-border text-center">
+      <footer className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-24 pt-8 pb-12 border-t border-border text-center">
         <p className="text-muted-foreground font-mono text-xs uppercase tracking-widest">
           Data: 49,000+ international matches since 1872 · Model: Elo ratings + Poisson distribution + Dixon-Coles adjustments
+        </p>
+        <p className="text-muted-foreground/60 text-[10px] sm:text-xs mt-3 max-w-xl mx-auto leading-relaxed">
+          Disclaimer: Tournament simulations and match predictions use historical results and current model parameters. They are not official betting odds, carry statistical uncertainty, and do not promise unmeasured accuracy.
         </p>
       </footer>
     </div>

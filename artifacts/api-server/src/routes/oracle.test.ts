@@ -275,6 +275,55 @@ test("POST /api/oracle/live-match rejects overriding an imported finished result
   resetOracleForTests();
 });
 
+test("POST /api/oracle/live-match replaces an existing override when teams are inverted", async () => {
+  resetOracleForTests();
+
+  try {
+    const firstResponse = await requestJson("POST", "/api/oracle/live-match", {
+      homeTeam: "Mexico",
+      awayTeam: "South Africa",
+      homeScore: 1,
+      awayScore: 0,
+    });
+    assert.equal(firstResponse.status, 200);
+    assert.equal(readData(await readJson(firstResponse)).liveMatchesCount, 1);
+
+    const secondResponse = await requestJson("POST", "/api/oracle/live-match", {
+      homeTeam: "South Africa",
+      awayTeam: "Mexico",
+      homeScore: 3,
+      awayScore: 2,
+    });
+    const secondBody = await readJson(secondResponse);
+    const secondData = readData(secondBody);
+
+    assert.equal(secondResponse.status, 200);
+    assert.equal(secondData.liveMatchesCount, 1);
+
+    const liveMatchesResponse = await requestGet("/api/oracle/live-matches");
+    const liveMatches = readData(await readJson(liveMatchesResponse)).playedMatches as Array<
+      Record<string, unknown>
+    >;
+    const mexicoSouthAfricaMatches = liveMatches.filter(
+      (match) =>
+        (match.homeTeam === "Mexico" && match.awayTeam === "South Africa") ||
+        (match.homeTeam === "South Africa" && match.awayTeam === "Mexico")
+    );
+
+    assert.equal(mexicoSouthAfricaMatches.length, 1);
+    assert.deepEqual(mexicoSouthAfricaMatches[0], {
+      homeTeam: "South Africa",
+      awayTeam: "Mexico",
+      homeScore: 3,
+      awayScore: 2,
+      source: "custom",
+      status: "finished",
+    });
+  } finally {
+    resetOracleForTests();
+  }
+});
+
 test("GET /api/oracle/status exposes simulation seed metadata", async () => {
   const response = await requestGet("/api/oracle/status");
   const body = await readJson(response);
@@ -510,6 +559,46 @@ test("DELETE /api/oracle/live-match validates valid and invalid payloads", async
     awayTeam: "South Africa",
     reason: "mistake",
   }, "Unrecognized key");
+});
+
+test("DELETE /api/oracle/live-match removes an existing override when teams are inverted", async () => {
+  resetOracleForTests();
+
+  try {
+    const postResponse = await requestJson("POST", "/api/oracle/live-match", {
+      homeTeam: "Mexico",
+      awayTeam: "South Africa",
+      homeScore: 1,
+      awayScore: 0,
+    });
+    assert.equal(postResponse.status, 200);
+
+    const deleteResponse = await requestJson("DELETE", "/api/oracle/live-match", {
+      homeTeam: "South Africa",
+      awayTeam: "Mexico",
+    });
+    const deleteBody = await readJson(deleteResponse);
+    const deleteData = readData(deleteBody);
+
+    assert.equal(deleteResponse.status, 200);
+    assert.equal(deleteData.liveMatchesCount, 0);
+
+    const liveMatchesResponse = await requestGet("/api/oracle/live-matches");
+    const liveMatches = readData(await readJson(liveMatchesResponse)).playedMatches as Array<
+      Record<string, unknown>
+    >;
+
+    assert.equal(
+      liveMatches.some(
+        (match) =>
+          (match.homeTeam === "Mexico" && match.awayTeam === "South Africa") ||
+          (match.homeTeam === "South Africa" && match.awayTeam === "Mexico")
+      ),
+      false
+    );
+  } finally {
+    resetOracleForTests();
+  }
 });
 
 test("POST /api/oracle/predict-match validates valid and invalid payloads", async () => {

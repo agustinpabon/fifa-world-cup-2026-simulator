@@ -154,8 +154,11 @@ test.describe("World Cup Oracle smoke", () => {
     await expect(page.getByTestId("group-card")).toHaveCount(12);
 
     await page.getByRole("tab", { name: "Predictor" }).click();
-    await page.getByTestId("predictor-home-team").selectOption("France");
-    await page.getByTestId("predictor-away-team").selectOption("Argentina");
+    await expect(page.getByTestId("predictor-team-count")).toContainText("48 teams available");
+    await page.getByTestId("predictor-home-team").fill("France");
+    await page.getByTestId("predictor-home-team-option").filter({ hasText: "France" }).click();
+    await page.getByTestId("predictor-away-team").fill("Argentina");
+    await page.getByTestId("predictor-away-team-option").filter({ hasText: "Argentina" }).click();
     await expect(page.getByTestId("predict-match-button")).toBeEnabled();
     await page.getByTestId("predict-match-button").click();
     await expect(page.getByTestId("predictor-loading")).toBeVisible();
@@ -190,11 +193,17 @@ test.describe("World Cup Oracle smoke", () => {
 
     await expect(savedMatch).toContainText("Manual Override");
     await expect(page.getByText("Manual overrides active")).toBeVisible();
+    await page.getByTestId("match-stage-results").click();
+    await expect(page.getByTestId("match-results-summary")).toContainText("1 result");
+    await expect(page.getByTestId("match-card").filter({ hasText: "Mexico" }).filter({ hasText: "South Africa" })).toContainText("Manual Override");
 
     await Promise.all([
       liveMatchResponse(page, "DELETE"),
       savedMatch.getByRole("button", { name: "Restore" }).click(),
     ]);
+
+    await expect(page.getByTestId("match-results-summary")).toContainText("0 results");
+    await page.getByTestId("match-stage-group").click();
 
     const restoredMatch = page
       .getByTestId("match-card")

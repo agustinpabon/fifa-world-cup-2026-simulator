@@ -48,6 +48,13 @@ Thumbs.db
 .cache/
 .local/
 
+# generated model-quality reports
+/reports/backtests/*.json
+
+# e2e test artifacts
+/playwright-report/
+/test-results/
+
 # env files
 .env
 .env.local

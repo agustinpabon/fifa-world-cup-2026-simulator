@@ -5,16 +5,96 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-export interface HealthStatus {
+export interface HealthStatusData {
   status: string;
 }
 
-export interface OracleStatus {
+export interface HealthStatus {
+  data: HealthStatusData;
+}
+
+export type OracleStatusDataState = typeof OracleStatusDataState[keyof typeof OracleStatusDataState];
+
+
+export const OracleStatusDataState = {
+  loading: 'loading',
+  ready: 'ready',
+  error: 'error',
+} as const;
+
+export type HistoricalDatasetMetadataSource = typeof HistoricalDatasetMetadataSource[keyof typeof HistoricalDatasetMetadataSource];
+
+
+export const HistoricalDatasetMetadataSource = {
+  remote: 'remote',
+  snapshot: 'snapshot',
+} as const;
+
+export interface HistoricalDatasetMetadata {
+  source: HistoricalDatasetMetadataSource;
+  /** Latest completed match date included in the loaded dataset. */
+  date: string;
+  /** SHA-256 hash of the raw CSV used for this runtime. */
+  hash: string;
+  loadedAt: string;
+  remoteUrl?: string;
+  fallbackReason?: string;
+}
+
+export type OracleLoadErrorCode = typeof OracleLoadErrorCode[keyof typeof OracleLoadErrorCode];
+
+
+export const OracleLoadErrorCode = {
+  HISTORICAL_DATA_LOAD_FAILED: 'HISTORICAL_DATA_LOAD_FAILED',
+} as const;
+
+export interface OracleLoadError {
+  code: OracleLoadErrorCode;
+  message: string;
+}
+
+export interface OracleStatusData {
+  state: OracleStatusDataState;
   ready: boolean;
   matchesLoaded: number;
   teamsRated: number;
   simulationsRun: number;
+  simulationSeed: string;
+  liveMatchesRecorded: number;
+  /** True when a recalculation job is pending or running. */
+  recalculating: boolean;
+  /** ISO timestamp for the last successfully published simulation. */
+  lastUpdated: string | null;
+  /** Last simulation recalculation error, if the latest job failed. */
+  recalculationError: string | null;
+  dataset: HistoricalDatasetMetadata | null;
+  error?: OracleLoadError;
   message: string;
+}
+
+export type OracleReadinessState = typeof OracleReadinessState[keyof typeof OracleReadinessState];
+
+
+export const OracleReadinessState = {
+  loading: 'loading',
+  ready: 'ready',
+  error: 'error',
+} as const;
+
+export interface OracleReadiness {
+  state: OracleReadinessState;
+  ready: boolean;
+  message: string;
+  error?: OracleLoadError;
+}
+
+export interface OracleResponseMeta {
+  readiness: OracleReadiness;
+}
+
+export interface OracleStatus {
+  data: OracleStatusData;
+  meta: OracleResponseMeta;
 }
 
 export interface Team {
@@ -23,10 +103,39 @@ export interface Team {
   elo: number;
   group: string;
   flagEmoji: string;
+  attackStrength: number;
+  defenseStrength: number;
+}
+
+export interface TeamsData {
+  teams: Team[];
 }
 
 export interface TeamsResponse {
-  teams: Team[];
+  data: TeamsData;
+  meta: OracleResponseMeta;
+}
+
+/**
+ * Binomial Monte Carlo uncertainty for a displayed probability percentage.
+ */
+export interface ProbabilityUncertainty {
+  /** Standard error in percentage points. */
+  standardErrorPct: number;
+  /** Lower bound of the approximate confidence interval in percentage points. */
+  confidenceIntervalLowPct: number;
+  /** Upper bound of the approximate confidence interval in percentage points. */
+  confidenceIntervalHighPct: number;
+}
+
+export interface TeamSimUncertainty {
+  titlePct: ProbabilityUncertainty;
+  finalPct: ProbabilityUncertainty;
+  semiFinalPct: ProbabilityUncertainty;
+  quarterFinalPct: ProbabilityUncertainty;
+  roundOf16Pct: ProbabilityUncertainty;
+  groupWinPct: ProbabilityUncertainty;
+  groupAdvancePct: ProbabilityUncertainty;
 }
 
 export interface TeamSimResult {
@@ -42,19 +151,46 @@ export interface TeamSimResult {
   roundOf16Pct: number;
   groupWinPct: number;
   groupAdvancePct: number;
+  uncertainty: TeamSimUncertainty;
+}
+
+export type SimulationUncertaintyMetadataMethod = typeof SimulationUncertaintyMetadataMethod[keyof typeof SimulationUncertaintyMetadataMethod];
+
+
+export const SimulationUncertaintyMetadataMethod = {
+  binomial_standard_error: 'binomial_standard_error',
+} as const;
+
+export interface SimulationUncertaintyMetadata {
+  method: SimulationUncertaintyMetadataMethod;
+  confidenceLevel: number;
+  zScore: number;
+  /** Largest possible standard error in percentage points for this simulation count. */
+  maxStandardErrorPct: number;
+  description: string;
+}
+
+export interface SimulationData {
+  results: TeamSimResult[];
+  simulationsRun: number;
+  simulationSeed: string;
+  liveMatchesRecorded: number;
+  uncertainty: SimulationUncertaintyMetadata;
 }
 
 export interface SimulationResponse {
-  results: TeamSimResult[];
-  simulationsRun: number;
+  data: SimulationData;
+  meta: OracleResponseMeta;
 }
 
 export interface MatchPredictionRequest {
+  /** @minLength 1 */
   homeTeam: string;
+  /** @minLength 1 */
   awayTeam: string;
 }
 
-export interface MatchPredictionResponse {
+export interface MatchPredictionData {
   homeTeam: string;
   awayTeam: string;
   homeWinPct: number;
@@ -65,9 +201,148 @@ export interface MatchPredictionResponse {
   mostLikelyScore: string;
   homeElo: number;
   awayElo: number;
+  homeAttackStrength: number;
+  homeDefenseStrength: number;
+  awayAttackStrength: number;
+  awayDefenseStrength: number;
+}
+
+export interface MatchPredictionResponse {
+  data: MatchPredictionData;
+  meta: OracleResponseMeta;
+}
+
+export type ApiErrorCode = typeof ApiErrorCode[keyof typeof ApiErrorCode];
+
+
+export const ApiErrorCode = {
+  invalid_request: 'invalid_request',
+  malformed_json: 'malformed_json',
+  oracle_not_ready: 'oracle_not_ready',
+  internal_error: 'internal_error',
+} as const;
+
+export interface ApiErrorIssue {
+  path?: string;
+  message: string;
+  code?: string;
+}
+
+export interface ApiError {
+  code: ApiErrorCode;
+  message: string;
+  issues?: ApiErrorIssue[];
 }
 
 export interface ErrorResponse {
-  error: string;
+  error: ApiError;
 }
+
+export interface LiveMatchRequest {
+  /** @minLength 1 */
+  homeTeam: string;
+  /** @minLength 1 */
+  awayTeam: string;
+  /**
+     * @minimum 0
+     * @maximum 30
+     */
+  homeScore: number;
+  /**
+     * @minimum 0
+     * @maximum 30
+     */
+  awayScore: number;
+}
+
+export interface LiveMatchData {
+  success: boolean;
+  message: string;
+  liveMatchesCount: number;
+}
+
+export interface LiveMatchResponse {
+  data: LiveMatchData;
+  meta: OracleResponseMeta;
+}
+
+export interface DeleteLiveMatchRequest {
+  /** @minLength 1 */
+  homeTeam: string;
+  /** @minLength 1 */
+  awayTeam: string;
+}
+
+export interface DeleteLiveMatchData {
+  success: boolean;
+  liveMatchesCount: number;
+}
+
+export interface DeleteLiveMatchResult {
+  data: DeleteLiveMatchData;
+  meta: OracleResponseMeta;
+}
+
+export type PlayedMatchSource = typeof PlayedMatchSource[keyof typeof PlayedMatchSource];
+
+
+export const PlayedMatchSource = {
+  fixture: 'fixture',
+  official: 'official',
+  custom: 'custom',
+} as const;
+
+export type PlayedMatchStatus = typeof PlayedMatchStatus[keyof typeof PlayedMatchStatus];
+
+
+export const PlayedMatchStatus = {
+  scheduled: 'scheduled',
+  live: 'live',
+  finished: 'finished',
+} as const;
+
+export interface PlayedMatch {
+  matchNumber?: number;
+  homeTeam: string;
+  awayTeam: string;
+  homeScore: number;
+  awayScore: number;
+  stage?: string;
+  source?: PlayedMatchSource;
+  sourceId?: string;
+  date?: string;
+  kickoffTimeEt?: string;
+  status?: PlayedMatchStatus;
+  group?: string;
+  venue?: string;
+  region?: string;
+}
+
+export interface LiveMatchesData {
+  playedMatches: PlayedMatch[];
+}
+
+export interface LiveMatchesResponse {
+  data: LiveMatchesData;
+  meta: OracleResponseMeta;
+}
+
+export interface ClearLiveMatchesData {
+  success: boolean;
+  message: string;
+}
+
+export interface ClearLiveMatchesResult {
+  data: ClearLiveMatchesData;
+  meta: OracleResponseMeta;
+}
+
+export type GetSimulationParams = {
+/**
+ * Optional seed for an ad hoc reproducible simulation response. Omit it to use the cached seed.
+ * @minLength 1
+ * @maxLength 128
+ */
+seed?: string;
+};
 

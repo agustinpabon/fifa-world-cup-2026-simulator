@@ -61,6 +61,15 @@ paths:
       tags: [oracle]
       summary: Get Monte Carlo simulation results
       description: Returns pre-computed tournament simulation probabilities for all teams
+      parameters:
+        - name: seed
+          in: query
+          required: false
+          description: Optional seed for an ad hoc reproducible simulation response. Omit it to use the cached seed.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
       responses:
         "200":
           description: Simulation results
@@ -68,6 +77,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SimulationResponse"
+        "400":
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /oracle/predict-match:
     post:
@@ -89,7 +104,91 @@ paths:
               schema:
                 $ref: "#/components/schemas/MatchPredictionResponse"
         "400":
-          description: Invalid team names
+          description: Invalid team names or malformed JSON
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /oracle/live-match:
+    post:
+      operationId: recordLiveMatch
+      tags: [oracle]
+      summary: Record a manual scenario override
+      description: Records a manual match score override in-memory and queues simulation recalculation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LiveMatchRequest"
+      responses:
+        "200":
+          description: Manual override recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveMatchResponse"
+        "400":
+          description: Invalid inputs or malformed JSON
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteLiveMatch
+      tags: [oracle]
+      summary: Remove a manual scenario override
+      description: Removes a manual match score override in-memory and queues simulation recalculation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteLiveMatchRequest"
+      responses:
+        "200":
+          description: Manual override deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteLiveMatchResult"
+        "400":
+          description: Invalid inputs or malformed JSON
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /oracle/live-matches:
+    get:
+      operationId: getLiveMatches
+      tags: [oracle]
+      summary: List imported fixtures and manual scenario overrides
+      description: Returns the imported fixture list plus any in-memory manual scenario overrides
+      responses:
+        "200":
+          description: Imported fixtures and manual overrides
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveMatchesResponse"
+
+  /oracle/live-matches/clear:
+    post:
+      operationId: clearLiveMatches
+      tags: [oracle]
+      summary: Clear all manual scenario overrides
+      description: Clears all in-memory manual score overrides and queues simulation recalculation
+      responses:
+        "200":
+          description: All manual scenario overrides cleared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClearLiveMatchesResult"
+        "400":
+          description: Malformed JSON
           content:
             application/json:
               schema:
@@ -100,6 +199,14 @@ components:
     HealthStatus:
       type: object
       properties:
+        data:
+          $ref: "#/components/schemas/HealthStatusData"
+      required:
+        - data
+
+    HealthStatusData:
+      type: object
+      properties:
         status:
           type: string
       required:
@@ -108,6 +215,20 @@ components:
     OracleStatus:
       type: object
       properties:
+        data:
+          $ref: "#/components/schemas/OracleStatusData"
+        meta:
+          $ref: "#/components/schemas/OracleResponseMeta"
+      required:
+        - data
+        - meta
+
+    OracleStatusData:
+      type: object
+      properties:
+        state:
+          type: string
+          enum: [loading, ready, error]
         ready:
           type: boolean
         matchesLoaded:
@@ -116,13 +237,102 @@ components:
           type: integer
         simulationsRun:
           type: integer
+        simulationSeed:
+          type: string
+        liveMatchesRecorded:
+          type: integer
+        recalculating:
+          type: boolean
+          description: True when a recalculation job is pending or running.
+        lastUpdated:
+          type: string
+          nullable: true
+          description: ISO timestamp for the last successfully published simulation.
+        recalculationError:
+          type: string
+          nullable: true
+          description: Last simulation recalculation error, if the latest job failed.
+        dataset:
+          allOf:
+            - $ref: "#/components/schemas/HistoricalDatasetMetadata"
+          nullable: true
+        error:
+          $ref: "#/components/schemas/OracleLoadError"
         message:
           type: string
       required:
+        - state
         - ready
         - matchesLoaded
         - teamsRated
         - simulationsRun
+        - simulationSeed
+        - liveMatchesRecorded
+        - recalculating
+        - lastUpdated
+        - recalculationError
+        - dataset
+        - message
+
+    OracleResponseMeta:
+      type: object
+      properties:
+        readiness:
+          $ref: "#/components/schemas/OracleReadiness"
+      required:
+        - readiness
+
+    OracleReadiness:
+      type: object
+      properties:
+        state:
+          type: string
+          enum: [loading, ready, error]
+        ready:
+          type: boolean
+        message:
+          type: string
+        error:
+          $ref: "#/components/schemas/OracleLoadError"
+      required:
+        - state
+        - ready
+        - message
+
+    HistoricalDatasetMetadata:
+      type: object
+      properties:
+        source:
+          type: string
+          enum: [remote, snapshot]
+        date:
+          type: string
+          description: Latest completed match date included in the loaded dataset.
+        hash:
+          type: string
+          description: SHA-256 hash of the raw CSV used for this runtime.
+        loadedAt:
+          type: string
+        remoteUrl:
+          type: string
+        fallbackReason:
+          type: string
+      required:
+        - source
+        - date
+        - hash
+        - loadedAt
+
+    OracleLoadError:
+      type: object
+      properties:
+        code:
+          type: string
+          enum: [HISTORICAL_DATA_LOAD_FAILED]
+        message:
+          type: string
+      required:
+        - code
         - message
 
     Team:
@@ -138,14 +348,31 @@ components:
           type: string
         flagEmoji:
           type: string
+        attackStrength:
+          type: number
+        defenseStrength:
+          type: number
       required:
         - name
         - code
         - elo
         - group
         - flagEmoji
+        - attackStrength
+        - defenseStrength
 
     TeamsResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/TeamsData"
+        meta:
+          $ref: "#/components/schemas/OracleResponseMeta"
+      required:
+        - data
+        - meta
+
+    TeamsData:
       type: object
       properties:
         teams:
@@ -182,6 +409,8 @@ components:
           type: number
         groupAdvancePct:
           type: number
+        uncertainty:
+          $ref: "#/components/schemas/TeamSimUncertainty"
       required:
         - name
         - code
@@ -195,8 +424,86 @@ components:
         - roundOf16Pct
         - groupWinPct
         - groupAdvancePct
+        - uncertainty
+
+    ProbabilityUncertainty:
+      type: object
+      description: Binomial Monte Carlo uncertainty for a displayed probability percentage.
+      properties:
+        standardErrorPct:
+          type: number
+          description: Standard error in percentage points.
+        confidenceIntervalLowPct:
+          type: number
+          description: Lower bound of the approximate confidence interval in percentage points.
+        confidenceIntervalHighPct:
+          type: number
+          description: Upper bound of the approximate confidence interval in percentage points.
+      required:
+        - standardErrorPct
+        - confidenceIntervalLowPct
+        - confidenceIntervalHighPct
+
+    TeamSimUncertainty:
+      type: object
+      properties:
+        titlePct:
+          $ref: "#/components/schemas/ProbabilityUncertainty"
+        finalPct:
+          $ref: "#/components/schemas/ProbabilityUncertainty"
+        semiFinalPct:
+          $ref: "#/components/schemas/ProbabilityUncertainty"
+        quarterFinalPct:
+          $ref: "#/components/schemas/ProbabilityUncertainty"
+        roundOf16Pct:
+          $ref: "#/components/schemas/ProbabilityUncertainty"
+        groupWinPct:
+          $ref: "#/components/schemas/ProbabilityUncertainty"
+        groupAdvancePct:
+          $ref: "#/components/schemas/ProbabilityUncertainty"
+      required:
+        - titlePct
+        - finalPct
+        - semiFinalPct
+        - quarterFinalPct
+        - roundOf16Pct
+        - groupWinPct
+        - groupAdvancePct
+
+    SimulationUncertaintyMetadata:
+      type: object
+      properties:
+        method:
+          type: string
+          enum: [binomial_standard_error]
+        confidenceLevel:
+          type: number
+        zScore:
+          type: number
+        maxStandardErrorPct:
+          type: number
+          description: Largest possible standard error in percentage points for this simulation count.
+        description:
+          type: string
+      required:
+        - method
+        - confidenceLevel
+        - zScore
+        - maxStandardErrorPct
+        - description
 
     SimulationResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/SimulationData"
+        meta:
+          $ref: "#/components/schemas/OracleResponseMeta"
+      required:
+        - data
+        - meta
+
+    SimulationData:
       type: object
       properties:
         results:
@@ -205,22 +512,45 @@ components:
             $ref: "#/components/schemas/TeamSimResult"
         simulationsRun:
           type: integer
+        simulationSeed:
+          type: string
+        liveMatchesRecorded:
+          type: integer
+        uncertainty:
+          $ref: "#/components/schemas/SimulationUncertaintyMetadata"
       required:
         - results
         - simulationsRun
+        - simulationSeed
+        - liveMatchesRecorded
+        - uncertainty
 
     MatchPredictionRequest:
       type: object
+      additionalProperties: false
       properties:
         homeTeam:
           type: string
+          minLength: 1
         awayTeam:
           type: string
+          minLength: 1
       required:
         - homeTeam
         - awayTeam
 
     MatchPredictionResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/MatchPredictionData"
+        meta:
+          $ref: "#/components/schemas/OracleResponseMeta"
+      required:
+        - data
+        - meta
+
+    MatchPredictionData:
       type: object
       properties:
         homeTeam:
@@ -243,6 +573,14 @@ components:
           type: number
         awayElo:
           type: number
+        homeAttackStrength:
+          type: number
+        homeDefenseStrength:
+          type: number
+        awayAttackStrength:
+          type: number
+        awayDefenseStrength:
+          type: number
       required:
         - homeTeam
         - awayTeam
@@ -254,11 +592,210 @@ components:
         - mostLikelyScore
         - homeElo
         - awayElo
+        - homeAttackStrength
+        - homeDefenseStrength
+        - awayAttackStrength
+        - awayDefenseStrength
 
     ErrorResponse:
       type: object
       properties:
         error:
-          type: string
+          $ref: "#/components/schemas/ApiError"
       required:
         - error
+
+    ApiError:
+      type: object
+      properties:
+        code:
+          type: string
+          enum: [invalid_request, malformed_json, oracle_not_ready, internal_error]
+        message:
+          type: string
+        issues:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApiErrorIssue"
+      required:
+        - code
+        - message
+
+    ApiErrorIssue:
+      type: object
+      properties:
+        path:
+          type: string
+        message:
+          type: string
+        code:
+          type: string
+      required:
+        - message
+
+    LiveMatchRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        homeTeam:
+          type: string
+          minLength: 1
+        awayTeam:
+          type: string
+          minLength: 1
+        homeScore:
+          type: integer
+          minimum: 0
+          maximum: 30
+        awayScore:
+          type: integer
+          minimum: 0
+          maximum: 30
+      required:
+        - homeTeam
+        - awayTeam
+        - homeScore
+        - awayScore
+
+    LiveMatchResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/LiveMatchData"
+        meta:
+          $ref: "#/components/schemas/OracleResponseMeta"
+      required:
+        - data
+        - meta
+
+    LiveMatchData:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        liveMatchesCount:
+          type: integer
+      required:
+        - success
+        - message
+        - liveMatchesCount
+
+    DeleteLiveMatchRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        homeTeam:
+          type: string
+          minLength: 1
+        awayTeam:
+          type: string
+          minLength: 1
+      required:
+        - homeTeam
+        - awayTeam
+
+    DeleteLiveMatchResult:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/DeleteLiveMatchData"
+        meta:
+          $ref: "#/components/schemas/OracleResponseMeta"
+      required:
+        - data
+        - meta
+
+    DeleteLiveMatchData:
+      type: object
+      properties:
+        success:
+          type: boolean
+        liveMatchesCount:
+          type: integer
+      required:
+        - success
+        - liveMatchesCount
+
+    PlayedMatch:
+      type: object
+      properties:
+        matchNumber:
+          type: integer
+        homeTeam:
+          type: string
+        awayTeam:
+          type: string
+        homeScore:
+          type: integer
+        awayScore:
+          type: integer
+        stage:
+          type: string
+        source:
+          type: string
+          enum: [fixture, official, custom]
+        sourceId:
+          type: string
+        date:
+          type: string
+        kickoffTimeEt:
+          type: string
+        status:
+          type: string
+          enum: [scheduled, live, finished]
+        group:
+          type: string
+        venue:
+          type: string
+        region:
+          type: string
+      required:
+        - homeTeam
+        - awayTeam
+        - homeScore
+        - awayScore
+
+    LiveMatchesResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/LiveMatchesData"
+        meta:
+          $ref: "#/components/schemas/OracleResponseMeta"
+      required:
+        - data
+        - meta
+
+    LiveMatchesData:
+      type: object
+      properties:
+        playedMatches:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlayedMatch"
+      required:
+        - playedMatches
+
+    ClearLiveMatchesResult:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/ClearLiveMatchesData"
+        meta:
+          $ref: "#/components/schemas/OracleResponseMeta"
+      required:
+        - data
+        - meta
+
+    ClearLiveMatchesData:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+        - success
+        - message

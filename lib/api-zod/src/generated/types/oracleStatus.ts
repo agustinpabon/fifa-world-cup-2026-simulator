@@ -5,11 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { OracleResponseMeta } from './oracleResponseMeta';
+import type { OracleStatusData } from './oracleStatusData';
 
 export interface OracleStatus {
-  ready: boolean;
-  matchesLoaded: number;
-  teamsRated: number;
-  simulationsRun: number;
-  message: string;
+  data: OracleStatusData;
+  meta: OracleResponseMeta;
 }

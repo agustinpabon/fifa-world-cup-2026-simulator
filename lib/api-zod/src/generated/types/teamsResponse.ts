@@ -5,8 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { Team } from './team';
+import type { OracleResponseMeta } from './oracleResponseMeta';
+import type { TeamsData } from './teamsData';
 
 export interface TeamsResponse {
-  teams: Team[];
+  data: TeamsData;
+  meta: OracleResponseMeta;
 }

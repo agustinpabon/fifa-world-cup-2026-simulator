@@ -12,4 +12,6 @@ export interface Team {
   elo: number;
   group: string;
   flagEmoji: string;
+  attackStrength: number;
+  defenseStrength: number;
 }

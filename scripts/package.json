@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "backtest": "tsx ./src/backtest.ts",
     "hello": "tsx ./src/hello.ts",
+    "test": "tsx --test \"src/**/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

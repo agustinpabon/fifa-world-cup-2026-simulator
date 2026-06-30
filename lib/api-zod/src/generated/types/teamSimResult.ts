@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { TeamSimUncertainty } from './teamSimUncertainty';
 
 export interface TeamSimResult {
   name: string;
@@ -19,4 +20,5 @@ export interface TeamSimResult {
   roundOf16Pct: number;
   groupWinPct: number;
   groupAdvancePct: number;
+  uncertainty: TeamSimUncertainty;
 }

@@ -144,6 +144,18 @@ function getStringField(value: unknown, key: string): string | undefined {
   return trimmed === "" ? undefined : trimmed;
 }
 
+function getStructuredErrorMessage(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+
+  const error = (value as Record<string, unknown>).error;
+  if (typeof error === "string") {
+    const trimmed = error.trim();
+    return trimmed === "" ? undefined : trimmed;
+  }
+
+  return getStringField(error, "message");
+}
+
 function truncate(text: string, maxLength = 300): string {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
 }
@@ -159,9 +171,9 @@ function buildErrorMessage(response: Response, data: unknown): string {
   const title = getStringField(data, "title");
   const detail = getStringField(data, "detail");
   const message =
+    getStructuredErrorMessage(data) ??
     getStringField(data, "message") ??
-    getStringField(data, "error_description") ??
-    getStringField(data, "error");
+    getStringField(data, "error_description");
 
   if (title && detail) return `${prefix}: ${title} — ${detail}`;
   if (detail) return `${prefix}: ${detail}`;

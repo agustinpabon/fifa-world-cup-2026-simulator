@@ -3,27 +3,53 @@ import { useGetSimulation } from "@workspace/api-client-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AnimatedNumber } from "@/components/ui/animated-number";
-
-const GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"];
+import { AlertTriangle } from "lucide-react";
 
 export function GroupStandings() {
-  const { data: simulationData, isLoading } = useGetSimulation();
+  const { data: simulationResponse, isLoading, isError } = useGetSimulation();
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {GROUPS.map((g) => (
-          <Skeleton key={g} className="h-64 w-full bg-card-border/50" />
+      <div data-testid="group-standings-loading" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        {Array.from({ length: 12 }, (_, index) => (
+          <Skeleton key={index} className="h-64 w-full bg-card-border/50" />
         ))}
       </div>
     );
   }
 
-  const results = simulationData?.results ?? [];
+  const readiness = simulationResponse?.meta.readiness;
+
+  if (isError) {
+    return (
+      <div
+        data-testid="group-standings-error"
+        className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive"
+      >
+        <AlertTriangle className="h-4 w-4 shrink-0" />
+        <span>Unable to load group probabilities.</span>
+      </div>
+    );
+  }
+
+  if (readiness && readiness.state !== "ready") {
+    return (
+      <div
+        data-testid="group-standings-readiness"
+        className="flex items-center gap-3 rounded-lg border border-border bg-card/40 p-4 text-sm text-muted-foreground"
+      >
+        <AlertTriangle className="h-4 w-4 shrink-0 text-yellow-500" />
+        <span>{readiness.message}</span>
+      </div>
+    );
+  }
+
+  const results = simulationResponse?.data.results ?? [];
+  const groups = [...new Set(results.map((team) => team.group))].sort();
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-      {GROUPS.map((group) => {
+    <div data-testid="group-standings" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+      {groups.map((group) => {
         // Filter and sort teams in this group by advance percentage (simulated performance)
         const groupTeams = results
           .filter((t) => t.group === group)
@@ -35,7 +61,11 @@ export function GroupStandings() {
           });
 
         return (
-          <Card key={group} className="border-card-border bg-card/40 backdrop-blur-sm overflow-hidden hover:border-primary/30 transition-all duration-300">
+          <Card
+            key={group}
+            data-testid="group-card"
+            className="border-card-border bg-card/40 backdrop-blur-sm overflow-hidden hover:border-primary/30 transition-all duration-300"
+          >
             <CardHeader className="bg-secondary/40 border-b border-border/60 py-3 px-4 flex flex-row justify-between items-center">
               <CardTitle className="text-sm font-bold font-mono tracking-wider text-muted-foreground">
                 GROUP {group}

@@ -714,9 +714,10 @@ export function seedReadyOracleForTests(
     playedMatches?: PlayedMatch[];
   } = {}
 ): void {
+  const fallbackRating = DEFAULT_MODEL_CONFIG.fallbackRating;
   const ratings =
     overrides.ratings ??
-    (Object.fromEntries(WC2026_TEAMS.map((team) => [team.name, 1000])) as Record<string, number>);
+    (Object.fromEntries(WC2026_TEAMS.map((team) => [team.name, fallbackRating])) as Record<string, number>);
   const simulationSeed = overrides.simulationSeed ?? createSimulationSeed();
 
   Object.assign(cache, {
@@ -889,7 +890,7 @@ router.get("/oracle/teams", (req, res) => {
   const teams = WC2026_TEAMS.map((t) => ({
     name: t.name,
     code: t.code,
-    elo: cache.ratings[t.name] ?? 1000,
+    elo: cache.ratings[t.name] ?? cache.modelConfig.fallbackRating,
     group: t.group,
     flagEmoji: t.flagEmoji,
     attackStrength: cache.teamMetrics[t.name]?.attackStrength ?? 1.0,
@@ -934,7 +935,8 @@ router.get("/oracle/simulation", async (req, res) => {
     simResult,
     cache.ratings,
     NUM_SIMULATIONS,
-    cache.liveData.eliminatedTeams
+    cache.liveData.eliminatedTeams,
+    cache.modelConfig
   );
 
   return sendOracleSuccess(res, {
@@ -956,8 +958,8 @@ router.post("/oracle/predict-match", (req, res) => {
 
   const { homeTeam, awayTeam } = parsed.data;
 
-  const eloHome = cache.ratings[homeTeam] ?? 1000;
-  const eloAway = cache.ratings[awayTeam] ?? 1000;
+  const eloHome = cache.ratings[homeTeam] ?? cache.modelConfig.fallbackRating;
+  const eloAway = cache.ratings[awayTeam] ?? cache.modelConfig.fallbackRating;
   const metricsHome = cache.teamMetrics[homeTeam];
   const metricsAway = cache.teamMetrics[awayTeam];
 

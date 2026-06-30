@@ -359,9 +359,10 @@ function simulateGroup(
   rankingOptions: FifaRankingOptions = {},
   modelConfig: Partial<ModelConfig> = DEFAULT_MODEL_CONFIG
 ): GroupStanding[] {
+  const resolvedModelConfig = createModelConfig(modelConfig);
   const standings: GroupStanding[] = group.teams.map((t) => ({
     team: t,
-    elo: ratings[t.name] ?? 1000,
+    elo: ratings[t.name] ?? resolvedModelConfig.fallbackRating,
     points: 0,
     gf: 0,
     ga: 0,
@@ -406,7 +407,7 @@ function simulateGroup(
         isHomeA,
         isHomeB,
         random,
-        modelConfig
+        resolvedModelConfig
       );
       goalsHome = sim.goalsA;
       goalsAway = sim.goalsB;
@@ -510,19 +511,20 @@ function simulateKnockoutRound(
   random: Rng = createSeededRng(DEFAULT_SIMULATION_SEED),
   modelConfig: Partial<ModelConfig> = DEFAULT_MODEL_CONFIG
 ): Map<number, WCTeam> {
+  const resolvedModelConfig = createModelConfig(modelConfig);
   const winners = new Map<number, WCTeam>();
 
   for (const match of matches) {
     const aWins = simulateKnockout(
       match.home,
       match.away,
-      ratings[match.home.name] ?? 1000,
-      ratings[match.away.name] ?? 1000,
+      ratings[match.home.name] ?? resolvedModelConfig.fallbackRating,
+      ratings[match.away.name] ?? resolvedModelConfig.fallbackRating,
       playedMatches,
       teamMetrics,
       match.stage,
       random,
-      modelConfig
+      resolvedModelConfig
     );
     winners.set(match.matchNumber, aWins ? match.home : match.away);
   }
@@ -662,8 +664,10 @@ export function toPublishedSimulationResults(
   simResult: SimResult,
   ratings: EloRatings = {},
   simulationsRun = NUM_SIMULATIONS,
-  eliminatedTeams: ReadonlySet<string> = new Set()
+  eliminatedTeams: ReadonlySet<string> = new Set(),
+  modelConfig: Partial<ModelConfig> = DEFAULT_MODEL_CONFIG
 ): PublishedSimulationResult[] {
+  const resolvedModelConfig = createModelConfig(modelConfig);
   const { titles, finals, semiFinals, quarterFinals, roundOf16, groupWins, groupAdvances } = simResult;
 
   return WC2026_TEAMS.map((team) => {
@@ -681,7 +685,7 @@ export function toPublishedSimulationResults(
       code: team.code,
       group: team.group,
       flagEmoji: team.flagEmoji,
-      elo: ratings[team.name] ?? 1000,
+      elo: ratings[team.name] ?? resolvedModelConfig.fallbackRating,
       titlePct: toPercent(titleCount, simulationsRun),
       finalPct: toPercent(finalCount, simulationsRun),
       semiFinalPct: toPercent(semiFinalCount, simulationsRun),

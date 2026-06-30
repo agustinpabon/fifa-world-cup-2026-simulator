@@ -438,6 +438,17 @@ function createLiveDataSignature(matches: readonly PlayedMatch[], eliminatedTeam
   });
 }
 
+function isSameMatchup(
+  match: Pick<PlayedMatch, "homeTeam" | "awayTeam">,
+  homeTeam: string,
+  awayTeam: string
+): boolean {
+  return (
+    (match.homeTeam === homeTeam && match.awayTeam === awayTeam) ||
+    (match.homeTeam === awayTeam && match.awayTeam === homeTeam)
+  );
+}
+
 function shouldRefreshLiveData(force: boolean): boolean {
   if (force) return true;
   if (!cache.liveData.lastRefreshAttemptAt) return true;
@@ -494,18 +505,12 @@ async function refreshLiveDataIfNeeded(
 }
 
 function findMatch(matches: readonly PlayedMatch[], homeTeam: string, awayTeam: string): PlayedMatch | undefined {
-  return matches.find(
-    (m) =>
-      (m.homeTeam === homeTeam && m.awayTeam === awayTeam) ||
-      (m.homeTeam === awayTeam && m.awayTeam === homeTeam)
-  );
+  return matches.find((match) => isSameMatchup(match, homeTeam, awayTeam));
 }
 
 function upsertMatch(matches: PlayedMatch[], match: PlayedMatch): void {
-  const idx = matches.findIndex(
-    (m) =>
-      (m.homeTeam === match.homeTeam && m.awayTeam === match.awayTeam) ||
-      (m.homeTeam === match.awayTeam && m.awayTeam === match.homeTeam)
+  const idx = matches.findIndex((existingMatch) =>
+    isSameMatchup(existingMatch, match.homeTeam, match.awayTeam)
   );
 
   if (idx !== -1) {
@@ -825,7 +830,7 @@ router.post("/oracle/live-match", mutableRateLimiter, (req, res) => {
 
   // Record manual scenario override.
   cache.playedMatches = [
-    ...cache.playedMatches.filter((m) => !(m.homeTeam === homeTeam && m.awayTeam === awayTeam)),
+    ...cache.playedMatches.filter((match) => !isSameMatchup(match, homeTeam, awayTeam)),
     { homeTeam, awayTeam, homeScore, awayScore, source: "custom", status: "finished" },
   ];
 
@@ -848,9 +853,7 @@ router.delete("/oracle/live-match", mutableRateLimiter, (req, res) => {
 
   const { homeTeam, awayTeam } = parsed.data;
 
-  cache.playedMatches = cache.playedMatches.filter(
-    (m) => !(m.homeTeam === homeTeam && m.awayTeam === awayTeam)
-  );
+  cache.playedMatches = cache.playedMatches.filter((match) => !isSameMatchup(match, homeTeam, awayTeam));
 
   // Queue recalculation so the request can return while the last valid simulation stays available.
   scheduleCachedSimulationRecalculation();

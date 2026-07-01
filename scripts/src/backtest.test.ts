@@ -166,6 +166,45 @@ test("runHistoricalBacktest compares attack/defense strength variant against pla
   );
 });
 
+test("runHistoricalBacktest applies XG and strength metric parameter overrides", () => {
+  const matches = [
+    match("2020-01-01", "Elite", "Weak", 5, 0, "FIFA World Cup", true),
+    match("2020-02-01", "Elite", "Weak", 4, 0, "FIFA World Cup", true),
+    match("2020-03-01", "Alpha", "Elite", 1, 0, "Friendly", true),
+    match("2020-04-01", "Alpha", "Elite", 1, 1, "Friendly", true),
+    match("2020-05-01", "Bravo", "Weak", 1, 0, "Friendly", true),
+    match("2020-06-01", "Bravo", "Weak", 1, 1, "Friendly", true),
+    match("2021-01-01", "Alpha", "Bravo", 2, 1, "FIFA World Cup qualification", false),
+  ];
+  const baseline = runHistoricalBacktest(matches, {
+    testStart: "2021-01-01",
+    testEnd: "2021-12-31",
+    initialRating: 1500,
+    sampleForecastLimit: 1,
+  });
+  const tuned = runHistoricalBacktest(matches, {
+    testStart: "2021-01-01",
+    testEnd: "2021-12-31",
+    initialRating: 1500,
+    homeAdvantageElo: 75,
+    maxRecentGoalBlend: 0.4,
+    recentMetricPriorWeight: 10,
+    metricEloScale: 2500,
+    baseXg: 1.75,
+    sampleForecastLimit: 1,
+  });
+
+  assert.equal(tuned.config.homeAdvantageElo, 75);
+  assert.equal(tuned.config.maxRecentGoalBlend, 0.4);
+  assert.equal(tuned.config.recentMetricPriorWeight, 10);
+  assert.equal(tuned.config.metricEloScale, 2500);
+  assert.equal(tuned.config.baseXg, 1.75);
+  assert.notDeepEqual(
+    tuned.sampleForecasts[0]?.probabilities["elo-poisson-strength"],
+    baseline.sampleForecasts[0]?.probabilities["elo-poisson-strength"]
+  );
+});
+
 test("runRollingBacktest selects an active model no worse than the Elo baseline", () => {
   const report = runRollingBacktest(
     [

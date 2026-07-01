@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   ACTIVE_MODEL_VARIANT,
+  DEFAULT_MODEL_CONFIG,
   MODEL_VARIANTS,
   OUTCOMES,
   applyMatchToRatingState,
@@ -32,6 +33,10 @@ export interface BacktestOptions {
   testEnd: string;
   initialRating?: number;
   homeAdvantageElo?: number;
+  maxRecentGoalBlend?: number;
+  recentMetricPriorWeight?: number;
+  metricEloScale?: number;
+  baseXg?: number;
   maxGoals?: number;
   dixonColesRho?: number;
   sampleForecastLimit?: number;
@@ -114,7 +119,7 @@ interface CliOptions extends Partial<BacktestOptions> {
   output: string;
 }
 
-const DEFAULT_WINDOWS: CalibrationWindow[] = [
+export const DEFAULT_BACKTEST_WINDOWS: CalibrationWindow[] = [
   { testStart: "2021-01-01", testEnd: "2021-12-31" },
   { testStart: "2022-01-01", testEnd: "2022-12-31" },
   { testStart: "2023-01-01", testEnd: "2023-12-31" },
@@ -122,18 +127,25 @@ const DEFAULT_WINDOWS: CalibrationWindow[] = [
   { testStart: "2025-01-01", testEnd: "2025-12-31" },
 ];
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const DEFAULT_INPUT = path.join(REPO_ROOT, "artifacts/api-server/src/data/international-results.snapshot.csv");
-const DEFAULT_OUTPUT = path.join(REPO_ROOT, "reports/backtests/latest.json");
+export const DEFAULT_BACKTEST_INPUT = path.join(
+  REPO_ROOT,
+  "artifacts/api-server/src/data/international-results.snapshot.csv"
+);
+export const DEFAULT_BACKTEST_OUTPUT = path.join(REPO_ROOT, "reports/backtests/latest.json");
 const DEFAULT_RESULTS_URL =
   "https://raw.githubusercontent.com/martj42/international_results/master/results.csv";
 
 const DEFAULT_BACKTEST_OPTIONS: NormalizedBacktestOptions = {
   testStart: "2024-01-01",
   testEnd: "2024-12-31",
-  initialRating: 1500,
-  homeAdvantageElo: 75,
-  maxGoals: 10,
-  dixonColesRho: -0.06,
+  initialRating: DEFAULT_MODEL_CONFIG.initialRating,
+  homeAdvantageElo: DEFAULT_MODEL_CONFIG.homeAdvantageElo,
+  maxRecentGoalBlend: DEFAULT_MODEL_CONFIG.maxRecentGoalBlend,
+  recentMetricPriorWeight: DEFAULT_MODEL_CONFIG.recentMetricPriorWeight,
+  metricEloScale: DEFAULT_MODEL_CONFIG.metricEloScale,
+  baseXg: DEFAULT_MODEL_CONFIG.baseXg,
+  maxGoals: DEFAULT_MODEL_CONFIG.maxGoals,
+  dixonColesRho: DEFAULT_MODEL_CONFIG.dixonColesRho,
   sampleForecastLimit: 20,
 };
 
@@ -163,7 +175,9 @@ export function poissonOutcomeProbabilities(
   homeRating: number,
   awayRating: number,
   neutral: boolean,
-  options: Partial<Pick<BacktestOptions, "homeAdvantageElo" | "maxGoals" | "dixonColesRho">> = {}
+  options: Partial<
+    Pick<BacktestOptions, "homeAdvantageElo" | "baseXg" | "maxGoals" | "dixonColesRho">
+  > = {}
 ): OutcomeProbabilities {
   return outcomeProbabilitiesForVariant({
     ratingA: homeRating,
@@ -171,6 +185,7 @@ export function poissonOutcomeProbabilities(
     neutral,
     modelConfig: {
       homeAdvantageElo: options.homeAdvantageElo,
+      baseXg: options.baseXg,
       maxGoals: options.maxGoals,
       dixonColesRho: options.dixonColesRho,
       variant: "elo-poisson-dixon-coles",
@@ -197,6 +212,10 @@ export function runHistoricalBacktest(
     initialRating: normalized.initialRating,
     fallbackRating: normalized.initialRating,
     homeAdvantageElo: normalized.homeAdvantageElo,
+    maxRecentGoalBlend: normalized.maxRecentGoalBlend,
+    recentMetricPriorWeight: normalized.recentMetricPriorWeight,
+    metricEloScale: normalized.metricEloScale,
+    baseXg: normalized.baseXg,
     maxGoals: normalized.maxGoals,
     dixonColesRho: normalized.dixonColesRho,
     drawRate: estimateDrawRate(split.train),
@@ -272,7 +291,7 @@ export function runHistoricalBacktest(
 
 export function runRollingBacktest(
   matches: readonly HistoricalMatch[],
-  windows: readonly CalibrationWindow[] = DEFAULT_WINDOWS,
+  windows: readonly CalibrationWindow[] = DEFAULT_BACKTEST_WINDOWS,
   options: Partial<BacktestOptions> = {}
 ): RollingBacktestReport {
   const reports = windows.map((window) =>
@@ -299,12 +318,12 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   const options = parseCliOptions(argv);
   const raw = options.sourceUrl
     ? await fetchText(options.sourceUrl)
-    : await readFile(path.resolve(options.input ?? DEFAULT_INPUT), "utf8");
+    : await readFile(path.resolve(options.input ?? DEFAULT_BACKTEST_INPUT), "utf8");
   const matches = parseResultsCsv(raw);
   const windows =
     options.testStart && options.testEnd
       ? [{ testStart: options.testStart, testEnd: options.testEnd }]
-      : DEFAULT_WINDOWS;
+      : DEFAULT_BACKTEST_WINDOWS;
   const report = runRollingBacktest(matches, windows, toBacktestOptions(options));
   const outputPath = path.resolve(options.output);
 
@@ -400,8 +419,27 @@ function normalizeBacktestOptions(options: BacktestOptions): NormalizedBacktestO
   if (normalized.testStart > normalized.testEnd) {
     throw new Error(`testStart ${normalized.testStart} must be on or before testEnd ${normalized.testEnd}`);
   }
-  if (normalized.maxGoals < 4) {
+  assertFiniteOption(normalized.initialRating, "initialRating");
+  assertFiniteOption(normalized.homeAdvantageElo, "homeAdvantageElo");
+  assertFiniteOption(normalized.maxRecentGoalBlend, "maxRecentGoalBlend");
+  assertFiniteOption(normalized.recentMetricPriorWeight, "recentMetricPriorWeight");
+  assertFiniteOption(normalized.metricEloScale, "metricEloScale");
+  assertFiniteOption(normalized.baseXg, "baseXg");
+  assertFiniteOption(normalized.dixonColesRho, "dixonColesRho");
+  if (!Number.isInteger(normalized.maxGoals) || normalized.maxGoals < 4) {
     throw new Error("maxGoals must be at least 4");
+  }
+  if (normalized.maxRecentGoalBlend < 0 || normalized.maxRecentGoalBlend > 1) {
+    throw new Error("maxRecentGoalBlend must be between 0 and 1");
+  }
+  if (normalized.recentMetricPriorWeight < 0) {
+    throw new Error("recentMetricPriorWeight must be non-negative");
+  }
+  if (normalized.metricEloScale <= 0) {
+    throw new Error("metricEloScale must be positive");
+  }
+  if (normalized.baseXg <= 0) {
+    throw new Error("baseXg must be positive");
   }
   if (!Number.isInteger(normalized.sampleForecastLimit) || normalized.sampleForecastLimit < 0) {
     throw new Error("sampleForecastLimit must be a non-negative integer");
@@ -410,10 +448,20 @@ function normalizeBacktestOptions(options: BacktestOptions): NormalizedBacktestO
   return normalized;
 }
 
+function assertFiniteOption(value: number, name: string): void {
+  if (!Number.isFinite(value)) {
+    throw new Error(`${name} must be a finite number`);
+  }
+}
+
 function toBacktestOptions(options: CliOptions): Partial<BacktestOptions> {
   return {
     initialRating: options.initialRating,
     homeAdvantageElo: options.homeAdvantageElo,
+    maxRecentGoalBlend: options.maxRecentGoalBlend,
+    recentMetricPriorWeight: options.recentMetricPriorWeight,
+    metricEloScale: options.metricEloScale,
+    baseXg: options.baseXg,
     maxGoals: options.maxGoals,
     dixonColesRho: options.dixonColesRho,
     sampleForecastLimit: options.sampleForecastLimit,
@@ -435,8 +483,8 @@ function summarizeDateRange(matches: readonly HistoricalMatch[]): DateRangeSumma
 
 function parseCliOptions(argv: readonly string[]): CliOptions {
   const options: CliOptions = {
-    input: DEFAULT_INPUT,
-    output: DEFAULT_OUTPUT,
+    input: DEFAULT_BACKTEST_INPUT,
+    output: DEFAULT_BACKTEST_OUTPUT,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -471,6 +519,30 @@ function parseCliOptions(argv: readonly string[]): CliOptions {
       case "--test-end":
         options.testEnd = value;
         break;
+      case "--initial-rating":
+        options.initialRating = parseFiniteNumber(value, key);
+        break;
+      case "--home-advantage-elo":
+        options.homeAdvantageElo = parseFiniteNumber(value, key);
+        break;
+      case "--max-recent-goal-blend":
+        options.maxRecentGoalBlend = parseFiniteNumber(value, key);
+        break;
+      case "--recent-metric-prior-weight":
+        options.recentMetricPriorWeight = parseFiniteNumber(value, key);
+        break;
+      case "--metric-elo-scale":
+        options.metricEloScale = parseFiniteNumber(value, key);
+        break;
+      case "--base-xg":
+        options.baseXg = parseFiniteNumber(value, key);
+        break;
+      case "--max-goals":
+        options.maxGoals = Number.parseInt(value, 10);
+        break;
+      case "--dixon-coles-rho":
+        options.dixonColesRho = parseFiniteNumber(value, key);
+        break;
       case "--sample-forecast-limit":
         options.sampleForecastLimit = Number.parseInt(value, 10);
         break;
@@ -480,6 +552,15 @@ function parseCliOptions(argv: readonly string[]): CliOptions {
   }
 
   return options;
+}
+
+function parseFiniteNumber(value: string, flag: string): number {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`${flag} must be a finite number`);
+  }
+
+  return parsed;
 }
 
 function printSummary(report: RollingBacktestReport, outputPath: string): void {

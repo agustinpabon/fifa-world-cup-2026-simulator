@@ -22,15 +22,20 @@ import {
 
 export const OPTIMIZER_PARAMETER_KEYS = [
   "maxRecentGoalBlend",
+  "recentMetricHalfLifeYears",
   "recentMetricPriorWeight",
   "metricEloScale",
+  "useMarginOfVictoryElo",
+  "marginOfVictoryEloScalingConstant",
   "homeAdvantageElo",
   "baseXg",
 ] as const;
 
 export type OptimizerParameter = (typeof OPTIMIZER_PARAMETER_KEYS)[number];
 export type OptimizerCandidate = Required<Pick<BacktestOptions, OptimizerParameter>>;
-export type OptimizerSearchSpace = Record<OptimizerParameter, readonly number[]>;
+export type OptimizerSearchSpace = {
+  [Key in OptimizerParameter]: readonly NonNullable<BacktestOptions[Key]>[];
+};
 
 export interface OptimizerRunOptions {
   windows?: readonly CalibrationWindow[];
@@ -70,8 +75,15 @@ interface CliOptions {
 
 export const DEFAULT_OPTIMIZER_SEARCH_SPACE: OptimizerSearchSpace = {
   maxRecentGoalBlend: [0.05, DEFAULT_MODEL_CONFIG.maxRecentGoalBlend, 0.2],
+  recentMetricHalfLifeYears: [1, DEFAULT_MODEL_CONFIG.recentMetricHalfLifeYears, 4],
   recentMetricPriorWeight: [30, DEFAULT_MODEL_CONFIG.recentMetricPriorWeight, 120],
   metricEloScale: [3500, DEFAULT_MODEL_CONFIG.metricEloScale, 6500],
+  useMarginOfVictoryElo: [false, DEFAULT_MODEL_CONFIG.useMarginOfVictoryElo],
+  marginOfVictoryEloScalingConstant: [
+    1600,
+    DEFAULT_MODEL_CONFIG.marginOfVictoryEloScalingConstant,
+    3000,
+  ],
   homeAdvantageElo: [50, DEFAULT_MODEL_CONFIG.homeAdvantageElo, 100],
   baseXg: [1.1, DEFAULT_MODEL_CONFIG.baseXg, 1.4],
 };
@@ -259,12 +271,34 @@ function compareOptimizerResults(left: OptimizerResult, right: OptimizerResult):
   return (
     left.logLoss - right.logLoss ||
     left.brierScore - right.brierScore ||
-    left.parameters.baseXg - right.parameters.baseXg ||
-    left.parameters.homeAdvantageElo - right.parameters.homeAdvantageElo ||
-    left.parameters.maxRecentGoalBlend - right.parameters.maxRecentGoalBlend ||
-    left.parameters.recentMetricPriorWeight - right.parameters.recentMetricPriorWeight ||
-    left.parameters.metricEloScale - right.parameters.metricEloScale
+    compareCandidateParameters(left.parameters, right.parameters)
   );
+}
+
+function compareCandidateParameters(left: OptimizerCandidate, right: OptimizerCandidate): number {
+  for (const key of OPTIMIZER_PARAMETER_KEYS) {
+    const comparison = compareParameterValues(left[key], right[key]);
+    if (comparison !== 0) {
+      return comparison;
+    }
+  }
+
+  return 0;
+}
+
+function compareParameterValues(
+  left: OptimizerCandidate[OptimizerParameter],
+  right: OptimizerCandidate[OptimizerParameter]
+): number {
+  if (typeof left === "number" && typeof right === "number") {
+    return left - right;
+  }
+
+  if (typeof left === "boolean" && typeof right === "boolean") {
+    return Number(left) - Number(right);
+  }
+
+  return String(left).localeCompare(String(right));
 }
 
 function validateSearchSpace(searchSpace: OptimizerSearchSpace): void {
@@ -274,6 +308,10 @@ function validateSearchSpace(searchSpace: OptimizerSearchSpace): void {
       throw new Error(`${key} search range must include at least one value`);
     }
     for (const value of values) {
+      if (typeof value === "boolean") {
+        continue;
+      }
+
       if (!Number.isFinite(value)) {
         throw new Error(`${key} search range contains a non-finite value`);
       }
@@ -350,11 +388,23 @@ function parseCliOptions(argv: readonly string[]): CliOptions {
       case "--max-recent-goal-blend":
         options.searchSpace = { ...options.searchSpace, maxRecentGoalBlend: parseNumberList(value, key) };
         break;
+      case "--recent-metric-half-life-years":
+        options.searchSpace = { ...options.searchSpace, recentMetricHalfLifeYears: parseNumberList(value, key) };
+        break;
       case "--recent-metric-prior-weight":
         options.searchSpace = { ...options.searchSpace, recentMetricPriorWeight: parseNumberList(value, key) };
         break;
       case "--metric-elo-scale":
         options.searchSpace = { ...options.searchSpace, metricEloScale: parseNumberList(value, key) };
+        break;
+      case "--use-margin-of-victory-elo":
+        options.searchSpace = { ...options.searchSpace, useMarginOfVictoryElo: parseBooleanList(value, key) };
+        break;
+      case "--margin-of-victory-elo-scaling-constant":
+        options.searchSpace = {
+          ...options.searchSpace,
+          marginOfVictoryEloScalingConstant: parseNumberList(value, key),
+        };
         break;
       case "--home-advantage-elo":
         options.searchSpace = { ...options.searchSpace, homeAdvantageElo: parseNumberList(value, key) };
@@ -407,6 +457,21 @@ function parseNumberList(value: string, flag: string): number[] {
   }
 
   return values;
+}
+
+function parseBooleanList(value: string, flag: string): boolean[] {
+  const values = value.split(",").map((item) => parseBoolean(item.trim(), flag));
+  if (!values.length) {
+    throw new Error(`${flag} must be a comma-separated list of booleans`);
+  }
+
+  return values;
+}
+
+function parseBoolean(value: string, flag: string): boolean {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  throw new Error(`${flag} must be true or false`);
 }
 
 function createSeededRandom(seed: number): () => number {

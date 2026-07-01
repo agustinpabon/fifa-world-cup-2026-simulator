@@ -3,6 +3,8 @@ import test from "node:test";
 
 import { type HistoricalMatch } from "./backtest.js";
 import {
+  DEFAULT_OPTIMIZER_SEARCH_SPACE,
+  OPTIMIZER_PARAMETER_KEYS,
   buildGridCandidates,
   formatOptimizationSummary,
   optimizeBacktestParameters,
@@ -24,8 +26,11 @@ function match(
 test("buildGridCandidates returns a stable Cartesian product of parameter ranges", () => {
   const searchSpace: OptimizerSearchSpace = {
     maxRecentGoalBlend: [0.05, 0.1],
+    recentMetricHalfLifeYears: [2],
     recentMetricPriorWeight: [60],
     metricEloScale: [5000],
+    useMarginOfVictoryElo: [true],
+    marginOfVictoryEloScalingConstant: [2200],
     homeAdvantageElo: [50, 75],
     baseXg: [1.25],
   };
@@ -33,33 +38,61 @@ test("buildGridCandidates returns a stable Cartesian product of parameter ranges
   assert.deepEqual(buildGridCandidates(searchSpace), [
     {
       maxRecentGoalBlend: 0.05,
+      recentMetricHalfLifeYears: 2,
       recentMetricPriorWeight: 60,
       metricEloScale: 5000,
+      useMarginOfVictoryElo: true,
+      marginOfVictoryEloScalingConstant: 2200,
       homeAdvantageElo: 50,
       baseXg: 1.25,
     },
     {
       maxRecentGoalBlend: 0.05,
+      recentMetricHalfLifeYears: 2,
       recentMetricPriorWeight: 60,
       metricEloScale: 5000,
+      useMarginOfVictoryElo: true,
+      marginOfVictoryEloScalingConstant: 2200,
       homeAdvantageElo: 75,
       baseXg: 1.25,
     },
     {
       maxRecentGoalBlend: 0.1,
+      recentMetricHalfLifeYears: 2,
       recentMetricPriorWeight: 60,
       metricEloScale: 5000,
+      useMarginOfVictoryElo: true,
+      marginOfVictoryEloScalingConstant: 2200,
       homeAdvantageElo: 50,
       baseXg: 1.25,
     },
     {
       maxRecentGoalBlend: 0.1,
+      recentMetricHalfLifeYears: 2,
       recentMetricPriorWeight: 60,
       metricEloScale: 5000,
+      useMarginOfVictoryElo: true,
+      marginOfVictoryEloScalingConstant: 2200,
       homeAdvantageElo: 75,
       baseXg: 1.25,
     },
   ]);
+});
+
+test("default optimizer search space covers recency decay and margin-of-victory parameters", () => {
+  assert.deepEqual(OPTIMIZER_PARAMETER_KEYS, [
+    "maxRecentGoalBlend",
+    "recentMetricHalfLifeYears",
+    "recentMetricPriorWeight",
+    "metricEloScale",
+    "useMarginOfVictoryElo",
+    "marginOfVictoryEloScalingConstant",
+    "homeAdvantageElo",
+    "baseXg",
+  ]);
+  assert.ok(DEFAULT_OPTIMIZER_SEARCH_SPACE.recentMetricHalfLifeYears.includes(2));
+  assert.deepEqual(DEFAULT_OPTIMIZER_SEARCH_SPACE.useMarginOfVictoryElo, [false, true]);
+  assert.ok(DEFAULT_OPTIMIZER_SEARCH_SPACE.marginOfVictoryEloScalingConstant.includes(2200));
 });
 
 test("optimizeBacktestParameters ranks candidate configs by rolling log loss then Brier score", () => {
@@ -73,8 +106,11 @@ test("optimizeBacktestParameters ranks candidate configs by rolling log loss the
   ];
   const candidates = buildGridCandidates({
     maxRecentGoalBlend: [0.05, 0.2],
+    recentMetricHalfLifeYears: [2],
     recentMetricPriorWeight: [30],
     metricEloScale: [4000],
+    useMarginOfVictoryElo: [true],
+    marginOfVictoryEloScalingConstant: [2200],
     homeAdvantageElo: [50],
     baseXg: [1.15],
   });
@@ -95,5 +131,7 @@ test("optimizeBacktestParameters ranks candidate configs by rolling log loss the
   assert.ok(Number.isFinite(first.brierScore));
   assert.ok(first.logLoss < second.logLoss || first.brierScore <= second.brierScore);
   assert.match(formatOptimizationSummary(result, 2), /Best parameters/);
+  assert.match(formatOptimizationSummary(result, 2), /recentMetricHalfLifeYears/);
+  assert.match(formatOptimizationSummary(result, 2), /useMarginOfVictoryElo/);
   assert.match(formatOptimizationSummary(result, 2), /baseXg/);
 });

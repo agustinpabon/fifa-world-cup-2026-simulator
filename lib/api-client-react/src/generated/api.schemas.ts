@@ -203,6 +203,12 @@ export interface MatchPredictionRequest {
   homeTeam: string;
   /** @minLength 1 */
   awayTeam: string;
+  /** Whether the match is played at a neutral venue. Defaults to true when omitted. */
+  neutral?: boolean;
+  /** Whether Team 1 receives host/home context. Defaults to false when omitted. */
+  isHomeA?: boolean;
+  /** Whether Team 2 receives host/home context. Defaults to false when omitted. */
+  isHomeB?: boolean;
 }
 
 export interface MatchPredictionData {

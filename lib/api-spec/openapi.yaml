@@ -563,6 +563,15 @@ components:
         awayTeam:
           type: string
           minLength: 1
+        neutral:
+          type: boolean
+          description: Whether the match is played at a neutral venue. Defaults to true when omitted.
+        isHomeA:
+          type: boolean
+          description: Whether Team 1 receives host/home context. Defaults to false when omitted.
+        isHomeB:
+          type: boolean
+          description: Whether Team 2 receives host/home context. Defaults to false when omitted.
       required:
         - homeTeam
         - awayTeam

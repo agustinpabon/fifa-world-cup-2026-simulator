@@ -200,7 +200,10 @@ export const GetSimulationResponse = zod.object({
 
 export const PredictMatchBody = zod.object({
   "homeTeam": zod.string().min(1),
-  "awayTeam": zod.string().min(1)
+  "awayTeam": zod.string().min(1),
+  "neutral": zod.boolean().optional().describe('Whether the match is played at a neutral venue. Defaults to true when omitted.'),
+  "isHomeA": zod.boolean().optional().describe('Whether Team 1 receives host\/home context. Defaults to false when omitted.'),
+  "isHomeB": zod.boolean().optional().describe('Whether Team 2 receives host\/home context. Defaults to false when omitted.')
 })
 
 export const PredictMatchResponse = zod.object({

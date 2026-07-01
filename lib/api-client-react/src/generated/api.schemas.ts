@@ -129,6 +129,101 @@ export interface TeamsResponse {
   meta: OracleResponseMeta;
 }
 
+export interface SnapshotProvenance {
+  sourceName: string;
+  sourceUrl: string;
+  sourceTitle: string;
+  publishedDate: string;
+  accessedDate: string;
+  notes: string[];
+}
+
+export type SquadsExternalProvenanceProvider = typeof SquadsExternalProvenanceProvider[keyof typeof SquadsExternalProvenanceProvider];
+
+
+export const SquadsExternalProvenanceProvider = {
+  'local-snapshot': 'local-snapshot',
+  'api-football': 'api-football',
+} as const;
+
+export type SquadsExternalProvenanceState = typeof SquadsExternalProvenanceState[keyof typeof SquadsExternalProvenanceState];
+
+
+export const SquadsExternalProvenanceState = {
+  disabled: 'disabled',
+  idle: 'idle',
+  fresh: 'fresh',
+  stale: 'stale',
+  error: 'error',
+} as const;
+
+export type SquadsExternalProvenanceFallback = typeof SquadsExternalProvenanceFallback[keyof typeof SquadsExternalProvenanceFallback];
+
+
+export const SquadsExternalProvenanceFallback = {
+  none: 'none',
+  'stale-cache': 'stale-cache',
+  'local-data': 'local-data',
+} as const;
+
+export interface SquadsExternalProvenance {
+  provider: SquadsExternalProvenanceProvider;
+  loadedAt: string | null;
+  sourceEndpoint: string;
+  cacheTtlMs: number | null;
+  stale: boolean;
+  error: string | null;
+  state: SquadsExternalProvenanceState;
+  fallback: SquadsExternalProvenanceFallback;
+}
+
+export type TeamSquadCompletenessStatus = typeof TeamSquadCompletenessStatus[keyof typeof TeamSquadCompletenessStatus];
+
+
+export const TeamSquadCompletenessStatus = {
+  complete: 'complete',
+  incomplete: 'incomplete',
+} as const;
+
+export interface TeamSquadCompleteness {
+  status: TeamSquadCompletenessStatus;
+  expectedPlayerCount: number;
+  playerCount: number;
+  notes: string[];
+}
+
+export interface TeamSquadPlayer {
+  name: string;
+  position: string;
+  shirtNumber?: number;
+  club?: string;
+  source: SnapshotProvenance;
+}
+
+export interface TeamSquad {
+  team: string;
+  code: string;
+  group: string;
+  flagEmoji: string;
+  completeness: TeamSquadCompleteness;
+  source: SnapshotProvenance;
+  players: TeamSquadPlayer[];
+}
+
+export interface SquadsData {
+  schemaVersion: number;
+  version: string;
+  competition: string;
+  provenance: SnapshotProvenance;
+  externalProvenance: SquadsExternalProvenance;
+  squads: TeamSquad[];
+}
+
+export interface SquadsResponse {
+  data: SquadsData;
+  meta: OracleResponseMeta;
+}
+
 /**
  * Binomial Monte Carlo uncertainty for a displayed probability percentage.
  */
@@ -211,6 +306,65 @@ export interface MatchPredictionRequest {
   isHomeB?: boolean;
 }
 
+export type AppliedMatchContextModifierKind = typeof AppliedMatchContextModifierKind[keyof typeof AppliedMatchContextModifierKind];
+
+
+export const AppliedMatchContextModifierKind = {
+  weather: 'weather',
+  availability: 'availability',
+  suspension: 'suspension',
+  manual: 'manual',
+} as const;
+
+export type AppliedMatchContextModifierTarget = typeof AppliedMatchContextModifierTarget[keyof typeof AppliedMatchContextModifierTarget];
+
+
+export const AppliedMatchContextModifierTarget = {
+  teamA: 'teamA',
+  teamB: 'teamB',
+  both: 'both',
+} as const;
+
+export interface MatchContextModifierProvenance {
+  source: string;
+  sourceId?: string;
+  sourceUrl?: string;
+  retrievedAt?: string;
+  notes?: string[];
+}
+
+export interface MatchContextModifierAdjustment {
+  eloDelta: number;
+  xgDelta: number;
+  xgMultiplier: number;
+}
+
+export interface AppliedMatchContextModifier {
+  kind: AppliedMatchContextModifierKind;
+  target: AppliedMatchContextModifierTarget;
+  explanation: string;
+  provenance: MatchContextModifierProvenance;
+  requestedAdjustment: MatchContextModifierAdjustment;
+  appliedAdjustment: MatchContextModifierAdjustment;
+}
+
+export interface MatchContextModifierAggregate {
+  eloDeltaA: number;
+  eloDeltaB: number;
+  xgDeltaA: number;
+  xgDeltaB: number;
+  xgMultiplierA: number;
+  xgMultiplierB: number;
+}
+
+export interface MatchContextModifiersReport {
+  enabled: boolean;
+  applied: AppliedMatchContextModifier[];
+  ignoredCount: number;
+  disabledReason?: string;
+  aggregate: MatchContextModifierAggregate;
+}
+
 export interface MatchPredictionData {
   homeTeam: string;
   awayTeam: string;
@@ -226,6 +380,7 @@ export interface MatchPredictionData {
   homeDefenseStrength: number;
   awayAttackStrength: number;
   awayDefenseStrength: number;
+  experimentalModifiers: MatchContextModifiersReport;
 }
 
 export interface MatchPredictionResponse {
@@ -241,6 +396,7 @@ export const ApiErrorCode = {
   malformed_json: 'malformed_json',
   oracle_not_ready: 'oracle_not_ready',
   match_locked: 'match_locked',
+  fixture_not_found: 'fixture_not_found',
   internal_error: 'internal_error',
 } as const;
 
@@ -367,6 +523,150 @@ export interface LiveMatchesResponse {
   meta: OracleResponseMeta;
 }
 
+export type ExternalDataProviderState = typeof ExternalDataProviderState[keyof typeof ExternalDataProviderState];
+
+
+export const ExternalDataProviderState = {
+  idle: 'idle',
+  fresh: 'fresh',
+  stale: 'stale',
+  error: 'error',
+} as const;
+
+export type ExternalDataFallbackMode = typeof ExternalDataFallbackMode[keyof typeof ExternalDataFallbackMode];
+
+
+export const ExternalDataFallbackMode = {
+  none: 'none',
+  'stale-cache': 'stale-cache',
+  'local-data': 'local-data',
+} as const;
+
+export type MatchWeatherProvenanceProvider = typeof MatchWeatherProvenanceProvider[keyof typeof MatchWeatherProvenanceProvider];
+
+
+export const MatchWeatherProvenanceProvider = {
+  'open-meteo': 'open-meteo',
+} as const;
+
+export interface MatchWeatherProvenance {
+  provider: MatchWeatherProvenanceProvider;
+  loadedAt: string | null;
+  sourceUrl: string;
+  cacheTtlMs: number;
+  stale: boolean;
+  error: string | null;
+  state: ExternalDataProviderState;
+  fallback: ExternalDataFallbackMode;
+}
+
+export type MatchWeatherStatus = typeof MatchWeatherStatus[keyof typeof MatchWeatherStatus];
+
+
+export const MatchWeatherStatus = {
+  available: 'available',
+  unavailable: 'unavailable',
+} as const;
+
+export type MatchWeatherUnavailableReason = typeof MatchWeatherUnavailableReason[keyof typeof MatchWeatherUnavailableReason];
+
+
+export const MatchWeatherUnavailableReason = {
+  outside_forecast_horizon: 'outside_forecast_horizon',
+  venue_unavailable: 'venue_unavailable',
+  provider_error: 'provider_error',
+  forecast_missing: 'forecast_missing',
+} as const;
+
+export interface MatchWeatherForecast {
+  forecastTimeEt: string;
+  temperatureC: number | null;
+  precipitationMm: number | null;
+  rainMm: number | null;
+  windSpeed10mKph: number | null;
+  precipitationProbabilityPct: number | null;
+}
+
+export type MatchWeatherProvider = typeof MatchWeatherProvider[keyof typeof MatchWeatherProvider];
+
+
+export const MatchWeatherProvider = {
+  'open-meteo': 'open-meteo',
+} as const;
+
+export interface MatchWeather {
+  provider: MatchWeatherProvider;
+  status: MatchWeatherStatus;
+  reason?: MatchWeatherUnavailableReason | null;
+  forecast: MatchWeatherForecast | null;
+  provenance: MatchWeatherProvenance;
+}
+
+export type MatchContextFixtureSource = typeof MatchContextFixtureSource[keyof typeof MatchContextFixtureSource];
+
+
+export const MatchContextFixtureSource = {
+  fixture: 'fixture',
+  official: 'official',
+  espn: 'espn',
+  custom: 'custom',
+} as const;
+
+export type MatchContextFixtureStatus = typeof MatchContextFixtureStatus[keyof typeof MatchContextFixtureStatus];
+
+
+export const MatchContextFixtureStatus = {
+  scheduled: 'scheduled',
+  live: 'live',
+  finished: 'finished',
+} as const;
+
+export interface MatchContextFixture {
+  matchNumber?: number;
+  homeTeam: string;
+  awayTeam: string;
+  stage?: string;
+  source?: MatchContextFixtureSource;
+  sourceId?: string;
+  date?: string;
+  kickoffTimeEt?: string;
+  status?: MatchContextFixtureStatus;
+  group?: string;
+  venue?: string;
+  region?: string;
+}
+
+export type MatchContextVenueCountry = typeof MatchContextVenueCountry[keyof typeof MatchContextVenueCountry];
+
+
+export const MatchContextVenueCountry = {
+  Canada: 'Canada',
+  Mexico: 'Mexico',
+  United_States: 'United States',
+} as const;
+
+export interface MatchContextVenue {
+  name: string;
+  stadium: string;
+  city: string;
+  country: MatchContextVenueCountry;
+  region: string;
+  altitudeMeters: number;
+  latitude: number;
+  longitude: number;
+}
+
+export interface MatchContextData {
+  fixture: MatchContextFixture;
+  venue: MatchContextVenue | null;
+  weather: MatchWeather;
+}
+
+export interface MatchContextResponse {
+  data: MatchContextData;
+  meta: OracleResponseMeta;
+}
+
 export interface ClearLiveMatchesData {
   success: boolean;
   message: string;
@@ -384,5 +684,25 @@ export type GetSimulationParams = {
  * @maxLength 128
  */
 seed?: string;
+};
+
+export type PredictMatchParams = {
+/**
+ * Explicit opt-in flag for experimental context modifiers. Defaults to false.
+ */
+experimentalModifiers?: boolean;
+};
+
+export type GetMatchContextParams = {
+/**
+ * Home team name for the scheduled fixture lookup.
+ * @minLength 1
+ */
+homeTeam: string;
+/**
+ * Away team name for the scheduled fixture lookup.
+ * @minLength 1
+ */
+awayTeam: string;
 };
 

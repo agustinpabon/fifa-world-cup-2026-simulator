@@ -55,6 +55,20 @@ paths:
               schema:
                 $ref: "#/components/schemas/TeamsResponse"
 
+  /oracle/squads:
+    get:
+      operationId: getSquads
+      tags: [oracle]
+      summary: Get versioned local World Cup squad snapshots
+      description: Returns the local squad snapshot with per-team completeness and provenance metadata.
+      responses:
+        "200":
+          description: Squads snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SquadsResponse"
+
   /oracle/simulation:
     get:
       operationId: getSimulation
@@ -90,6 +104,14 @@ paths:
       tags: [oracle]
       summary: Predict a head-to-head match
       description: Given two team names, returns win/draw/loss probabilities, expected goals, and most likely scoreline
+      parameters:
+        - name: experimentalModifiers
+          in: query
+          required: false
+          description: Explicit opt-in flag for experimental context modifiers. Defaults to false.
+          schema:
+            type: boolean
+            default: false
       requestBody:
         required: true
         content:
@@ -173,6 +195,47 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LiveMatchesResponse"
+
+  /oracle/match-context:
+    get:
+      operationId: getMatchContext
+      tags: [oracle]
+      summary: Get fixture context with optional Open-Meteo weather
+      description: Returns fixture metadata, resolved venue coordinates, and weather context when the kickoff is inside the forecast horizon.
+      parameters:
+        - name: homeTeam
+          in: query
+          required: true
+          description: Home team name for the scheduled fixture lookup.
+          schema:
+            type: string
+            minLength: 1
+        - name: awayTeam
+          in: query
+          required: true
+          description: Away team name for the scheduled fixture lookup.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Fixture context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchContextResponse"
+        "400":
+          description: Invalid or unknown teams
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No scheduled fixture exists for the requested teams
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /oracle/live-matches/clear:
     post:
@@ -402,6 +465,171 @@ components:
       required:
         - teams
 
+    SnapshotProvenance:
+      type: object
+      properties:
+        sourceName:
+          type: string
+        sourceUrl:
+          type: string
+        sourceTitle:
+          type: string
+        publishedDate:
+          type: string
+        accessedDate:
+          type: string
+        notes:
+          type: array
+          items:
+            type: string
+      required:
+        - sourceName
+        - sourceUrl
+        - sourceTitle
+        - publishedDate
+        - accessedDate
+        - notes
+
+    SquadsResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/SquadsData"
+        meta:
+          $ref: "#/components/schemas/OracleResponseMeta"
+      required:
+        - data
+        - meta
+
+    SquadsData:
+      type: object
+      properties:
+        schemaVersion:
+          type: integer
+        version:
+          type: string
+        competition:
+          type: string
+        provenance:
+          $ref: "#/components/schemas/SnapshotProvenance"
+        externalProvenance:
+          $ref: "#/components/schemas/SquadsExternalProvenance"
+        squads:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamSquad"
+      required:
+        - schemaVersion
+        - version
+        - competition
+        - provenance
+        - externalProvenance
+        - squads
+
+    SquadsExternalProvenance:
+      type: object
+      properties:
+        provider:
+          type: string
+          enum: [local-snapshot, api-football]
+        loadedAt:
+          type: string
+          nullable: true
+        sourceEndpoint:
+          type: string
+        cacheTtlMs:
+          type: integer
+          nullable: true
+        stale:
+          type: boolean
+        error:
+          type: string
+          nullable: true
+        state:
+          type: string
+          enum: [disabled, idle, fresh, stale, error]
+        fallback:
+          type: string
+          enum: [none, stale-cache, local-data]
+      required:
+        - provider
+        - loadedAt
+        - sourceEndpoint
+        - cacheTtlMs
+        - stale
+        - error
+        - state
+        - fallback
+
+    TeamSquadCompletenessStatus:
+      type: string
+      enum: [complete, incomplete]
+
+    TeamSquadCompleteness:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/TeamSquadCompletenessStatus"
+        expectedPlayerCount:
+          type: integer
+        playerCount:
+          type: integer
+        notes:
+          type: array
+          items:
+            type: string
+      required:
+        - status
+        - expectedPlayerCount
+        - playerCount
+        - notes
+
+    TeamSquadPlayer:
+      type: object
+      properties:
+        name:
+          type: string
+        position:
+          type: string
+        shirtNumber:
+          type: integer
+        club:
+          type: string
+        source:
+          $ref: "#/components/schemas/SnapshotProvenance"
+      required:
+        - name
+        - position
+        - source
+
+    TeamSquad:
+      type: object
+      properties:
+        team:
+          type: string
+        code:
+          type: string
+        group:
+          type: string
+        flagEmoji:
+          type: string
+        completeness:
+          $ref: "#/components/schemas/TeamSquadCompleteness"
+        source:
+          $ref: "#/components/schemas/SnapshotProvenance"
+        players:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamSquadPlayer"
+      required:
+        - team
+        - code
+        - group
+        - flagEmoji
+        - completeness
+        - source
+        - players
+
     TeamSimResult:
       type: object
       properties:
@@ -618,6 +846,8 @@ components:
           type: number
         awayDefenseStrength:
           type: number
+        experimentalModifiers:
+          $ref: "#/components/schemas/MatchContextModifiersReport"
       required:
         - homeTeam
         - awayTeam
@@ -633,6 +863,108 @@ components:
         - homeDefenseStrength
         - awayAttackStrength
         - awayDefenseStrength
+        - experimentalModifiers
+
+    MatchContextModifierProvenance:
+      type: object
+      properties:
+        source:
+          type: string
+        sourceId:
+          type: string
+        sourceUrl:
+          type: string
+        retrievedAt:
+          type: string
+        notes:
+          type: array
+          items:
+            type: string
+      required:
+        - source
+
+    MatchContextModifierAdjustment:
+      type: object
+      properties:
+        eloDelta:
+          type: number
+        xgDelta:
+          type: number
+        xgMultiplier:
+          type: number
+      required:
+        - eloDelta
+        - xgDelta
+        - xgMultiplier
+
+    AppliedMatchContextModifier:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [weather, availability, suspension, manual]
+        target:
+          type: string
+          enum: [teamA, teamB, both]
+        explanation:
+          type: string
+        provenance:
+          $ref: "#/components/schemas/MatchContextModifierProvenance"
+        requestedAdjustment:
+          $ref: "#/components/schemas/MatchContextModifierAdjustment"
+        appliedAdjustment:
+          $ref: "#/components/schemas/MatchContextModifierAdjustment"
+      required:
+        - kind
+        - target
+        - explanation
+        - provenance
+        - requestedAdjustment
+        - appliedAdjustment
+
+    MatchContextModifierAggregate:
+      type: object
+      properties:
+        eloDeltaA:
+          type: number
+        eloDeltaB:
+          type: number
+        xgDeltaA:
+          type: number
+        xgDeltaB:
+          type: number
+        xgMultiplierA:
+          type: number
+        xgMultiplierB:
+          type: number
+      required:
+        - eloDeltaA
+        - eloDeltaB
+        - xgDeltaA
+        - xgDeltaB
+        - xgMultiplierA
+        - xgMultiplierB
+
+    MatchContextModifiersReport:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        applied:
+          type: array
+          items:
+            $ref: "#/components/schemas/AppliedMatchContextModifier"
+        ignoredCount:
+          type: integer
+        disabledReason:
+          type: string
+        aggregate:
+          $ref: "#/components/schemas/MatchContextModifierAggregate"
+      required:
+        - enabled
+        - applied
+        - ignoredCount
+        - aggregate
 
     ErrorResponse:
       type: object
@@ -647,7 +979,7 @@ components:
       properties:
         code:
           type: string
-          enum: [invalid_request, malformed_json, oracle_not_ready, match_locked, internal_error]
+          enum: [invalid_request, malformed_json, oracle_not_ready, match_locked, fixture_not_found, internal_error]
         message:
           type: string
         issues:
@@ -838,6 +1170,196 @@ components:
         - provider
         - lastSyncedAt
         - error
+
+    ExternalDataProviderState:
+      type: string
+      enum: [idle, fresh, stale, error]
+
+    ExternalDataFallbackMode:
+      type: string
+      enum: [none, stale-cache, local-data]
+
+    MatchWeatherProvenance:
+      type: object
+      properties:
+        provider:
+          type: string
+          enum: [open-meteo]
+        loadedAt:
+          type: string
+          nullable: true
+        sourceUrl:
+          type: string
+        cacheTtlMs:
+          type: integer
+        stale:
+          type: boolean
+        error:
+          type: string
+          nullable: true
+        state:
+          $ref: "#/components/schemas/ExternalDataProviderState"
+        fallback:
+          $ref: "#/components/schemas/ExternalDataFallbackMode"
+      required:
+        - provider
+        - loadedAt
+        - sourceUrl
+        - cacheTtlMs
+        - stale
+        - error
+        - state
+        - fallback
+
+    MatchWeatherStatus:
+      type: string
+      enum: [available, unavailable]
+
+    MatchWeatherUnavailableReason:
+      type: string
+      enum: [outside_forecast_horizon, venue_unavailable, provider_error, forecast_missing]
+
+    MatchWeatherForecast:
+      type: object
+      properties:
+        forecastTimeEt:
+          type: string
+        temperatureC:
+          type: number
+          nullable: true
+        precipitationMm:
+          type: number
+          nullable: true
+        rainMm:
+          type: number
+          nullable: true
+        windSpeed10mKph:
+          type: number
+          nullable: true
+        precipitationProbabilityPct:
+          type: number
+          nullable: true
+      required:
+        - forecastTimeEt
+        - temperatureC
+        - precipitationMm
+        - rainMm
+        - windSpeed10mKph
+        - precipitationProbabilityPct
+
+    MatchWeather:
+      type: object
+      properties:
+        provider:
+          type: string
+          enum: [open-meteo]
+        status:
+          $ref: "#/components/schemas/MatchWeatherStatus"
+        reason:
+          allOf:
+            - $ref: "#/components/schemas/MatchWeatherUnavailableReason"
+          nullable: true
+        forecast:
+          allOf:
+            - $ref: "#/components/schemas/MatchWeatherForecast"
+          nullable: true
+        provenance:
+          $ref: "#/components/schemas/MatchWeatherProvenance"
+      required:
+        - provider
+        - status
+        - forecast
+        - provenance
+
+    MatchContextFixture:
+      type: object
+      properties:
+        matchNumber:
+          type: integer
+        homeTeam:
+          type: string
+        awayTeam:
+          type: string
+        stage:
+          type: string
+        source:
+          type: string
+          enum: [fixture, official, espn, custom]
+        sourceId:
+          type: string
+        date:
+          type: string
+        kickoffTimeEt:
+          type: string
+        status:
+          type: string
+          enum: [scheduled, live, finished]
+        group:
+          type: string
+        venue:
+          type: string
+        region:
+          type: string
+      required:
+        - homeTeam
+        - awayTeam
+
+    MatchContextVenue:
+      type: object
+      properties:
+        name:
+          type: string
+        stadium:
+          type: string
+        city:
+          type: string
+        country:
+          type: string
+          enum: [Canada, Mexico, United States]
+        region:
+          type: string
+        altitudeMeters:
+          type: number
+        latitude:
+          type: number
+        longitude:
+          type: number
+      required:
+        - name
+        - stadium
+        - city
+        - country
+        - region
+        - altitudeMeters
+        - latitude
+        - longitude
+
+    MatchContextResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/MatchContextData"
+        meta:
+          $ref: "#/components/schemas/OracleResponseMeta"
+      required:
+        - data
+        - meta
+
+    MatchContextData:
+      type: object
+      properties:
+        fixture:
+          $ref: "#/components/schemas/MatchContextFixture"
+        venue:
+          allOf:
+            - $ref: "#/components/schemas/MatchContextVenue"
+          nullable: true
+        weather:
+          $ref: "#/components/schemas/MatchWeather"
+      required:
+        - fixture
+        - venue
+        - weather
 
     ClearLiveMatchesResult:
       type: object

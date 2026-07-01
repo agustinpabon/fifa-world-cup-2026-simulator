@@ -56,10 +56,12 @@ For the current mathematical notes, core equations, parameter options, and valid
 
 > [!WARNING]
 > **Important Disclaimer & Limitations**
-> The model's predictions represent statistical probabilities based purely on historical results and current rating parameters. They are **not official betting odds** and do not promise unmeasured accuracy. The model does not account for rosters, injuries, weather, tactical modifications, resting players, or other real-world factors.
+> The model's predictions represent statistical probabilities based purely on historical results and current rating parameters. They are **not official betting odds** and do not promise unmeasured accuracy. The default published model does not account for rosters, injuries, weather, tactical modifications, resting players, or other real-world factors.
 
 #### Model Verification & Backtesting
 Run `pnpm backtest` to produce a rolling historical report with Brier score, log loss, accuracy, and calibration buckets. The report compares Elo-only, Elo + Poisson, Elo + Poisson + Dixon-Coles, Elo + attack/defense Poisson, and a uniform baseline.
+
+Experimental context modifiers for `weather`, `availability`, `suspension`, and `manual` adjustments are implemented only behind explicit flags. They require traceable `explanation` and `provenance` fields, are off by default, and should not be promoted unless backtests improve both Brier score and log loss.
 
 ---
 
@@ -100,6 +102,18 @@ The World Cup Oracle API manages all scenario modifications using an **ephemeral
 2. **Restart Instability**: Because overrides are stored purely in-memory, any custom results and scenario predictions are temporary. They reset to the loaded fixture schedule and ratings recomputed from historical match data whenever the Express server process restarts or redeploys.
 3. **No Active Database**: Although the workspace contains a Drizzle ORM package structure (`lib/db`), the runtime server is database-free.
 
+### Optional API-Football Squad Provider
+
+Squad data is served from the local versioned snapshot by default. To optionally hydrate squads from API-Football on the backend, set `API_FOOTBALL_KEY` for the API server process. The key is sent only from Express using the `x-apisports-key` header; React never calls API-Football directly.
+
+Optional backend env vars:
+- `API_FOOTBALL_CACHE_TTL_MS` — cache TTL for API-Football squad reads, default `43200000` (12h), minimum 1 minute.
+- `API_FOOTBALL_TIMEOUT_MS` — upstream request timeout in milliseconds, default 3000.
+- `API_FOOTBALL_LEAGUE_ID` / `API_FOOTBALL_SEASON` — team ID discovery parameters, default World Cup league `1` and season `2026`.
+- `API_FOOTBALL_BASE_URL` — override for tests or proxies, default `https://v3.football.api-sports.io`.
+
+If `API_FOOTBALL_KEY` is unset or API-Football returns a rate/error response, `/api/oracle/squads` continues to serve local snapshots and reports provider state in `externalProvenance`. API-Football roster data is informational and does not automatically affect ratings, simulations, or recalculation.
+
 ---
 
 ### API Reference
@@ -109,11 +123,13 @@ The World Cup Oracle API manages all scenario modifications using an **ephemeral
 | GET | `/api/oracle/status` | Readiness check for ratings and simulation cache |
 | GET | `/api/oracle/teams` | Qualified 2026 teams with computed Elo ratings |
 | GET | `/api/oracle/live-matches` | Imported fixture list and any manual scenario overrides |
+| GET | `/api/oracle/squads` | Versioned local squad snapshot, optionally hydrated server-side from API-Football |
 | GET | `/api/oracle/simulation` | Per-team probabilities (Group win, R16, QF, SF, Final, Champion) |
 | POST | `/api/oracle/live-match` | Record a manual scenario override (`{ homeTeam, awayTeam, homeScore, awayScore }`) |
 | DELETE | `/api/oracle/live-match` | Remove a manual scenario override (`{ homeTeam, awayTeam }`) |
 | POST | `/api/oracle/live-matches/clear` | Clear all manual scenario overrides |
 | POST | `/api/oracle/predict-match` | Exact head-to-head probability matrix (`{ homeTeam, awayTeam }`) |
+| POST | `/api/oracle/predict-match?experimentalModifiers=true` | Opt-in experimental modifier evaluation path for a single prediction; default model remains unchanged |
 
 ### Simulation Reproducibility
 
@@ -154,3 +170,11 @@ pnpm backtest
 By default, the command trains chronological Elo ratings on matches before `2024-01-01`, scores matches from `2024-01-01` through `2024-12-31`, and writes a JSON report to `reports/backtests/latest.json`. Each test match is scored before its result updates ratings for later test matches, so the evaluation is rolling-origin and does not use future results.
 
 The report includes multiclass Brier score, log loss, accuracy, confidence calibration buckets, a simple Elo baseline, and a uniform baseline. For pinned local data, pass `-- --input path/to/results.csv`; for another window, pass `-- --test-start YYYY-MM-DD --test-end YYYY-MM-DD`.
+
+To evaluate traceable experimental context modifiers against the active base model:
+
+```bash
+pnpm backtest -- --experimental-modifiers path/to/modifiers.json
+```
+
+The JSON file must contain `sourceName` and `entries[]` with `homeTeam`, `awayTeam`, optional `date`, and typed `modifiers`. Every modifier must include an `explanation` and `provenance.source`. The generated report includes base vs modifier Brier/log-loss deltas and keeps the recommendation disabled unless all enabled windows improve both metrics.

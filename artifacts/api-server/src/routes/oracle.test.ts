@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import app from "../app.js";
+import { createMatchContextService } from "../lib/match-context.js";
 import { WC2026_TEAMS } from "../lib/worldcup2026.js";
 import type { SimResult } from "../lib/simulation.js";
 import {
@@ -14,11 +15,13 @@ import {
   loadBestModelConfigOverrides,
   resetOracleForTests,
   seedReadyOracleForTests,
+  setMatchContextServiceForTests,
   setSimulationRunnerForTests,
 } from "./oracle.js";
 
 let server: Server;
 let baseUrl: string;
+const TEST_API_FOOTBALL_KEY = ["api", "football", "test", "token"].join("-");
 
 before(async () => {
   server = app.listen(0);
@@ -399,6 +402,29 @@ test("main API endpoints return success envelopes", async () => {
   assert.ok(Array.isArray(readData(teamsBody).teams));
   expectOracleReadinessMeta(teamsBody);
 
+  const squadsResponse = await requestGet("/api/oracle/squads");
+  const squadsBody = await readJson(squadsResponse);
+  const squadsData = readData(squadsBody);
+  const squads = squadsData.squads as Array<Record<string, unknown>>;
+  const mexicoSquad = squads.find((squad) => squad.team === "Mexico");
+  const squadsExternalProvenance = squadsData.externalProvenance as Record<string, unknown>;
+  assert.equal(squadsResponse.status, 200);
+  assert.equal(typeof squadsData.version, "string");
+  assert.equal(typeof squadsData.competition, "string");
+  assert.equal(squadsExternalProvenance.provider, "local-snapshot");
+  assert.equal(squadsExternalProvenance.loadedAt, null);
+  assert.equal(squadsExternalProvenance.stale, false);
+  assert.equal(squadsExternalProvenance.error, null);
+  assert.ok(Array.isArray(squads));
+  assert.ok(squads.length > 0);
+  assert.ok(mexicoSquad);
+  assert.equal(mexicoSquad.group, "A");
+  assert.equal(mexicoSquad.code, "MEX");
+  assert.ok(Array.isArray(mexicoSquad.players));
+  assert.ok(mexicoSquad.completeness && typeof mexicoSquad.completeness === "object");
+  assert.ok(mexicoSquad.source && typeof mexicoSquad.source === "object");
+  expectOracleReadinessMeta(squadsBody);
+
   const liveMatchesResponse = await requestGet("/api/oracle/live-matches");
   const liveMatchesBody = await readJson(liveMatchesResponse);
   assert.equal(liveMatchesResponse.status, 200);
@@ -410,6 +436,143 @@ test("main API endpoints return success envelopes", async () => {
   assert.equal(clearResponse.status, 200);
   assert.equal(readData(clearBody).success, true);
   expectOracleReadinessMeta(clearBody);
+});
+
+test("GET /api/oracle/match-context returns fixture weather context without affecting the model", async () => {
+  resetOracleForTests();
+  seedReadyOracleForTests({
+    fixtureMatches: [
+      {
+        matchNumber: 901,
+        homeTeam: "Mexico",
+        awayTeam: "South Africa",
+        homeScore: -1,
+        awayScore: -1,
+        stage: "Group Stage",
+        source: "fixture",
+        sourceId: "fixture:901",
+        date: "2026-06-14",
+        kickoffTimeEt: "15:00",
+        status: "scheduled",
+        group: "A",
+        venue: "Toronto",
+        region: "Eastern Region",
+      },
+    ],
+  });
+  const restoreMatchContextService = setMatchContextServiceForTests(
+    createMatchContextService({
+      now: () => new Date("2026-06-10T12:00:00.000Z"),
+      fetchImpl: async () =>
+        Response.json({
+          hourly: {
+            time: ["2026-06-14T15:00"],
+            temperature_2m: [21.9],
+            precipitation: [0.4],
+            rain: [0.1],
+            wind_speed_10m: [14.2],
+            precipitation_probability: [30],
+          },
+        }),
+    })
+  );
+
+  try {
+    const response = await requestGet("/api/oracle/match-context?homeTeam=Mexico&awayTeam=South%20Africa");
+    const body = await readJson(response);
+    const data = readData(body);
+    const fixture = data.fixture as Record<string, unknown>;
+    const venue = data.venue as Record<string, unknown>;
+    const weather = data.weather as Record<string, unknown>;
+    const forecast = weather.forecast as Record<string, unknown>;
+    const provenance = weather.provenance as Record<string, unknown>;
+
+    assert.equal(response.status, 200);
+    assert.equal(fixture.matchNumber, 901);
+    assert.equal(fixture.venue, "Toronto");
+    assert.equal(venue.stadium, "BMO Field");
+    assert.equal(weather.status, "available");
+    assert.equal(forecast.temperatureC, 21.9);
+    assert.equal(forecast.precipitationMm, 0.4);
+    assert.equal(forecast.rainMm, 0.1);
+    assert.equal(forecast.windSpeed10mKph, 14.2);
+    assert.equal(provenance.provider, "open-meteo");
+    assert.equal(typeof provenance.loadedAt, "string");
+    expectOracleReadinessMeta(body);
+  } finally {
+    restoreMatchContextService();
+    resetOracleForTests();
+  }
+});
+
+test("GET /api/oracle/squads hydrates API-Football squads without affecting simulation state", async () => {
+  resetOracleForTests();
+  const dir = await createTempDir("oracle-api-football-");
+  const restoreRunner = setSimulationRunnerForTests(async () => createMarkedSimResult("Argentina"));
+
+  try {
+    const snapshotPath = await writeTinySnapshot(dir);
+
+    await initOracle({
+      maxAttempts: 0,
+      snapshotPath,
+      liveData: { provider: "disabled" },
+      apiFootball: {
+        apiKey: TEST_API_FOOTBALL_KEY,
+        cacheTtlMs: 12 * 60 * 60_000,
+        teams: ["Mexico"],
+        fetchImpl: async (input) => {
+          const url = new URL(input);
+
+          if (url.pathname === "/teams") {
+            return Response.json({
+              errors: [],
+              response: [{ team: { id: 1001, name: "Mexico", code: "MEX" } }],
+            });
+          }
+
+          return Response.json({
+            errors: [],
+            response: [
+              {
+                team: { id: 1001, name: "Mexico" },
+                players: [{ id: 1, name: "Guillermo Ochoa", number: 13, position: "Goalkeeper" }],
+              },
+            ],
+          });
+        },
+      },
+    });
+
+    const statusBeforeResponse = await requestGet("/api/oracle/status");
+    const statusBefore = readData(await readJson(statusBeforeResponse));
+    const seedBefore = statusBefore.simulationSeed;
+
+    const squadsResponse = await requestGet("/api/oracle/squads");
+    const squadsData = readData(await readJson(squadsResponse));
+    const externalProvenance = squadsData.externalProvenance as Record<string, unknown>;
+    const squads = squadsData.squads as Array<Record<string, unknown>>;
+    const mexicoSquad = squads.find((squad) => squad.team === "Mexico");
+    assert.ok(mexicoSquad);
+    const players = mexicoSquad.players as Array<Record<string, unknown>>;
+
+    assert.equal(squadsResponse.status, 200);
+    assert.equal(externalProvenance.provider, "api-football");
+    assert.equal(externalProvenance.state, "fresh");
+    assert.equal(externalProvenance.stale, false);
+    assert.equal(externalProvenance.error, null);
+    assert.match(String(externalProvenance.sourceEndpoint), /\/players\/squads$/);
+    assert.equal(players[0]?.name, "Guillermo Ochoa");
+
+    const statusAfterResponse = await requestGet("/api/oracle/status");
+    const statusAfter = readData(await readJson(statusAfterResponse));
+    assert.equal(statusAfter.simulationSeed, seedBefore);
+    assert.equal(statusAfter.recalculating, false);
+  } finally {
+    restoreRunner();
+    resetOracleForTests();
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("GET /api/oracle/status exposes an explicit error state when historical data loading fails", async () => {
@@ -463,6 +626,65 @@ test("initOracle loads best model config overrides from optimizer JSON on startu
     assert.equal(response.status, 200);
     assert.equal(data.ready, true);
     assert.equal(data.activeModel, "elo-baseline");
+  } finally {
+    restoreRunner();
+    resetOracleForTests();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("initOracle keeps serving local fixtures when external live data fails and exposes provider metadata", async () => {
+  resetOracleForTests();
+  const dir = await createTempDir("oracle-live-data-");
+  const restoreRunner = setSimulationRunnerForTests(async () => createMarkedSimResult("Argentina"));
+
+  try {
+    const snapshotPath = await writeTinySnapshot(dir);
+
+    await initOracle({
+      maxAttempts: 0,
+      snapshotPath,
+      liveData: {
+        provider: "espn",
+        timeoutMs: 100,
+        refreshIntervalMs: 30_000,
+        fetchImpl: async () => new Response("upstream unavailable", { status: 503 }),
+      },
+    });
+
+    const statusResponse = await requestGet("/api/oracle/status");
+    const statusBody = await readJson(statusResponse);
+    const statusData = readData(statusBody);
+    const liveData = statusData.liveData as Record<string, unknown>;
+
+    assert.equal(statusResponse.status, 200);
+    assert.equal(statusData.ready, true);
+    assert.equal(liveData.provider, "espn");
+    assert.equal(liveData.state, "error");
+    assert.equal(liveData.stale, true);
+    assert.equal(liveData.cacheTtlMs, 30_000);
+    assert.equal(typeof liveData.sourceUrl, "string");
+    assert.equal(liveData.loadedAt, null);
+    assert.equal(typeof liveData.error, "string");
+
+    const liveMatchesResponse = await requestGet("/api/oracle/live-matches");
+    const liveMatchesBody = await readJson(liveMatchesResponse);
+    const liveMatchesData = readData(liveMatchesBody);
+    const playedMatches = liveMatchesData.playedMatches as Array<Record<string, unknown>>;
+    const source = liveMatchesData.source as Record<string, unknown>;
+    const sourceMetadata = source.metadata as Record<string, unknown>;
+
+    assert.equal(liveMatchesResponse.status, 200);
+    assert.ok(playedMatches.length > 0);
+    assert.ok(
+      playedMatches.some(
+        (match) => match.homeTeam === "Mexico" && match.awayTeam === "South Africa"
+      )
+    );
+    assert.equal(source.provider, "espn");
+    assert.equal(sourceMetadata.state, "error");
+    assert.equal(sourceMetadata.stale, true);
+    assert.equal(sourceMetadata.cacheTtlMs, 30_000);
   } finally {
     restoreRunner();
     resetOracleForTests();
@@ -716,6 +938,8 @@ test("POST /api/oracle/predict-match validates valid and invalid payloads", asyn
   assert.equal(validData.homeTeam, "Brazil");
   assert.equal(validData.awayTeam, "Morocco");
   assert.equal(typeof validData.homeWinPct, "number");
+  assert.ok(validData.experimentalModifiers);
+  assert.equal((validData.experimentalModifiers as Record<string, unknown>).enabled, false);
 
   await expectValidationIssue("POST", "/api/oracle/predict-match", {
     homeTeam: "Brazil",
@@ -736,6 +960,51 @@ test("POST /api/oracle/predict-match validates valid and invalid payloads", asyn
     awayTeam: "Morocco",
     neutralSite: true,
   }, "Unrecognized key");
+
+  const invalidFlagResponse = await requestJson(
+    "POST",
+    "/api/oracle/predict-match?experimentalModifiers=maybe",
+    {
+      homeTeam: "Brazil",
+      awayTeam: "Morocco",
+    }
+  );
+  const invalidFlagBody = await readJson(invalidFlagResponse);
+  const invalidFlagError = readError(invalidFlagBody);
+
+  assert.equal(invalidFlagResponse.status, 400);
+  assert.equal(invalidFlagError.code, "invalid_request");
+  assert.ok(JSON.stringify(invalidFlagError.issues).includes("experimentalModifiers"));
+});
+
+test("POST /api/oracle/predict-match reports explicit experimental modifier opt-in", async () => {
+  resetOracleForTests();
+  seedReadyOracleForTests({
+    ratings: {
+      Brazil: 1500,
+      Morocco: 1500,
+    },
+  });
+
+  try {
+    const response = await requestJson(
+      "POST",
+      "/api/oracle/predict-match?experimentalModifiers=true",
+      {
+        homeTeam: "Brazil",
+        awayTeam: "Morocco",
+      }
+    );
+    const data = readData(await readJson(response));
+    const experimentalModifiers = data.experimentalModifiers as Record<string, unknown>;
+
+    assert.equal(response.status, 200);
+    assert.equal(experimentalModifiers.enabled, true);
+    assert.deepEqual(experimentalModifiers.applied, []);
+    assert.equal(experimentalModifiers.ignoredCount, 0);
+  } finally {
+    resetOracleForTests();
+  }
 });
 
 test("POST /api/oracle/predict-match applies venue context fields", async () => {

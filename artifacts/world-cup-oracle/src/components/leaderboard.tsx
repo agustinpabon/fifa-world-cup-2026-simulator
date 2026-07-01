@@ -10,6 +10,7 @@ import { AnimatedNumber } from "@/components/ui/animated-number";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { TeamSquadContext } from "@/components/team-squad-context";
 import { AlertTriangle, Search, ChevronUp, ChevronDown, SlidersHorizontal, Info, Shield, Zap } from "lucide-react";
 
 type ColumnKey = "elo" | "groupWinPct" | "groupAdvancePct" | "roundOf16Pct" | "quarterFinalPct" | "semiFinalPct" | "finalPct" | "titlePct";
@@ -382,7 +383,7 @@ export function Leaderboard() {
                       className="bg-secondary/20 hover:bg-secondary/20 border-b border-card-border"
                     >
                       <td colSpan={11} className="p-4 font-sans">
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 animate-in fade-in duration-300">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 animate-in fade-in duration-300">
                           {/* Profile Card */}
                           <div className="p-4 rounded-lg bg-card/60 border border-card-border flex flex-col justify-center">
                             <div className="flex items-center gap-3 mb-2">
@@ -399,6 +400,8 @@ export function Leaderboard() {
                               {isTitleTie ? "; title odds are statistically tied with the team above." : "."}
                             </div>
                           </div>
+
+                          <TeamSquadContext teamName={team.name} />
 
                           {/* Goal strength multipliers */}
                           <div className="p-4 rounded-lg bg-card/60 border border-card-border">

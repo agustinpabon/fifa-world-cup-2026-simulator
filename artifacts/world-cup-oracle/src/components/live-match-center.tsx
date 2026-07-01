@@ -10,13 +10,22 @@ import {
   getGetSimulationQueryKey,
   getGetOracleStatusQueryKey,
   getGetLiveMatchesQueryKey,
+  getGetSquadsQueryKey,
+  useGetSquads,
+  type TeamSquad,
 } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { getApiErrorMessage } from "@/lib/api-errors";
-import { Activity, Info, RotateCcw, AlertTriangle, Search } from "lucide-react";
+import { Activity, RotateCcw, AlertTriangle, Search } from "lucide-react";
+import { MatchContextPanel } from "@/components/match-context-panel";
+import {
+  getSquadsProviderLabel,
+  getSquadsSourceStatus,
+} from "@/components/team-squad-context";
+import type { SourceStatus } from "@/components/source-status-badge";
 
 interface PlayedMatch {
   matchNumber?: number;
@@ -49,6 +58,13 @@ export function LiveMatchCenter() {
       refetchInterval: 15_000,
     },
   });
+  const { data: squadsResponse, isError: squadsError } = useGetSquads({
+    query: {
+      queryKey: getGetSquadsQueryKey(),
+      retry: false,
+      staleTime: 10 * 60_000,
+    },
+  });
   const { data: oracleStatus } = useGetOracleStatus({
     query: {
       queryKey: getGetOracleStatusQueryKey(),
@@ -68,6 +84,13 @@ export function LiveMatchCenter() {
   const teams = teamsResponse?.data.teams ?? [];
   const playedMatches = (matchesResponse?.data.playedMatches ?? []) as PlayedMatch[];
   const groups = useMemo(() => [...new Set(teams.map((team) => team.group))].sort(), [teams]);
+  const squadsByTeam = useMemo(() => {
+    return new Map((squadsResponse?.data.squads ?? []).map((squad) => [squad.team, squad]));
+  }, [squadsResponse]);
+  const squadsSourceStatus = getSquadsSourceStatus(squadsResponse, squadsError);
+  const squadsProvider = getSquadsProviderLabel(squadsResponse);
+  const squadsLastUpdated =
+    squadsResponse?.data.externalProvenance.loadedAt ?? squadsResponse?.data.provenance.accessedDate ?? null;
 
   useEffect(() => {
     if (groups.length > 0 && !groups.includes(activeGroup)) {
@@ -274,25 +297,6 @@ export function LiveMatchCenter() {
 
   return (
     <div data-testid="match-center" className="space-y-6">
-      {/* Information Banner */}
-      <Card className="border-border/60 bg-secondary/10 shadow-sm overflow-hidden">
-        <CardContent className="p-5 flex gap-4 items-start">
-          <div className="p-2.5 rounded-lg bg-primary/10 border border-primary/20 text-primary shrink-0 hidden sm:block">
-            <Info className="w-5 h-5" />
-          </div>
-          <div className="space-y-1">
-            <h3 className="text-sm font-semibold text-foreground font-sans">
-              How does the Match Center work?
-            </h3>
-            <p className="text-xs text-muted-foreground leading-relaxed font-sans">
-              The Oracle runs <strong>10,000 Monte Carlo simulations</strong> of the World Cup from imported fixture data.
-              You can create manual scenario overrides by entering goals and clicking <strong>Save</strong>.
-              The simulator treats those scores as fixed inputs and recalculates the remaining tournament probabilities.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Progress & Quick Stats Card */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="md:col-span-2 border-border/60 bg-card/45 backdrop-blur-sm">
@@ -479,6 +483,11 @@ export function LiveMatchCenter() {
                   onRecord={(hScore, aScore) => handleRecordMatch(match.homeTeam, match.awayTeam, hScore, aScore)}
                   onDelete={() => handleDeleteMatch(match.homeTeam, match.awayTeam)}
                   getFlag={getFlag}
+                  homeSquad={squadsByTeam.get(match.homeTeam)}
+                  awaySquad={squadsByTeam.get(match.awayTeam)}
+                  squadsProvider={squadsProvider}
+                  squadsSourceStatus={squadsSourceStatus}
+                  squadsLastUpdated={squadsLastUpdated}
                 />
               );
             })}
@@ -499,6 +508,11 @@ interface MatchCardProps {
   onRecord: (homeScore: number, awayScore: number) => Promise<void>;
   onDelete: () => Promise<void>;
   getFlag: (teamName: string) => string;
+  homeSquad?: TeamSquad;
+  awaySquad?: TeamSquad;
+  squadsProvider: string;
+  squadsSourceStatus: SourceStatus;
+  squadsLastUpdated?: string | null;
 }
 
 function MatchCard({
@@ -510,6 +524,11 @@ function MatchCard({
   onRecord,
   onDelete,
   getFlag,
+  homeSquad,
+  awaySquad,
+  squadsProvider,
+  squadsSourceStatus,
+  squadsLastUpdated,
 }: MatchCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [homeInput, setHomeInput] = useState("");
@@ -654,6 +673,15 @@ function MatchCard({
             Winner: <span className="text-foreground font-semibold">{playedMatch.winnerTeam}</span>
           </div>
         )}
+        <MatchContextPanel
+          homeTeam={homeTeam}
+          awayTeam={awayTeam}
+          homeSquad={homeSquad}
+          awaySquad={awaySquad}
+          squadsProvider={squadsProvider}
+          squadsSourceStatus={squadsSourceStatus}
+          squadsLastUpdated={squadsLastUpdated}
+        />
       </div>
     );
   }
@@ -752,6 +780,15 @@ function MatchCard({
           {submitting ? "Saving..." : "Save"}
         </Button>
       </div>
+      <MatchContextPanel
+        homeTeam={homeTeam}
+        awayTeam={awayTeam}
+        homeSquad={homeSquad}
+        awaySquad={awaySquad}
+        squadsProvider={squadsProvider}
+        squadsSourceStatus={squadsSourceStatus}
+        squadsLastUpdated={squadsLastUpdated}
+      />
     </form>
   );
 }

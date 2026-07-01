@@ -148,6 +148,9 @@ test.describe("World Cup Oracle smoke", () => {
     await expect(page.getByTestId("leaderboard-row").first()).toContainText("Argentina");
     await page.getByTestId("leaderboard-row").first().click();
     await expect(page.getByTestId("leaderboard-details")).toContainText("Goal Multipliers");
+    await expect(page.getByTestId("leaderboard-squad-context")).toContainText("Squads");
+    await expect(page.getByTestId("leaderboard-squad-context")).toContainText("Fuente");
+    await expect(page.getByTestId("leaderboard-squad-context")).toContainText("No incluido en el modelo");
 
     await page.getByRole("tab", { name: "Groups" }).click();
     await expect(page.getByTestId("group-standings")).toBeVisible();
@@ -179,6 +182,14 @@ test.describe("World Cup Oracle smoke", () => {
       .first();
 
     await expect(mexicoSouthAfrica).toBeVisible();
+    await expect(mexicoSouthAfrica.getByTestId("match-context-panel")).toContainText("Contexto", {
+      timeout: 20_000,
+    });
+    await expect(mexicoSouthAfrica.getByTestId("match-context-panel")).toContainText("Venue");
+    await expect(mexicoSouthAfrica.getByTestId("match-context-panel")).toContainText("Clima");
+    await expect(mexicoSouthAfrica.getByTestId("match-context-panel")).toContainText("Altitud");
+    await expect(mexicoSouthAfrica.getByTestId("match-context-panel")).toContainText("Fuente");
+    await expect(mexicoSouthAfrica.getByTestId("match-context-panel")).toContainText("No incluido en el modelo");
     await mexicoSouthAfrica.getByTestId("home-score-input").fill("2");
     await mexicoSouthAfrica.getByTestId("away-score-input").fill("1");
 

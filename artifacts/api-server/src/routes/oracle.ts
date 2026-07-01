@@ -14,6 +14,11 @@ import {
 } from "../lib/elo.js";
 import { logger } from "../lib/logger.js";
 import {
+  createMatchContextService,
+  type MatchContextFixture,
+  type MatchContextService,
+} from "../lib/match-context.js";
+import {
   NUM_SIMULATIONS,
   createSeededRng,
   runSimulations,
@@ -23,12 +28,21 @@ import {
   type SimResult,
   type PlayedMatch,
 } from "../lib/simulation.js";
+import { WC2026_SQUADS, type TeamSquad } from "../lib/squads-data.js";
 import {
-  fetchEspnTournamentFeed,
+  createLiveTournamentFeedProvider,
   type FetchLiveTournamentFeedOptions,
+  type LiveDataProvider,
   type LiveDataProviderMetadata,
+  type LiveTournamentFeedProvider,
 } from "../lib/live-results.js";
-import { WC2026_TEAMS } from "../lib/worldcup2026.js";
+import {
+  createOptionalApiFootballSquadsProvider,
+  type ApiFootballSquadsProvider,
+  type ApiFootballSquadsProvenance,
+  type CreateApiFootballSquadsProviderOptions,
+} from "../lib/api-football.js";
+import { getFixtureByTeams, WC2026_TEAMS } from "../lib/worldcup2026.js";
 import { sendApiError, sendApiSuccess, type ApiErrorIssue } from "../lib/api-response.js";
 import { rateLimiter } from "../middlewares/rate-limiter.js";
 
@@ -113,26 +127,49 @@ type SimulationRecalculationSnapshot = {
   modelConfig: ModelConfig;
 };
 type SimulationRunner = (snapshot: SimulationRecalculationSnapshot) => Promise<SimResult>;
-type LiveDataProviderName = "espn" | "disabled";
+type LiveDataProviderName = LiveDataProvider | "disabled";
 type LiveDataOptions = FetchLiveTournamentFeedOptions & {
   provider?: LiveDataProviderName;
   refreshIntervalMs?: number;
 };
 type OracleInitOptions = LoadHistoricalDatasetOptions & {
   liveData?: LiveDataOptions;
+  apiFootball?: CreateApiFootballSquadsProviderOptions;
   bestModelConfigPath?: string | URL;
 };
 type LiveDataCacheState = {
   provider: LiveDataProviderName;
-  refreshIntervalMs: number;
+  cacheTtlMs: number;
   matches: PlayedMatch[];
   eliminatedTeams: Set<string>;
   metadata: LiveDataProviderMetadata | null;
-  lastRefreshAttemptAt: string | null;
-  error: string | null;
   running: boolean;
   signature: string | null;
 };
+type LiveDataStatus = {
+  provider: LiveDataProviderName;
+  state: LiveDataProviderMetadata["state"] | "disabled";
+  loadedAt: string | null;
+  sourceUrl: string | null;
+  standingsUrl: string | null;
+  cacheTtlMs: number;
+  stale: boolean;
+  error: string | null;
+  fallback: LiveDataProviderMetadata["fallback"];
+  matchCount: number;
+  eliminatedTeamCount: number;
+};
+type LocalSquadsProvenance = {
+  provider: "local-snapshot";
+  loadedAt: string | null;
+  sourceEndpoint: string;
+  cacheTtlMs: number | null;
+  stale: boolean;
+  error: string | null;
+  state: "disabled";
+  fallback: "local-data";
+};
+type SquadsDataProvenance = ApiFootballSquadsProvenance | LocalSquadsProvenance;
 
 const matchTeamsSchema = PredictMatchBody.strict().superRefine((payload, ctx) => {
   addTeamValidationIssues(payload, ctx);
@@ -142,6 +179,14 @@ const liveMatchSchema = RecordLiveMatchBody.strict().superRefine((payload, ctx) 
   addScoreValidationIssues("homeScore", payload.homeScore, ctx);
   addScoreValidationIssues("awayScore", payload.awayScore, ctx);
 });
+const matchContextQuerySchema = PredictMatchBody.pick({
+  homeTeam: true,
+  awayTeam: true,
+})
+  .strict()
+  .superRefine((payload, ctx) => {
+    addTeamValidationIssues(payload, ctx);
+  });
 const deleteLiveMatchSchema = DeleteLiveMatchBody.strict().superRefine((payload, ctx) => {
   addTeamValidationIssues(payload, ctx);
 });
@@ -260,6 +305,29 @@ function parseOptionalSeed(seed: unknown): BodyParseResult<string | undefined> {
   return { success: true, data: trimmed };
 }
 
+function parseOptionalBooleanQueryFlag(
+  value: unknown,
+  field: string
+): BodyParseResult<boolean> {
+  if (value === undefined) {
+    return { success: true, data: false };
+  }
+
+  if (Array.isArray(value)) {
+    return { success: false, issues: [{ path: field, message: `${field} must be a single boolean` }] };
+  }
+
+  if (value === true || value === "true") {
+    return { success: true, data: true };
+  }
+
+  if (value === false || value === "false") {
+    return { success: true, data: false };
+  }
+
+  return { success: false, issues: [{ path: field, message: `${field} must be true or false` }] };
+}
+
 // ---- In-memory cache ----
 interface OracleCache {
   ready: boolean;
@@ -297,7 +365,9 @@ function createInitialCache(): OracleCache {
 
 const cache: OracleCache = createInitialCache();
 let simulationRunner: SimulationRunner = runSimulationRecalculationInBatches;
-let liveDataFetchOptions: FetchLiveTournamentFeedOptions = {};
+let liveDataProvider: LiveTournamentFeedProvider | null = null;
+let matchContextService: MatchContextService = createMatchContextService();
+let apiFootballSquadsProvider: ApiFootballSquadsProvider | null = null;
 
 function createInitialRecalculationState(): SimulationRecalculationState {
   return {
@@ -314,12 +384,10 @@ function createInitialRecalculationState(): SimulationRecalculationState {
 function createInitialLiveDataState(): LiveDataCacheState {
   return {
     provider: "disabled",
-    refreshIntervalMs: DEFAULT_LIVE_DATA_REFRESH_INTERVAL_MS,
+    cacheTtlMs: DEFAULT_LIVE_DATA_REFRESH_INTERVAL_MS,
     matches: [],
     eliminatedTeams: new Set(),
     metadata: null,
-    lastRefreshAttemptAt: null,
-    error: null,
     running: false,
     signature: null,
   };
@@ -327,7 +395,7 @@ function createInitialLiveDataState(): LiveDataCacheState {
 
 function configureLiveData(options: LiveDataOptions | undefined): void {
   const provider = options?.provider ?? "espn";
-  const refreshIntervalMs = Math.max(
+  const cacheTtlMs = Math.max(
     1_000,
     Math.trunc(options?.refreshIntervalMs ?? DEFAULT_LIVE_DATA_REFRESH_INTERVAL_MS)
   );
@@ -335,14 +403,26 @@ function configureLiveData(options: LiveDataOptions | undefined): void {
   cache.liveData = {
     ...createInitialLiveDataState(),
     provider,
-    refreshIntervalMs,
+    cacheTtlMs,
   };
-  liveDataFetchOptions = {
-    fetchImpl: options?.fetchImpl,
-    scoreboardUrl: options?.scoreboardUrl,
-    standingsUrl: options?.standingsUrl,
-    timeoutMs: options?.timeoutMs,
-  };
+  liveDataProvider =
+    provider === "disabled"
+      ? null
+      : createLiveTournamentFeedProvider({
+          fetchImpl: options?.fetchImpl,
+          scoreboardUrl: options?.scoreboardUrl,
+          standingsUrl: options?.standingsUrl,
+          timeoutMs: options?.timeoutMs,
+          cacheTtlMs,
+        });
+
+  if (liveDataProvider) {
+    cache.liveData.metadata = liveDataProvider.peek().metadata;
+  }
+}
+
+function configureApiFootballSquads(options: CreateApiFootballSquadsProviderOptions | undefined): void {
+  apiFootballSquadsProvider = createOptionalApiFootballSquadsProvider(options);
 }
 
 function createZeroedSimulationResult(): SimResult {
@@ -465,35 +545,23 @@ function isSameMatchup(
   );
 }
 
-function shouldRefreshLiveData(force: boolean): boolean {
-  if (force) return true;
-  if (!cache.liveData.lastRefreshAttemptAt) return true;
-
-  const lastAttemptAt = new Date(cache.liveData.lastRefreshAttemptAt).getTime();
-  return Date.now() - lastAttemptAt >= cache.liveData.refreshIntervalMs;
-}
-
 async function refreshLiveDataIfNeeded(
   options: { force?: boolean; scheduleRecalculation?: boolean } = {}
 ): Promise<void> {
   const force = options.force ?? false;
   const scheduleRecalculation = options.scheduleRecalculation ?? true;
 
-  if (cache.liveData.provider === "disabled" || cache.liveData.running || !shouldRefreshLiveData(force)) {
+  if (cache.liveData.provider === "disabled" || cache.liveData.running || !liveDataProvider) {
     return;
   }
 
   cache.liveData = {
     ...cache.liveData,
     running: true,
-    lastRefreshAttemptAt: new Date().toISOString(),
   };
 
   try {
-    const feed = await fetchEspnTournamentFeed({
-      ...liveDataFetchOptions,
-      timeoutMs: liveDataFetchOptions.timeoutMs ?? 3_000,
-    });
+    const feed = await liveDataProvider.read({ force });
     const signature = createLiveDataSignature(feed.matches, feed.eliminatedTeams);
     const changed = signature !== cache.liveData.signature;
 
@@ -502,7 +570,6 @@ async function refreshLiveDataIfNeeded(
       matches: feed.matches.map((match) => ({ ...match })),
       eliminatedTeams: new Set(feed.eliminatedTeams),
       metadata: feed.metadata,
-      error: null,
       running: false,
       signature,
     };
@@ -511,10 +578,10 @@ async function refreshLiveDataIfNeeded(
       scheduleCachedSimulationRecalculation();
     }
   } catch (err) {
-    logger.warn({ err }, "Live tournament data refresh failed; using local fixtures");
+    logger.warn({ err }, "Live tournament data provider failed unexpectedly; using local fixtures");
     cache.liveData = {
       ...cache.liveData,
-      error: "Live tournament data refresh failed. Local fixtures and manual overrides remain available.",
+      metadata: liveDataProvider.peek().metadata,
       running: false,
     };
   }
@@ -538,6 +605,56 @@ function upsertMatch(matches: PlayedMatch[], match: PlayedMatch): void {
 
 function isLockedExternalMatch(match: PlayedMatch): boolean {
   return (match.source === "official" || match.source === "espn") && match.status !== "scheduled";
+}
+
+function toMatchContextFixture(match: PlayedMatch): MatchContextFixture | null {
+  if (!match.date || !match.kickoffTimeEt) {
+    return null;
+  }
+
+  return {
+    matchNumber: match.matchNumber,
+    homeTeam: match.homeTeam,
+    awayTeam: match.awayTeam,
+    stage: match.stage,
+    source: match.source,
+    sourceId: match.sourceId,
+    date: match.date,
+    kickoffTimeEt: match.kickoffTimeEt,
+    status: match.status,
+    group: match.group,
+    venue: match.venue,
+    region: match.region,
+  };
+}
+
+function findMatchContextFixture(homeTeam: string, awayTeam: string): MatchContextFixture | null {
+  const cachedFixture = cache.fixtureMatches.find((match) => isSameMatchup(match, homeTeam, awayTeam));
+  const fromCache = cachedFixture ? toMatchContextFixture(cachedFixture) : null;
+
+  if (fromCache) {
+    return fromCache;
+  }
+
+  const fixture = getFixtureByTeams(homeTeam, awayTeam);
+  if (!fixture) {
+    return null;
+  }
+
+  return {
+    matchNumber: fixture.matchNumber,
+    homeTeam: fixture.homeTeam,
+    awayTeam: fixture.awayTeam,
+    stage: fixture.stage,
+    source: "fixture",
+    sourceId: fixture.sourceId,
+    date: fixture.date,
+    kickoffTimeEt: fixture.kickoffTimeEt,
+    status: fixture.status,
+    group: fixture.group,
+    venue: fixture.venue,
+    region: fixture.region,
+  };
 }
 
 async function recalculateCachedSimulation(): Promise<void> {
@@ -723,6 +840,122 @@ function getOracleResponseMeta(): OracleResponseMeta {
   };
 }
 
+function getLiveDataStatus(): LiveDataStatus {
+  if (cache.liveData.provider === "disabled") {
+    return {
+      provider: "disabled",
+      state: "disabled",
+      loadedAt: null,
+      sourceUrl: null,
+      standingsUrl: null,
+      cacheTtlMs: cache.liveData.cacheTtlMs,
+      stale: false,
+      error: null,
+      fallback: "none",
+      matchCount: 0,
+      eliminatedTeamCount: 0,
+    };
+  }
+
+  const metadata = cache.liveData.metadata ?? liveDataProvider?.peek().metadata;
+
+  if (!metadata) {
+    return {
+      provider: cache.liveData.provider,
+      state: "idle",
+      loadedAt: null,
+      sourceUrl: null,
+      standingsUrl: null,
+      cacheTtlMs: cache.liveData.cacheTtlMs,
+      stale: false,
+      error: null,
+      fallback: "none",
+      matchCount: 0,
+      eliminatedTeamCount: 0,
+    };
+  }
+
+  return {
+    provider: metadata.provider,
+    state: metadata.state,
+    loadedAt: metadata.loadedAt,
+    sourceUrl: metadata.sourceUrl,
+    standingsUrl: metadata.standingsUrl,
+    cacheTtlMs: metadata.cacheTtlMs,
+    stale: metadata.stale,
+    error: metadata.error,
+    fallback: metadata.fallback,
+    matchCount: metadata.matchCount,
+    eliminatedTeamCount: metadata.eliminatedTeamCount,
+  };
+}
+
+function getLocalSquadsProvenance(): LocalSquadsProvenance {
+  return {
+    provider: "local-snapshot",
+    loadedAt: null,
+    sourceEndpoint: WC2026_SQUADS.provenance.sourceUrl,
+    cacheTtlMs: null,
+    stale: false,
+    error: null,
+    state: "disabled",
+    fallback: "local-data",
+  };
+}
+
+function formatSquadsData(
+  squads: readonly TeamSquad[],
+  externalProvenance: SquadsDataProvenance
+) {
+  return {
+    schemaVersion: WC2026_SQUADS.schemaVersion,
+    version: WC2026_SQUADS.version,
+    competition: WC2026_SQUADS.competition,
+    provenance: {
+      ...WC2026_SQUADS.provenance,
+      notes: [...WC2026_SQUADS.provenance.notes],
+    },
+    externalProvenance: {
+      ...externalProvenance,
+    },
+    squads: squads.map((squad) => ({
+      team: squad.team,
+      code: squad.code,
+      group: squad.group,
+      flagEmoji: squad.flagEmoji,
+      completeness: {
+        status: squad.completeness.status,
+        expectedPlayerCount: squad.completeness.expectedPlayerCount,
+        playerCount: squad.playerCount,
+        notes: [...squad.completeness.notes],
+      },
+      source: {
+        ...squad.source,
+        notes: [...squad.source.notes],
+      },
+      players: squad.players.map((player) => ({
+        name: player.name,
+        position: player.position,
+        ...(player.shirtNumber !== undefined ? { shirtNumber: player.shirtNumber } : {}),
+        ...(player.club !== undefined ? { club: player.club } : {}),
+        source: {
+          ...player.source,
+          notes: [...player.source.notes],
+        },
+      })),
+    })),
+  };
+}
+
+async function getSquadsData() {
+  if (!apiFootballSquadsProvider) {
+    return formatSquadsData(WC2026_SQUADS.squads, getLocalSquadsProvenance());
+  }
+
+  const snapshot = await apiFootballSquadsProvider.read();
+  return formatSquadsData(snapshot.squads, snapshot.provenance);
+}
+
 function sendOracleSuccess<TData>(res: Response, data: TData) {
   return sendApiSuccess(res, data, getOracleResponseMeta());
 }
@@ -845,7 +1078,11 @@ function formatModelConfigPath(configPath: string | URL): string {
 }
 
 export function resetOracleForTests(): void {
+  matchContextService.clear();
   Object.assign(cache, createInitialCache());
+  liveDataProvider = null;
+  apiFootballSquadsProvider = null;
+  matchContextService = createMatchContextService();
 }
 
 export function setSimulationRunnerForTests(runner: SimulationRunner): () => void {
@@ -854,6 +1091,16 @@ export function setSimulationRunnerForTests(runner: SimulationRunner): () => voi
 
   return () => {
     simulationRunner = previousRunner;
+  };
+}
+
+export function setMatchContextServiceForTests(service: MatchContextService): () => void {
+  const previousService = matchContextService;
+  matchContextService = service;
+
+  return () => {
+    matchContextService.clear();
+    matchContextService = previousService;
   };
 }
 
@@ -900,11 +1147,12 @@ export function seedReadyOracleForTests(
 
 // ---- Initialize on startup ----
 export async function initOracle(options: OracleInitOptions = {}): Promise<void> {
-  const { bestModelConfigPath, liveData, ...datasetOptions } = options;
+  const { apiFootball, bestModelConfigPath, liveData, ...datasetOptions } = options;
 
   cache.ready = false;
   cache.loadingError = null;
   configureLiveData(liveData);
+  configureApiFootballSquads(apiFootball);
 
   try {
     const modelConfigOverrides = await loadBestModelConfigOverrides(bestModelConfigPath);
@@ -943,6 +1191,7 @@ router.get("/oracle/status", (req, res) => {
   const state = getOracleState();
   const recalculating = getIsRecalculating();
   const message = getOracleStatusMessage(state, recalculating);
+  const liveData = getLiveDataStatus();
 
   return sendOracleSuccess(res, {
     state,
@@ -952,10 +1201,11 @@ router.get("/oracle/status", (req, res) => {
     simulationsRun: cache.ready ? NUM_SIMULATIONS : 0,
     simulationSeed: cache.simulationSeed,
     liveMatchesRecorded: cache.playedMatches.length,
-    liveDataProvider: cache.liveData.provider,
+    liveDataProvider: liveData.provider,
     liveDataMatchesLoaded: cache.liveData.matches.length,
-    liveDataLastSyncedAt: cache.liveData.metadata?.loadedAt ?? null,
-    liveDataError: cache.liveData.error,
+    liveDataLastSyncedAt: liveData.loadedAt,
+    liveDataError: liveData.error,
+    liveData,
     eliminatedTeams: [...cache.liveData.eliminatedTeams].sort(),
     recalculating,
     lastUpdated: cache.recalculation.lastUpdated,
@@ -1025,15 +1275,38 @@ router.get("/oracle/live-matches", async (req, res) => {
   if (cache.ready) {
     await refreshLiveDataIfNeeded();
   }
+  const liveData = getLiveDataStatus();
 
   return sendOracleSuccess(res, {
     playedMatches: getMergedPlayedMatches(),
     source: {
-      provider: cache.liveData.provider,
-      lastSyncedAt: cache.liveData.metadata?.loadedAt ?? null,
-      error: cache.liveData.error,
+      provider: liveData.provider,
+      lastSyncedAt: liveData.loadedAt,
+      error: liveData.error,
+      metadata: liveData,
     },
   });
+});
+
+router.get("/oracle/match-context", async (req, res) => {
+  const parsed = parseBody<MatchTeams>(matchContextQuerySchema, req.query);
+
+  if (!parsed.success) {
+    return sendValidationError(res, parsed.issues);
+  }
+
+  const fixture = findMatchContextFixture(parsed.data.homeTeam, parsed.data.awayTeam);
+
+  if (!fixture) {
+    return sendApiError(res, 404, {
+      code: "fixture_not_found",
+      message: `No scheduled fixture found for ${parsed.data.homeTeam} vs ${parsed.data.awayTeam}`,
+    });
+  }
+
+  const context = await matchContextService.getMatchContext(fixture);
+
+  return sendOracleSuccess(res, context);
 });
 
 router.post("/oracle/live-matches/clear", mutableRateLimiter, (req, res) => {
@@ -1058,6 +1331,10 @@ router.get("/oracle/teams", (req, res) => {
   })).sort((a, b) => b.elo - a.elo);
 
   return sendOracleSuccess(res, { teams });
+});
+
+router.get("/oracle/squads", async (req, res) => {
+  return sendOracleSuccess(res, await getSquadsData());
 });
 
 router.get("/oracle/simulation", async (req, res) => {
@@ -1111,19 +1388,30 @@ router.get("/oracle/simulation", async (req, res) => {
 
 router.post("/oracle/predict-match", (req, res) => {
   const parsed = parseBody<MatchPredictionInput>(matchTeamsSchema, req.body);
+  const parsedExperimentalModifiers = parseOptionalBooleanQueryFlag(
+    req.query.experimentalModifiers,
+    "experimentalModifiers"
+  );
 
   if (!parsed.success) {
     return sendValidationError(res, parsed.issues);
   }
 
+  if (!parsedExperimentalModifiers.success) {
+    return sendValidationError(res, parsedExperimentalModifiers.issues);
+  }
+
   const { homeTeam, awayTeam, neutral = true, isHomeA = false, isHomeB = false } = parsed.data;
+  const modelConfig = parsedExperimentalModifiers.data
+    ? { ...cache.modelConfig, experimentalModifiersEnabled: true }
+    : cache.modelConfig;
 
   const eloHome = cache.ratings[homeTeam] ?? cache.modelConfig.fallbackRating;
   const eloAway = cache.ratings[awayTeam] ?? cache.modelConfig.fallbackRating;
   const metricsHome = cache.teamMetrics[homeTeam];
   const metricsAway = cache.teamMetrics[awayTeam];
 
-  const { pWinA, pDraw, pWinB, xgA, xgB, mostLikelyScore } = matchProbabilities(
+  const { pWinA, pDraw, pWinB, xgA, xgB, mostLikelyScore, modifiers } = matchProbabilities(
     eloHome,
     eloAway,
     undefined,
@@ -1133,7 +1421,7 @@ router.post("/oracle/predict-match", (req, res) => {
     isHomeB,
     neutral,
     {},
-    cache.modelConfig
+    modelConfig
   );
 
   return sendOracleSuccess(res, {
@@ -1151,6 +1439,7 @@ router.post("/oracle/predict-match", (req, res) => {
     homeDefenseStrength: metricsHome?.defenseStrength ?? 1.0,
     awayAttackStrength: metricsAway?.attackStrength ?? 1.0,
     awayDefenseStrength: metricsAway?.defenseStrength ?? 1.0,
+    experimentalModifiers: modifiers,
   });
 });
 

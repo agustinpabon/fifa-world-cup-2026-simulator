@@ -31,6 +31,11 @@ export interface ModelConfig {
   metricEloScale: number;
   strengthMin: number;
   strengthMax: number;
+  experimentalModifiersEnabled: boolean;
+  modifierEloDeltaLimit: number;
+  modifierXgDeltaLimit: number;
+  modifierXgMultiplierMin: number;
+  modifierXgMultiplierMax: number;
 }
 
 export const ACTIVE_MODEL_VARIANT: ModelVariant = "elo-poisson-strength";
@@ -57,6 +62,11 @@ export const DEFAULT_MODEL_CONFIG: ModelConfig = {
   metricEloScale: 5000,
   strengthMin: 0.6,
   strengthMax: 1.5,
+  experimentalModifiersEnabled: false,
+  modifierEloDeltaLimit: 150,
+  modifierXgDeltaLimit: 0.75,
+  modifierXgMultiplierMin: 0.6,
+  modifierXgMultiplierMax: 1.4,
 };
 
 export function createModelConfig(overrides: Partial<ModelConfig> = {}): ModelConfig {

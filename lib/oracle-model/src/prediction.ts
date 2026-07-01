@@ -5,8 +5,11 @@ import {
   type ModelConfig,
   type ModelVariant,
 } from "./config.js";
+import { applyMatchContextModifiers } from "./modifiers.js";
 import { expectedEloScore } from "./ratings.js";
 import {
+  type MatchContextModifiers,
+  type MatchContextModifiersReport,
   type MatchPrediction,
   type OutcomeProbabilities,
   OUTCOMES,
@@ -26,10 +29,17 @@ export interface MatchPredictionInput {
   isHomeB?: boolean;
   modelConfig?: Partial<ModelConfig>;
   variant?: ModelVariant;
+  contextModifiers?: MatchContextModifiers;
 }
 
 export interface ExpectedGoalsInput extends MatchPredictionInput {
   useStrengthMetrics?: boolean;
+}
+
+interface ExpectedGoalsResult {
+  xgA: number;
+  xgB: number;
+  modifiers: MatchContextModifiersReport;
 }
 
 export function predictMatch(input: MatchPredictionInput): MatchPrediction {
@@ -38,7 +48,11 @@ export function predictMatch(input: MatchPredictionInput): MatchPrediction {
     ...(input.variant ? { variant: input.variant } : {}),
   });
   const useStrength = usesStrengthMetrics(config.variant);
-  const { xgA, xgB } = expectedGoals({ ...input, modelConfig: config, useStrengthMetrics: useStrength });
+  const { xgA, xgB, modifiers } = expectedGoalsWithModifiers({
+    ...input,
+    modelConfig: config,
+    useStrengthMetrics: useStrength,
+  });
   const baseMatrix = buildScoreProbabilityMatrix(xgA, xgB, {
     maxGoals: config.maxGoals,
     dixonColesRho: config.dixonColesRho,
@@ -49,7 +63,7 @@ export function predictMatch(input: MatchPredictionInput): MatchPrediction {
       ? reweightMatrixToOutcomeProbabilities(baseMatrix, eloOutcomeProbabilities(input, config))
       : baseMatrix;
 
-  return summarizePrediction(scoreMatrix);
+  return summarizePrediction(scoreMatrix, modifiers);
 }
 
 export function sampleMatchScore(input: MatchPredictionInput, random: Rng): { goalsA: number; goalsB: number } {
@@ -83,13 +97,24 @@ export function outcomeProbabilitiesForVariant(input: MatchPredictionInput): Out
 }
 
 export function expectedGoals(input: ExpectedGoalsInput): { xgA: number; xgB: number } {
+  const { xgA, xgB } = expectedGoalsWithModifiers(input);
+
+  return { xgA, xgB };
+}
+
+function expectedGoalsWithModifiers(input: ExpectedGoalsInput): ExpectedGoalsResult {
   const config = createModelConfig(input.modelConfig);
+  const modifiers = applyMatchContextModifiers(input.contextModifiers, config);
   const bothMarkedHome = input.isHomeA && input.isHomeB;
   const effectiveRatingA =
     input.ratingA +
+    modifiers.aggregate.eloDeltaA +
     (input.neutral === false ? config.homeAdvantageElo : 0) +
     (input.isHomeA && !bothMarkedHome ? config.hostBoost : 0);
-  const effectiveRatingB = input.ratingB + (input.isHomeB && !bothMarkedHome ? config.hostBoost : 0);
+  const effectiveRatingB =
+    input.ratingB +
+    modifiers.aggregate.eloDeltaB +
+    (input.isHomeB && !bothMarkedHome ? config.hostBoost : 0);
   const diff = (effectiveRatingA - effectiveRatingB) / config.eloScale;
   const ratio = Math.min(Math.max(Math.sqrt(Math.pow(10, diff)), 0.15), 6.5);
   const total = config.baseXg * 2;
@@ -101,7 +126,10 @@ export function expectedGoals(input: ExpectedGoalsInput): { xgA: number; xgB: nu
     xgB *= input.metricsB.attackStrength * input.metricsA.defenseStrength;
   }
 
-  return { xgA: Math.max(0.05, xgA), xgB: Math.max(0.05, xgB) };
+  xgA = xgA * modifiers.aggregate.xgMultiplierA + modifiers.aggregate.xgDeltaA;
+  xgB = xgB * modifiers.aggregate.xgMultiplierB + modifiers.aggregate.xgDeltaB;
+
+  return { xgA: Math.max(0.05, xgA), xgB: Math.max(0.05, xgB), modifiers };
 }
 
 export function buildScoreProbabilityMatrix(
@@ -171,12 +199,17 @@ export function normalizeOutcomeProbabilities(probabilities: OutcomeProbabilitie
 }
 
 function eloOutcomeProbabilities(input: MatchPredictionInput, config: ModelConfig): OutcomeProbabilities {
+  const modifiers = applyMatchContextModifiers(input.contextModifiers, config);
   const bothMarkedHome = input.isHomeA && input.isHomeB;
   const effectiveRatingA =
     input.ratingA +
+    modifiers.aggregate.eloDeltaA +
     (input.neutral === false ? config.homeAdvantageElo : 0) +
     (input.isHomeA && !bothMarkedHome ? config.hostBoost : 0);
-  const effectiveRatingB = input.ratingB + (input.isHomeB && !bothMarkedHome ? config.hostBoost : 0);
+  const effectiveRatingB =
+    input.ratingB +
+    modifiers.aggregate.eloDeltaB +
+    (input.isHomeB && !bothMarkedHome ? config.hostBoost : 0);
   const expectedA = expectedEloScore(effectiveRatingA, effectiveRatingB);
   const decisiveRate = 1 - config.drawRate;
 
@@ -213,7 +246,10 @@ function reweightMatrixToOutcomeProbabilities(
   }));
 }
 
-function summarizePrediction(scoreMatrix: readonly ScoreProbability[]): MatchPrediction {
+function summarizePrediction(
+  scoreMatrix: readonly ScoreProbability[],
+  modifiers: MatchContextModifiersReport
+): MatchPrediction {
   let pWinA = 0;
   let pDraw = 0;
   let pWinB = 0;
@@ -248,6 +284,7 @@ function summarizePrediction(scoreMatrix: readonly ScoreProbability[]): MatchPre
     xgB: Math.round(matrixXgB * 100) / 100,
     mostLikelyScore: `${mostLikelyCell.goalsA}-${mostLikelyCell.goalsB}`,
     scoreMatrix: [...scoreMatrix],
+    modifiers,
   };
 }
 

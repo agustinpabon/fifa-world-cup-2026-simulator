@@ -223,6 +223,55 @@ test("runHistoricalBacktest applies XG and strength metric parameter overrides",
   );
 });
 
+test("runHistoricalBacktest can compare base forecasts against opt-in context modifiers", () => {
+  const report = runHistoricalBacktest(
+    [
+      match("2020-01-01", "Alpha", "Beta", 2, 0, "Friendly", false),
+      match("2020-02-01", "Gamma", "Delta", 0, 0, "Friendly", true),
+      match("2021-01-01", "Alpha", "Gamma", 0, 1, "Friendly", false),
+      match("2021-02-01", "Beta", "Delta", 2, 0, "Friendly", false),
+    ],
+    {
+      testStart: "2021-01-01",
+      testEnd: "2021-12-31",
+      initialRating: 1500,
+      experimentalModifiersEnabled: true,
+      experimentalModifierProvider: (candidate) => ({
+        manual: [
+          {
+            target: "teamA",
+            adjustments: { eloDelta: 80, xgMultiplier: 1.2 },
+            explanation: `Synthetic boost for ${candidate.homeTeam}; intentionally not assumed valid.`,
+            provenance: {
+              source: "unit-test",
+              sourceId: `${candidate.date}:${candidate.homeTeam}:${candidate.awayTeam}`,
+            },
+          },
+        ],
+      }),
+    }
+  );
+
+  assert.equal(report.experimentalModifiers.enabled, true);
+  assert.equal(report.experimentalModifiers.baseModel, ACTIVE_MODEL_VARIANT);
+  assert.equal(report.experimentalModifiers.appliedModifierCount, 2);
+  assert.ok(report.experimentalModifiers.metrics);
+  assert.equal(report.experimentalModifiers.metrics.base.matches, 2);
+  assert.equal(report.experimentalModifiers.metrics.withModifiers.matches, 2);
+  assert.equal(
+    report.experimentalModifiers.metrics.delta.brierScore,
+    report.experimentalModifiers.metrics.withModifiers.brierScore -
+      report.experimentalModifiers.metrics.base.brierScore
+  );
+  assert.equal(
+    report.experimentalModifiers.metrics.delta.logLoss,
+    report.experimentalModifiers.metrics.withModifiers.logLoss -
+      report.experimentalModifiers.metrics.base.logLoss
+  );
+  assert.equal(report.sampleForecasts[0]?.experimentalModifiers?.enabled, true);
+  assert.equal(report.sampleForecasts[0]?.experimentalModifiers?.applied.length, 1);
+});
+
 test("runRollingBacktest selects an active model no worse than the Elo baseline", () => {
   const report = runRollingBacktest(
     [
@@ -248,4 +297,40 @@ test("runRollingBacktest selects an active model no worse than the Elo baseline"
       window.metrics[report.activeModel].logLoss <= window.metrics["elo-baseline"].logLoss
     );
   }
+});
+
+test("runRollingBacktest keeps experimental modifiers disabled unless every enabled window improves metrics", () => {
+  const report = runRollingBacktest(
+    [
+      match("2020-01-01", "Alpha", "Beta", 2, 0, "Friendly", false),
+      match("2020-02-01", "Gamma", "Delta", 0, 0, "Friendly", true),
+      match("2021-01-01", "Alpha", "Gamma", 0, 1, "Friendly", false),
+      match("2021-02-01", "Beta", "Delta", 2, 0, "Friendly", false),
+      match("2022-01-01", "Alpha", "Delta", 0, 1, "Friendly", false),
+      match("2022-02-01", "Gamma", "Beta", 2, 0, "Friendly", false),
+    ],
+    [
+      { testStart: "2021-01-01", testEnd: "2021-12-31" },
+      { testStart: "2022-01-01", testEnd: "2022-12-31" },
+    ],
+    {
+      sampleForecastLimit: 0,
+      experimentalModifiersEnabled: true,
+      experimentalModifierProvider: (candidate) => ({
+        manual: [
+          {
+            target: "teamA",
+            adjustments: { eloDelta: 80, xgMultiplier: 1.2 },
+            explanation: `Synthetic home-side boost for ${candidate.homeTeam}; validation fixture only.`,
+            provenance: { source: "unit-test", sourceId: candidate.date },
+          },
+        ],
+      }),
+    }
+  );
+
+  assert.equal(report.experimentalModifiers.enabled, true);
+  assert.equal(report.experimentalModifiers.windowsEvaluated, 2);
+  assert.equal(report.experimentalModifiers.recommendation, "keep-disabled");
+  assert.match(report.experimentalModifiers.policy, /disabled by default/i);
 });

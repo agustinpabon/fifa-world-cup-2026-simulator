@@ -9,8 +9,12 @@ import {
 import {
   DEFAULT_MODEL_CONFIG,
   createModelConfig,
+  mirrorMatchContextModifiers,
+  mirrorMatchContextModifiersReport,
   predictMatch,
   sampleMatchScore,
+  type MatchContextModifiers,
+  type MatchContextModifiersReport,
   type MatchPrediction,
   type ModelConfig,
 } from "@workspace/oracle-model";
@@ -99,7 +103,19 @@ export interface MatchContextRatingResult {
   adjustmentsB: MatchContextRatingAdjustments;
 }
 
-export type MatchPredictionContext = Omit<MatchContextRatingInput, "ratingA" | "ratingB">;
+export type MatchPredictionContext = Omit<MatchContextRatingInput, "ratingA" | "ratingB"> & {
+  modifiers?: MatchContextModifiers;
+};
+
+export interface MatchProbabilitiesResult {
+  pWinA: number;
+  pDraw: number;
+  pWinB: number;
+  xgA: number;
+  xgB: number;
+  mostLikelyScore: string;
+  modifiers: MatchContextModifiersReport;
+}
 
 function parseUtcDate(date: string): number | null {
   const timestamp = Date.parse(`${date}T00:00:00.000Z`);
@@ -292,6 +308,7 @@ function simulateMatch(
       isHomeA,
       isHomeB,
       modelConfig,
+      contextModifiers: matchContext.modifiers,
     },
     random
   );
@@ -347,7 +364,7 @@ export function matchProbabilities(
   _options: RandomSourceOptions = {},
   modelConfig: Partial<ModelConfig> = DEFAULT_MODEL_CONFIG,
   matchContext: MatchPredictionContext = {}
-): { pWinA: number; pDraw: number; pWinB: number; xgA: number; xgB: number; mostLikelyScore: string } {
+): MatchProbabilitiesResult {
   const adjustedRatings = applyMatchContextRatingAdjustments({
     ratingA: eloA,
     ratingB: eloB,
@@ -364,6 +381,7 @@ export function matchProbabilities(
         isHomeA: true,
         isHomeB: false,
         modelConfig,
+        contextModifiers: mirrorMatchContextModifiers(matchContext.modifiers),
       })
     : predictMatch({
         ratingA: adjustedRatings.ratingA,
@@ -374,6 +392,7 @@ export function matchProbabilities(
         isHomeA,
         isHomeB,
         modelConfig,
+        contextModifiers: matchContext.modifiers,
       });
 
   return teamBHasNonNeutralHomeAdvantage
@@ -383,7 +402,7 @@ export function matchProbabilities(
 
 function summarizeMatchPrediction(
   prediction: MatchPrediction
-): { pWinA: number; pDraw: number; pWinB: number; xgA: number; xgB: number; mostLikelyScore: string } {
+): MatchProbabilitiesResult {
   return {
     pWinA: prediction.probabilities.pWinA,
     pDraw: prediction.probabilities.pDraw,
@@ -391,12 +410,13 @@ function summarizeMatchPrediction(
     xgA: prediction.xgA,
     xgB: prediction.xgB,
     mostLikelyScore: prediction.mostLikelyScore,
+    modifiers: prediction.modifiers,
   };
 }
 
 function summarizeMirroredMatchPrediction(
   prediction: MatchPrediction
-): { pWinA: number; pDraw: number; pWinB: number; xgA: number; xgB: number; mostLikelyScore: string } {
+): MatchProbabilitiesResult {
   return {
     pWinA: prediction.probabilities.pWinB,
     pDraw: prediction.probabilities.pDraw,
@@ -404,6 +424,7 @@ function summarizeMirroredMatchPrediction(
     xgA: prediction.xgB,
     xgB: prediction.xgA,
     mostLikelyScore: reverseScoreline(prediction.mostLikelyScore),
+    modifiers: mirrorMatchContextModifiersReport(prediction.modifiers),
   };
 }
 

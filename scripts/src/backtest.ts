@@ -12,13 +12,16 @@ import {
   describeModelVariant,
   estimateDrawRate,
   getRating,
+  predictMatch,
   outcomeForScore,
   outcomeProbabilitiesForVariant,
   parseResultsCsv,
   scoreForecasts,
   summarizeStrengthMetrics,
   trainRatingState,
+  type AppliedMatchContextModifier,
   type HistoricalMatch,
+  type MatchContextModifiers,
   type MetricSummary,
   type ModelVariant,
   type Outcome,
@@ -43,6 +46,9 @@ export interface BacktestOptions {
   maxGoals?: number;
   dixonColesRho?: number;
   sampleForecastLimit?: number;
+  experimentalModifiersEnabled?: boolean;
+  experimentalModifierSource?: BacktestModifierSource;
+  experimentalModifierProvider?: BacktestModifierProvider;
 }
 
 export interface BacktestSplit {
@@ -63,16 +69,88 @@ export interface ForecastSample {
   score: string;
   actual: Outcome;
   probabilities: Record<BacktestModelKey, OutcomeProbabilities>;
+  experimentalModifiers?: ForecastSampleModifiers;
 }
 
 export type BacktestModelKey = ModelVariant | "uniform-baseline";
 
+export type BacktestModifierProvider = (match: HistoricalMatch) => MatchContextModifiers | undefined;
+
+export interface BacktestModifierSourceEntry {
+  date?: string;
+  homeTeam: string;
+  awayTeam: string;
+  modifiers: MatchContextModifiers;
+}
+
+export interface BacktestModifierSource {
+  sourceName: string;
+  generatedAt?: string;
+  notes?: readonly string[];
+  entries: readonly BacktestModifierSourceEntry[];
+}
+
+export interface BacktestModifierSourceSummary {
+  sourceName: string;
+  generatedAt: string | null;
+  entries: number;
+}
+
+export interface ForecastSampleModifiers {
+  enabled: boolean;
+  baseModel: ModelVariant;
+  probabilities: OutcomeProbabilities;
+  applied: AppliedMatchContextModifier[];
+}
+
+export interface ExperimentalModifiersMetrics {
+  base: MetricSummary;
+  withModifiers: MetricSummary;
+  delta: {
+    brierScore: number;
+    logLoss: number;
+    accuracy: number;
+  };
+}
+
+export interface WindowExperimentalModifiersReport {
+  enabled: boolean;
+  baseModel: ModelVariant;
+  policy: string;
+  source: BacktestModifierSourceSummary | null;
+  appliedModifierCount: number;
+  sampleApplications: Array<{
+    date: string;
+    homeTeam: string;
+    awayTeam: string;
+    applied: AppliedMatchContextModifier[];
+  }>;
+  metrics: ExperimentalModifiersMetrics | null;
+}
+
+export type WindowBacktestConfig = Omit<
+  NormalizedBacktestOptions,
+  "experimentalModifierSource" | "experimentalModifierProvider"
+> & {
+  activeModel: ModelVariant;
+  rollingUpdate: true;
+  experimentalModifierSource: BacktestModifierSourceSummary | null;
+};
+
+export interface RollingExperimentalModifiersSummary {
+  enabled: boolean;
+  policy: string;
+  recommendation: "not-evaluated" | "eligible-for-review" | "keep-disabled";
+  windowsEvaluated: number;
+  windowsImprovedOnBrier: number;
+  windowsImprovedOnLogLoss: number;
+  averageBrierDelta: number | null;
+  averageLogLossDelta: number | null;
+}
+
 export interface WindowBacktestReport {
   methodology: string;
-  config: Required<BacktestOptions> & {
-    activeModel: ModelVariant;
-    rollingUpdate: true;
-  };
+  config: WindowBacktestConfig;
   dataset: {
     totalMatches: number;
     trainMatches: number;
@@ -82,6 +160,7 @@ export interface WindowBacktestReport {
     testDateRange: DateRangeSummary;
   };
   metrics: Record<BacktestModelKey, MetricSummary>;
+  experimentalModifiers: WindowExperimentalModifiersReport;
   sampleForecasts: ForecastSample[];
 }
 
@@ -101,11 +180,12 @@ export interface ModelSelectionSummary {
 }
 
 export interface RollingBacktestReport {
-  reportVersion: 3;
+  reportVersion: 4;
   methodology: string;
   activeModel: ModelVariant;
   models: Record<BacktestModelKey, string>;
   selection: ModelSelectionSummary;
+  experimentalModifiers: RollingExperimentalModifiersSummary;
   windows: WindowBacktestReport[];
 }
 
@@ -114,11 +194,18 @@ interface DateRangeSummary {
   end: string | null;
 }
 
-interface NormalizedBacktestOptions extends Required<BacktestOptions> {}
+interface NormalizedBacktestOptions
+  extends Required<
+    Omit<BacktestOptions, "experimentalModifierSource" | "experimentalModifierProvider">
+  > {
+  experimentalModifierSource?: BacktestModifierSource;
+  experimentalModifierProvider?: BacktestModifierProvider;
+}
 
 interface CliOptions extends Partial<BacktestOptions> {
   input?: string;
   sourceUrl?: string;
+  experimentalModifiersPath?: string;
   output: string;
 }
 
@@ -137,6 +224,8 @@ export const DEFAULT_BACKTEST_INPUT = path.join(
 export const DEFAULT_BACKTEST_OUTPUT = path.join(REPO_ROOT, "reports/backtests/latest.json");
 const DEFAULT_RESULTS_URL =
   "https://raw.githubusercontent.com/martj42/international_results/master/results.csv";
+const EXPERIMENTAL_MODIFIER_POLICY =
+  "Experimental match context modifiers are feature-flagged disabled by default and should not be promoted unless enabled backtests improve both Brier score and log loss in every evaluated window.";
 
 const DEFAULT_BACKTEST_OPTIONS: NormalizedBacktestOptions = {
   testStart: "2024-01-01",
@@ -153,6 +242,7 @@ const DEFAULT_BACKTEST_OPTIONS: NormalizedBacktestOptions = {
   maxGoals: DEFAULT_MODEL_CONFIG.maxGoals,
   dixonColesRho: DEFAULT_MODEL_CONFIG.dixonColesRho,
   sampleForecastLimit: 20,
+  experimentalModifiersEnabled: false,
 };
 
 const UNIFORM_PROBABILITIES: OutcomeProbabilities = {
@@ -231,7 +321,11 @@ export function runHistoricalBacktest(
   });
   let state = trainRatingState(split.train, { ...baseConfig, referenceYear });
   const forecasts = createForecastBuckets();
+  const experimentalBaseForecasts: ScoredForecast[] = [];
+  const experimentalModifierForecasts: ScoredForecast[] = [];
+  const sampleApplications: WindowExperimentalModifiersReport["sampleApplications"] = [];
   const sampleForecasts: ForecastSample[] = [];
+  let appliedModifierCount = 0;
 
   for (const match of split.test) {
     const homeRating = getRating(state.ratings, match.homeTeam, baseConfig.initialRating);
@@ -256,9 +350,42 @@ export function runHistoricalBacktest(
       ...probabilities,
       "uniform-baseline": UNIFORM_PROBABILITIES,
     };
+    const experimentalModifiers = normalized.experimentalModifiersEnabled
+      ? evaluateExperimentalModifiers({
+          match,
+          baseConfig,
+          activeProbabilities: probabilities[ACTIVE_MODEL_VARIANT],
+          homeRating,
+          awayRating,
+          homeMetrics,
+          awayMetrics,
+          modifiers: getBacktestModifiers(match, normalized),
+        })
+      : null;
 
     for (const model of Object.keys(allProbabilities) as BacktestModelKey[]) {
       forecasts[model].push({ probabilities: allProbabilities[model], actual });
+    }
+
+    if (experimentalModifiers) {
+      experimentalBaseForecasts.push({
+        probabilities: experimentalModifiers.baseProbabilities,
+        actual,
+      });
+      experimentalModifierForecasts.push({
+        probabilities: experimentalModifiers.probabilities,
+        actual,
+      });
+      appliedModifierCount += experimentalModifiers.applied.length;
+
+      if (experimentalModifiers.applied.length > 0 && sampleApplications.length < normalized.sampleForecastLimit) {
+        sampleApplications.push({
+          date: match.date,
+          homeTeam: match.homeTeam,
+          awayTeam: match.awayTeam,
+          applied: experimentalModifiers.applied,
+        });
+      }
     }
 
     if (sampleForecasts.length < normalized.sampleForecastLimit) {
@@ -269,6 +396,16 @@ export function runHistoricalBacktest(
         score: `${match.homeScore}-${match.awayScore}`,
         actual,
         probabilities: allProbabilities,
+        ...(experimentalModifiers
+          ? {
+              experimentalModifiers: {
+                enabled: true,
+                baseModel: ACTIVE_MODEL_VARIANT,
+                probabilities: experimentalModifiers.probabilities,
+                applied: experimentalModifiers.applied,
+              },
+            }
+          : {}),
       });
     }
 
@@ -279,9 +416,10 @@ export function runHistoricalBacktest(
     methodology:
       "Rolling-origin historical match backtest: train ratings before the window, score each test match before applying that result, and evaluate calibrated home/draw/away probabilities.",
     config: {
-      ...normalized,
+      ...toSerializableBacktestConfig(normalized),
       activeModel: ACTIVE_MODEL_VARIANT,
       rollingUpdate: true,
+      experimentalModifierSource: summarizeModifierSource(normalized.experimentalModifierSource),
     },
     dataset: {
       totalMatches: matches.length,
@@ -294,6 +432,14 @@ export function runHistoricalBacktest(
     metrics: Object.fromEntries(
       (Object.keys(forecasts) as BacktestModelKey[]).map((model) => [model, scoreForecasts(forecasts[model])])
     ) as Record<BacktestModelKey, MetricSummary>,
+    experimentalModifiers: createWindowExperimentalModifiersReport({
+      enabled: normalized.experimentalModifiersEnabled,
+      source: summarizeModifierSource(normalized.experimentalModifierSource),
+      baseForecasts: experimentalBaseForecasts,
+      modifierForecasts: experimentalModifierForecasts,
+      appliedModifierCount,
+      sampleApplications,
+    }),
     sampleForecasts,
   };
 }
@@ -313,13 +459,175 @@ export function runRollingBacktest(
   const selection = selectActiveModel(reports);
 
   return {
-    reportVersion: 3,
+    reportVersion: 4,
     methodology:
-      "Annual rolling-origin validation over 2021-2025. Lower Brier score and log loss are better; active model promotion requires consistent improvement over Elo-only.",
+      "Annual rolling-origin validation over 2021-2025. Lower Brier score and log loss are better; active model promotion requires consistent improvement over Elo-only. Experimental context modifiers remain disabled by default unless explicitly evaluated and improved across every enabled window.",
     activeModel: selection.activeModel,
     models: modelDescriptions(),
     selection,
+    experimentalModifiers: summarizeRollingExperimentalModifiers(reports),
     windows: reports,
+  };
+}
+
+interface ExperimentalModifierEvaluationInput {
+  match: HistoricalMatch;
+  baseConfig: ReturnType<typeof createModelConfig>;
+  activeProbabilities: OutcomeProbabilities;
+  homeRating: number;
+  awayRating: number;
+  homeMetrics: ReturnType<typeof summarizeStrengthMetrics>;
+  awayMetrics: ReturnType<typeof summarizeStrengthMetrics>;
+  modifiers: MatchContextModifiers | undefined;
+}
+
+interface ExperimentalModifierEvaluation {
+  baseProbabilities: OutcomeProbabilities;
+  probabilities: OutcomeProbabilities;
+  applied: AppliedMatchContextModifier[];
+}
+
+function evaluateExperimentalModifiers(
+  input: ExperimentalModifierEvaluationInput
+): ExperimentalModifierEvaluation {
+  const prediction = predictMatch({
+    ratingA: input.homeRating,
+    ratingB: input.awayRating,
+    metricsA: input.homeMetrics,
+    metricsB: input.awayMetrics,
+    neutral: input.match.neutral,
+    modelConfig: {
+      ...input.baseConfig,
+      variant: ACTIVE_MODEL_VARIANT,
+      experimentalModifiersEnabled: true,
+    },
+    contextModifiers: input.modifiers,
+  });
+
+  return {
+    baseProbabilities: input.activeProbabilities,
+    probabilities: {
+      home: prediction.probabilities.pWinA,
+      draw: prediction.probabilities.pDraw,
+      away: prediction.probabilities.pWinB,
+    },
+    applied: prediction.modifiers.applied,
+  };
+}
+
+function getBacktestModifiers(
+  match: HistoricalMatch,
+  options: NormalizedBacktestOptions
+): MatchContextModifiers | undefined {
+  const providerModifiers = options.experimentalModifierProvider?.(match);
+
+  if (providerModifiers) {
+    return providerModifiers;
+  }
+
+  const source = options.experimentalModifierSource;
+  if (!source) {
+    return undefined;
+  }
+
+  return source.entries.find((entry) => isMatchingModifierEntry(entry, match))?.modifiers;
+}
+
+function isMatchingModifierEntry(
+  entry: BacktestModifierSourceEntry,
+  match: HistoricalMatch
+): boolean {
+  return (
+    entry.homeTeam === match.homeTeam &&
+    entry.awayTeam === match.awayTeam &&
+    (entry.date === undefined || entry.date === match.date)
+  );
+}
+
+function createWindowExperimentalModifiersReport(input: {
+  enabled: boolean;
+  source: BacktestModifierSourceSummary | null;
+  baseForecasts: readonly ScoredForecast[];
+  modifierForecasts: readonly ScoredForecast[];
+  appliedModifierCount: number;
+  sampleApplications: WindowExperimentalModifiersReport["sampleApplications"];
+}): WindowExperimentalModifiersReport {
+  const metrics =
+    input.enabled && input.baseForecasts.length > 0 && input.modifierForecasts.length > 0
+      ? compareExperimentalModifierMetrics(input.baseForecasts, input.modifierForecasts)
+      : null;
+
+  return {
+    enabled: input.enabled,
+    baseModel: ACTIVE_MODEL_VARIANT,
+    policy: EXPERIMENTAL_MODIFIER_POLICY,
+    source: input.source,
+    appliedModifierCount: input.appliedModifierCount,
+    sampleApplications: input.sampleApplications,
+    metrics,
+  };
+}
+
+function compareExperimentalModifierMetrics(
+  baseForecasts: readonly ScoredForecast[],
+  modifierForecasts: readonly ScoredForecast[]
+): ExperimentalModifiersMetrics {
+  const base = scoreForecasts(baseForecasts);
+  const withModifiers = scoreForecasts(modifierForecasts);
+
+  return {
+    base,
+    withModifiers,
+    delta: {
+      brierScore: withModifiers.brierScore - base.brierScore,
+      logLoss: withModifiers.logLoss - base.logLoss,
+      accuracy: withModifiers.accuracy - base.accuracy,
+    },
+  };
+}
+
+function summarizeRollingExperimentalModifiers(
+  reports: readonly WindowBacktestReport[]
+): RollingExperimentalModifiersSummary {
+  const enabledReports = reports.filter((report) => report.experimentalModifiers.enabled);
+  const reportsWithMetrics = enabledReports.filter((report) => report.experimentalModifiers.metrics);
+
+  if (reportsWithMetrics.length === 0) {
+    return {
+      enabled: enabledReports.length > 0,
+      policy: EXPERIMENTAL_MODIFIER_POLICY,
+      recommendation: "not-evaluated",
+      windowsEvaluated: 0,
+      windowsImprovedOnBrier: 0,
+      windowsImprovedOnLogLoss: 0,
+      averageBrierDelta: null,
+      averageLogLossDelta: null,
+    };
+  }
+
+  const deltas = reportsWithMetrics.map((report) => {
+    const metrics = report.experimentalModifiers.metrics;
+    if (!metrics) {
+      throw new Error("Expected experimental modifier metrics after filtering");
+    }
+
+    return metrics.delta;
+  });
+  const windowsImprovedOnBrier = deltas.filter((delta) => delta.brierScore < 0).length;
+  const windowsImprovedOnLogLoss = deltas.filter((delta) => delta.logLoss < 0).length;
+  const improvedEveryWindow =
+    windowsImprovedOnBrier === reportsWithMetrics.length &&
+    windowsImprovedOnLogLoss === reportsWithMetrics.length;
+
+  return {
+    enabled: true,
+    policy: EXPERIMENTAL_MODIFIER_POLICY,
+    recommendation: improvedEveryWindow ? "eligible-for-review" : "keep-disabled",
+    windowsEvaluated: reportsWithMetrics.length,
+    windowsImprovedOnBrier,
+    windowsImprovedOnLogLoss,
+    averageBrierDelta: mean(deltas.map((delta) => delta.brierScore)),
+    averageLogLossDelta: mean(deltas.map((delta) => delta.logLoss)),
   };
 }
 
@@ -333,7 +641,15 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     options.testStart && options.testEnd
       ? [{ testStart: options.testStart, testEnd: options.testEnd }]
       : DEFAULT_BACKTEST_WINDOWS;
-  const report = runRollingBacktest(matches, windows, toBacktestOptions(options));
+  const experimentalModifierSource = options.experimentalModifiersPath
+    ? parseBacktestModifierSource(
+        JSON.parse(await readFile(path.resolve(options.experimentalModifiersPath), "utf8"))
+      )
+    : undefined;
+  const report = runRollingBacktest(matches, windows, {
+    ...toBacktestOptions(options),
+    ...(experimentalModifierSource ? { experimentalModifierSource } : {}),
+  });
   const outputPath = path.resolve(options.output);
 
   await mkdir(path.dirname(outputPath), { recursive: true });
@@ -420,7 +736,7 @@ function normalizeBacktestOptions(options: BacktestOptions): NormalizedBacktestO
   const definedOptions = Object.fromEntries(
     Object.entries(options).filter(([, value]) => value !== undefined)
   ) as Partial<BacktestOptions>;
-  const normalized = { ...DEFAULT_BACKTEST_OPTIONS, ...definedOptions };
+  const normalized = { ...DEFAULT_BACKTEST_OPTIONS, ...definedOptions } as NormalizedBacktestOptions;
 
   if (!isIsoDate(normalized.testStart) || !isIsoDate(normalized.testEnd)) {
     throw new Error("testStart and testEnd must be ISO dates in YYYY-MM-DD format");
@@ -464,6 +780,9 @@ function normalizeBacktestOptions(options: BacktestOptions): NormalizedBacktestO
   if (!Number.isInteger(normalized.sampleForecastLimit) || normalized.sampleForecastLimit < 0) {
     throw new Error("sampleForecastLimit must be a non-negative integer");
   }
+  if (typeof normalized.experimentalModifiersEnabled !== "boolean") {
+    throw new Error("experimentalModifiersEnabled must be a boolean");
+  }
 
   return normalized;
 }
@@ -488,6 +807,44 @@ function toBacktestOptions(options: CliOptions): Partial<BacktestOptions> {
     maxGoals: options.maxGoals,
     dixonColesRho: options.dixonColesRho,
     sampleForecastLimit: options.sampleForecastLimit,
+    experimentalModifiersEnabled:
+      options.experimentalModifiersEnabled ?? Boolean(options.experimentalModifiersPath),
+  };
+}
+
+function toSerializableBacktestConfig(
+  options: NormalizedBacktestOptions
+): Omit<WindowBacktestConfig, "activeModel" | "rollingUpdate" | "experimentalModifierSource"> {
+  return {
+    testStart: options.testStart,
+    testEnd: options.testEnd,
+    initialRating: options.initialRating,
+    homeAdvantageElo: options.homeAdvantageElo,
+    useMarginOfVictoryElo: options.useMarginOfVictoryElo,
+    marginOfVictoryEloScalingConstant: options.marginOfVictoryEloScalingConstant,
+    maxRecentGoalBlend: options.maxRecentGoalBlend,
+    recentMetricHalfLifeYears: options.recentMetricHalfLifeYears,
+    recentMetricPriorWeight: options.recentMetricPriorWeight,
+    metricEloScale: options.metricEloScale,
+    baseXg: options.baseXg,
+    maxGoals: options.maxGoals,
+    dixonColesRho: options.dixonColesRho,
+    sampleForecastLimit: options.sampleForecastLimit,
+    experimentalModifiersEnabled: options.experimentalModifiersEnabled,
+  };
+}
+
+function summarizeModifierSource(
+  source: BacktestModifierSource | undefined
+): BacktestModifierSourceSummary | null {
+  if (!source) {
+    return null;
+  }
+
+  return {
+    sourceName: source.sourceName,
+    generatedAt: source.generatedAt ?? null,
+    entries: source.entries.length,
   };
 }
 
@@ -578,6 +935,13 @@ function parseCliOptions(argv: readonly string[]): CliOptions {
       case "--sample-forecast-limit":
         options.sampleForecastLimit = Number.parseInt(value, 10);
         break;
+      case "--experimental-modifiers":
+        options.experimentalModifiersPath = value;
+        options.experimentalModifiersEnabled = true;
+        break;
+      case "--experimental-modifiers-enabled":
+        options.experimentalModifiersEnabled = parseBoolean(value, key);
+        break;
       default:
         throw new Error(`Unknown option: ${key}`);
     }
@@ -601,9 +965,65 @@ function parseBoolean(value: string, flag: string): boolean {
   throw new Error(`${flag} must be true or false`);
 }
 
+function parseBacktestModifierSource(input: unknown): BacktestModifierSource {
+  if (!isRecord(input)) {
+    throw new Error("Experimental modifiers file must contain a JSON object");
+  }
+
+  const sourceName = readNonEmptyString(input.sourceName, "sourceName");
+  const generatedAt =
+    input.generatedAt === undefined ? undefined : readNonEmptyString(input.generatedAt, "generatedAt");
+
+  if (!Array.isArray(input.entries)) {
+    throw new Error("Experimental modifiers file entries must be an array");
+  }
+
+  return {
+    sourceName,
+    ...(generatedAt ? { generatedAt } : {}),
+    ...(Array.isArray(input.notes) ? { notes: input.notes.map((note) => String(note)) } : {}),
+    entries: input.entries.map(parseBacktestModifierSourceEntry),
+  };
+}
+
+function parseBacktestModifierSourceEntry(
+  input: unknown,
+  index: number
+): BacktestModifierSourceEntry {
+  if (!isRecord(input)) {
+    throw new Error(`Experimental modifier entry ${index} must be a JSON object`);
+  }
+
+  if (!isRecord(input.modifiers)) {
+    throw new Error(`Experimental modifier entry ${index} modifiers must be a JSON object`);
+  }
+
+  const date = input.date === undefined ? undefined : readNonEmptyString(input.date, `entries.${index}.date`);
+
+  return {
+    ...(date ? { date } : {}),
+    homeTeam: readNonEmptyString(input.homeTeam, `entries.${index}.homeTeam`),
+    awayTeam: readNonEmptyString(input.awayTeam, `entries.${index}.awayTeam`),
+    modifiers: input.modifiers as MatchContextModifiers,
+  };
+}
+
+function readNonEmptyString(value: unknown, label: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`${label} must be a non-empty string`);
+  }
+
+  return value.trim();
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function printSummary(report: RollingBacktestReport, outputPath: string): void {
   console.log(`Active model: ${report.activeModel}`);
   console.log(report.selection.reason);
+  console.log(`Experimental modifiers: ${report.experimentalModifiers.recommendation}`);
 
   for (const window of report.windows) {
     const baseline = window.metrics["elo-baseline"];
@@ -618,6 +1038,12 @@ function printSummary(report: RollingBacktestReport, outputPath: string): void {
         `Elo Brier ${baseline.brierScore.toFixed(4)}`,
         `Elo log loss ${baseline.logLoss.toFixed(4)}`,
         `uniform Brier ${uniform.brierScore.toFixed(4)}`,
+        ...(window.experimentalModifiers.metrics
+          ? [
+              `modifier Brier delta ${window.experimentalModifiers.metrics.delta.brierScore.toFixed(4)}`,
+              `modifier log loss delta ${window.experimentalModifiers.metrics.delta.logLoss.toFixed(4)}`,
+            ]
+          : []),
       ].join(" | ")
     );
   }

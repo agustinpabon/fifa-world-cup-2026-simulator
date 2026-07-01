@@ -47,6 +47,11 @@ export interface PreviousWinnerMatchTemplate {
   awaySourceMatchNumber: number;
 }
 
+interface KnockoutMatchMetadata {
+  date: string;
+  venue: string;
+}
+
 export interface KnockoutMatch {
   matchNumber: number;
   stage: KnockoutStage;
@@ -54,6 +59,8 @@ export interface KnockoutMatch {
   away: TournamentTeam;
   homeSeed: ResolvedKnockoutSeed;
   awaySeed: ResolvedKnockoutSeed;
+  date: string;
+  venue: string;
 }
 
 export const THIRD_PLACE_ASSIGNMENT_SLOT_GROUPS = ["A", "B", "D", "E", "G", "I", "K", "L"] as const;
@@ -647,6 +654,40 @@ export const FINAL_MATCHES = [
   { matchNumber: 104, stage: "F", homeSourceMatchNumber: 101, awaySourceMatchNumber: 102 },
 ] as const satisfies readonly PreviousWinnerMatchTemplate[];
 
+const KNOCKOUT_MATCH_METADATA = new Map<number, KnockoutMatchMetadata>([
+  [73, { date: "2026-06-28", venue: "Los Angeles" }],
+  [74, { date: "2026-06-29", venue: "Boston" }],
+  [75, { date: "2026-06-29", venue: "Monterrey" }],
+  [76, { date: "2026-06-29", venue: "Houston" }],
+  [77, { date: "2026-06-30", venue: "New York New Jersey" }],
+  [78, { date: "2026-06-30", venue: "Dallas" }],
+  [79, { date: "2026-06-30", venue: "Mexico City" }],
+  [80, { date: "2026-07-01", venue: "Atlanta" }],
+  [81, { date: "2026-07-01", venue: "San Francisco Bay Area" }],
+  [82, { date: "2026-07-01", venue: "Seattle" }],
+  [83, { date: "2026-07-02", venue: "Toronto" }],
+  [84, { date: "2026-07-02", venue: "Los Angeles" }],
+  [85, { date: "2026-07-02", venue: "Vancouver" }],
+  [86, { date: "2026-07-03", venue: "Miami" }],
+  [87, { date: "2026-07-03", venue: "Kansas City" }],
+  [88, { date: "2026-07-03", venue: "Dallas" }],
+  [89, { date: "2026-07-04", venue: "Philadelphia" }],
+  [90, { date: "2026-07-04", venue: "Houston" }],
+  [91, { date: "2026-07-05", venue: "New York New Jersey" }],
+  [92, { date: "2026-07-05", venue: "Mexico City" }],
+  [93, { date: "2026-07-06", venue: "Dallas" }],
+  [94, { date: "2026-07-06", venue: "Seattle" }],
+  [95, { date: "2026-07-07", venue: "Atlanta" }],
+  [96, { date: "2026-07-07", venue: "Vancouver" }],
+  [97, { date: "2026-07-09", venue: "Boston" }],
+  [98, { date: "2026-07-10", venue: "Los Angeles" }],
+  [99, { date: "2026-07-11", venue: "Miami" }],
+  [100, { date: "2026-07-11", venue: "Kansas City" }],
+  [101, { date: "2026-07-14", venue: "Dallas" }],
+  [102, { date: "2026-07-15", venue: "Atlanta" }],
+  [104, { date: "2026-07-19", venue: "New York New Jersey" }],
+]);
+
 function isGroupId(value: string): value is GroupId {
   return GROUP_IDS.includes(value as GroupId);
 }
@@ -770,6 +811,7 @@ export function buildRoundOf32Matches(
       away: away.team,
       homeSeed: home.seed,
       awaySeed: away.seed,
+      ...getKnockoutMatchMetadata(template.matchNumber),
     };
   });
 
@@ -783,6 +825,16 @@ function getPreviousWinner(winnersByMatchNumber: ReadonlyMap<number, TournamentT
     throw new Error(`Missing winner for match ${matchNumber}`);
   }
   return team;
+}
+
+function getKnockoutMatchMetadata(matchNumber: number): KnockoutMatchMetadata {
+  const metadata = KNOCKOUT_MATCH_METADATA.get(matchNumber);
+
+  if (!metadata) {
+    throw new Error(`Missing knockout metadata for match ${matchNumber}`);
+  }
+
+  return { ...metadata };
 }
 
 export function buildMatchesFromPreviousWinners(
@@ -803,6 +855,7 @@ export function buildMatchesFromPreviousWinners(
         type: "previousWinner",
         sourceMatchNumber: template.awaySourceMatchNumber,
       },
+      ...getKnockoutMatchMetadata(template.matchNumber),
     })
   );
 

@@ -32,6 +32,10 @@ export const DEFAULT_SIMULATION_SEED = "world-cup-oracle-simulation-v1";
 export const HIGH_ALTITUDE_THRESHOLD_METERS = 1200;
 export const ALTITUDE_ELO_PENALTY = -50;
 export const ACCLIMATIZATION_REST_DAYS = 5;
+export const TRAVEL_FATIGUE_DISTANCE_THRESHOLD_KM = 2500;
+export const TRAVEL_FATIGUE_REST_DAYS = 5;
+export const TRAVEL_FATIGUE_ELO_PENALTY = -30;
+const EARTH_RADIUS_KM = 6371;
 
 export type Rng = () => number;
 export type SimulationSeed = string | number;
@@ -85,6 +89,7 @@ export interface MatchContextRatingInput {
 
 export interface MatchContextRatingAdjustments {
   altitude: number;
+  travelFatigue: number;
 }
 
 export interface MatchContextRatingResult {
@@ -113,6 +118,46 @@ function calculateRestDaysSinceLastMatch(previousDate: string, matchDate: string
   const daysBetween = Math.floor((matchTimestamp - previousTimestamp) / 86_400_000);
 
   return Math.max(0, daysBetween - 1);
+}
+
+function toRadians(degrees: number): number {
+  return (degrees * Math.PI) / 180;
+}
+
+export function calculateTravelDistanceKm(fromVenue: WCHostVenue, toVenue: WCHostVenue): number {
+  const latA = toRadians(fromVenue.latitude);
+  const latB = toRadians(toVenue.latitude);
+  const deltaLat = toRadians(toVenue.latitude - fromVenue.latitude);
+  const deltaLon = toRadians(toVenue.longitude - fromVenue.longitude);
+  const haversine =
+    Math.sin(deltaLat / 2) ** 2 + Math.cos(latA) * Math.cos(latB) * Math.sin(deltaLon / 2) ** 2;
+
+  return 2 * EARTH_RADIUS_KM * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+}
+
+export function calculateTravelFatigueAdjustment(
+  travelState: TeamTravelState | undefined,
+  venue: WCHostVenue,
+  matchDate: string | undefined
+): number {
+  if (!travelState || !matchDate) {
+    return 0;
+  }
+
+  const previousVenue = getHostVenueByName(travelState.lastVenue);
+  const restDays = calculateRestDaysSinceLastMatch(travelState.lastMatchDate, matchDate);
+
+  if (!previousVenue || restDays === null) {
+    return 0;
+  }
+
+  const distanceKm = calculateTravelDistanceKm(previousVenue, venue);
+
+  if (distanceKm > TRAVEL_FATIGUE_DISTANCE_THRESHOLD_KM && restDays < TRAVEL_FATIGUE_REST_DAYS) {
+    return TRAVEL_FATIGUE_ELO_PENALTY;
+  }
+
+  return 0;
 }
 
 function isHighAltitudeVenue(venue: WCHostVenue): boolean {
@@ -194,15 +239,23 @@ export function applyMatchContextRatingAdjustments(input: MatchContextRatingInpu
         acclimatizationDays: input.acclimatizationDaysB,
       })
     : 0;
+  const travelFatigueA = venue
+    ? calculateTravelFatigueAdjustment(input.travelStateA, venue, input.matchDate)
+    : 0;
+  const travelFatigueB = venue
+    ? calculateTravelFatigueAdjustment(input.travelStateB, venue, input.matchDate)
+    : 0;
 
   return {
-    ratingA: input.ratingA + altitudeA,
-    ratingB: input.ratingB + altitudeB,
+    ratingA: input.ratingA + altitudeA + travelFatigueA,
+    ratingB: input.ratingB + altitudeB + travelFatigueB,
     adjustmentsA: {
       altitude: altitudeA,
+      travelFatigue: travelFatigueA,
     },
     adjustmentsB: {
       altitude: altitudeB,
+      travelFatigue: travelFatigueB,
     },
   };
 }
@@ -242,6 +295,42 @@ function simulateMatch(
     },
     random
   );
+}
+
+type TeamTravelStates = Map<string, TeamTravelState>;
+
+function findPlayedMatch(
+  teamA: string,
+  teamB: string,
+  playedMatches: readonly PlayedMatch[]
+): PlayedMatch | undefined {
+  return playedMatches.find(
+    (match) =>
+      (match.homeTeam === teamA && match.awayTeam === teamB) ||
+      (match.homeTeam === teamB && match.awayTeam === teamA)
+  );
+}
+
+function getTeamTravelState(travelStates: TeamTravelStates, teamName: string): TeamTravelState | undefined {
+  const state = travelStates.get(teamName);
+
+  return state ? { ...state } : undefined;
+}
+
+function updateTeamTravelState(
+  travelStates: TeamTravelStates,
+  teamName: string,
+  venue: string | undefined,
+  matchDate: string | undefined
+): void {
+  if (!venue || !matchDate) {
+    return;
+  }
+
+  travelStates.set(teamName, {
+    lastVenue: venue,
+    lastMatchDate: matchDate,
+  });
 }
 
 // Win/draw/loss probabilities from a normalized exact score matrix.
@@ -562,7 +651,8 @@ function simulateGroup(
   playedMatches: PlayedMatch[] = [],
   teamMetrics?: Record<string, TeamMetrics>,
   rankingOptions: FifaRankingOptions = {},
-  modelConfig: Partial<ModelConfig> = DEFAULT_MODEL_CONFIG
+  modelConfig: Partial<ModelConfig> = DEFAULT_MODEL_CONFIG,
+  travelStates: TeamTravelStates = new Map()
 ): GroupStanding[] {
   const resolvedModelConfig = createModelConfig(modelConfig);
   const standings: GroupStanding[] = group.teams.map((t) => ({
@@ -584,11 +674,9 @@ function simulateGroup(
       throw new Error(`Fixture ${fixture.matchNumber} references teams outside Group ${group.id}`);
     }
 
-    const played = playedMatches.find(
-      (m) =>
-        (m.homeTeam === fixture.homeTeam && m.awayTeam === fixture.awayTeam) ||
-        (m.homeTeam === fixture.awayTeam && m.awayTeam === fixture.homeTeam)
-    );
+    const played = findPlayedMatch(fixture.homeTeam, fixture.awayTeam, playedMatches);
+    const venue = played?.venue ?? fixture.venue;
+    const matchDate = played?.date ?? fixture.date;
 
     let goalsHome: number;
     let goalsAway: number;
@@ -616,13 +704,18 @@ function simulateGroup(
         {
           teamNameA: home.team.name,
           teamNameB: away.team.name,
-          venue: fixture.venue,
-          matchDate: fixture.date,
+          venue,
+          matchDate,
+          travelStateA: getTeamTravelState(travelStates, home.team.name),
+          travelStateB: getTeamTravelState(travelStates, away.team.name),
         }
       );
       goalsHome = sim.goalsA;
       goalsAway = sim.goalsB;
     }
+
+    updateTeamTravelState(travelStates, home.team.name, venue, matchDate);
+    updateTeamTravelState(travelStates, away.team.name, venue, matchDate);
 
     home.gf += goalsHome;
     home.ga += goalsAway;
@@ -662,13 +755,10 @@ function simulateKnockout(
   teamMetrics?: Record<string, TeamMetrics>,
   stage: "R32" | "R16" | "QF" | "SF" | "F" = "R32",
   random: Rng = createSeededRng(DEFAULT_SIMULATION_SEED),
-  modelConfig: Partial<ModelConfig> = DEFAULT_MODEL_CONFIG
+  modelConfig: Partial<ModelConfig> = DEFAULT_MODEL_CONFIG,
+  matchContext: MatchPredictionContext = {}
 ): boolean {
-  const played = playedMatches.find(
-    (m) =>
-      (m.homeTeam === a.name && m.awayTeam === b.name) ||
-      (m.homeTeam === b.name && m.awayTeam === a.name)
-  );
+  const played = findPlayedMatch(a.name, b.name, playedMatches);
 
   if (played) {
     const winner = getPlayedKnockoutWinner(a.name, b.name, played);
@@ -687,7 +777,8 @@ function simulateKnockout(
     isHomeA,
     isHomeB,
     random,
-    modelConfig
+    modelConfig,
+    matchContext
   );
   if (goalsA > goalsB) return true;
   if (goalsB > goalsA) return false;
@@ -720,12 +811,16 @@ function simulateKnockoutRound(
   playedMatches: PlayedMatch[] = [],
   teamMetrics?: Record<string, TeamMetrics>,
   random: Rng = createSeededRng(DEFAULT_SIMULATION_SEED),
-  modelConfig: Partial<ModelConfig> = DEFAULT_MODEL_CONFIG
+  modelConfig: Partial<ModelConfig> = DEFAULT_MODEL_CONFIG,
+  travelStates: TeamTravelStates = new Map()
 ): Map<number, WCTeam> {
   const resolvedModelConfig = createModelConfig(modelConfig);
   const winners = new Map<number, WCTeam>();
 
   for (const match of matches) {
+    const played = findPlayedMatch(match.home.name, match.away.name, playedMatches);
+    const venue = played?.venue ?? match.venue;
+    const matchDate = played?.date ?? match.date;
     const aWins = simulateKnockout(
       match.home,
       match.away,
@@ -735,8 +830,18 @@ function simulateKnockoutRound(
       teamMetrics,
       match.stage,
       random,
-      resolvedModelConfig
+      resolvedModelConfig,
+      {
+        teamNameA: match.home.name,
+        teamNameB: match.away.name,
+        venue,
+        matchDate,
+        travelStateA: getTeamTravelState(travelStates, match.home.name),
+        travelStateB: getTeamTravelState(travelStates, match.away.name),
+      }
     );
+    updateTeamTravelState(travelStates, match.home.name, venue, matchDate);
+    updateTeamTravelState(travelStates, match.away.name, venue, matchDate);
     winners.set(match.matchNumber, aWins ? match.home : match.away);
   }
 
@@ -949,6 +1054,7 @@ export function runSimulations(
   }
 
   for (let sim = 0; sim < simulationsRun; sim++) {
+    const travelStates: TeamTravelStates = new Map();
     // Group stage: all 12 groups
     const groupResults: GroupStanding[][] = [];
     const groupWinnersMap: Partial<Record<GroupId, WCTeam>> = {};
@@ -958,7 +1064,7 @@ export function runSimulations(
       const standings = simulateGroup(group, ratings, playedMatches, teamMetrics, {
         random,
         fallbackSeed: `${DEFAULT_TIEBREAKER_SEED}:simulation:${sim}:group:${group.id}`,
-      }, modelConfig);
+      }, modelConfig, travelStates);
       groupResults.push(standings);
       groupWinnersMap[group.id] = standings[0].team;
       groupRunnersMap[group.id] = standings[1].team;
@@ -992,11 +1098,27 @@ export function runSimulations(
     ) as Partial<Record<GroupId, WCTeam>>;
 
     const r32Matches = buildRoundOf32Matches(groupWinnersMap, groupRunnersMap, thirdPlaceTeamsByGroup);
-    const r32Winners = simulateKnockoutRound(r32Matches, ratings, playedMatches, teamMetrics, random, modelConfig);
+    const r32Winners = simulateKnockoutRound(
+      r32Matches,
+      ratings,
+      playedMatches,
+      teamMetrics,
+      random,
+      modelConfig,
+      travelStates
+    );
     for (const team of r32Winners.values()) result.roundOf16[team.name]++;
 
     const r16Matches = buildMatchesFromPreviousWinners(ROUND_OF_16_MATCHES, r32Winners);
-    const r16Winners = simulateKnockoutRound(r16Matches, ratings, playedMatches, teamMetrics, random, modelConfig);
+    const r16Winners = simulateKnockoutRound(
+      r16Matches,
+      ratings,
+      playedMatches,
+      teamMetrics,
+      random,
+      modelConfig,
+      travelStates
+    );
     for (const team of r16Winners.values()) result.quarterFinals[team.name]++;
 
     const quarterFinalMatches = buildMatchesFromPreviousWinners(QUARTER_FINAL_MATCHES, r16Winners);
@@ -1006,7 +1128,8 @@ export function runSimulations(
       playedMatches,
       teamMetrics,
       random,
-      modelConfig
+      modelConfig,
+      travelStates
     );
     for (const team of quarterFinalWinners.values()) result.semiFinals[team.name]++;
 
@@ -1017,12 +1140,21 @@ export function runSimulations(
       playedMatches,
       teamMetrics,
       random,
-      modelConfig
+      modelConfig,
+      travelStates
     );
     for (const team of semiFinalWinners.values()) result.finals[team.name]++;
 
     const finalMatches = buildMatchesFromPreviousWinners(FINAL_MATCHES, semiFinalWinners);
-    const finalWinners = simulateKnockoutRound(finalMatches, ratings, playedMatches, teamMetrics, random, modelConfig);
+    const finalWinners = simulateKnockoutRound(
+      finalMatches,
+      ratings,
+      playedMatches,
+      teamMetrics,
+      random,
+      modelConfig,
+      travelStates
+    );
     const champion = finalWinners.get(FINAL_MATCHES[0].matchNumber);
     if (!champion) {
       throw new Error("Final did not produce a champion");
@@ -1064,31 +1196,12 @@ export function getHomeStatus(
   return { isHomeA, isHomeB };
 }
 
-const VENUE_HOST_COUNTRY = new Map<string, "Canada" | "Mexico" | "United States">([
-  ["Toronto", "Canada"],
-  ["Vancouver", "Canada"],
-  ["Mexico City", "Mexico"],
-  ["Guadalajara", "Mexico"],
-  ["Monterrey", "Mexico"],
-  ["Atlanta", "United States"],
-  ["Boston", "United States"],
-  ["Dallas", "United States"],
-  ["Houston", "United States"],
-  ["Kansas City", "United States"],
-  ["Los Angeles", "United States"],
-  ["Miami", "United States"],
-  ["New York New Jersey", "United States"],
-  ["Philadelphia", "United States"],
-  ["San Francisco Bay Area", "United States"],
-  ["Seattle", "United States"],
-]);
-
 function isHostTeamInVenueCountry(teamName: string, venue: string): boolean {
-  const country = VENUE_HOST_COUNTRY.get(venue);
+  const hostVenue = getHostVenueByName(venue);
 
   return (
-    (teamName === "Canada" && country === "Canada") ||
-    (teamName === "Mexico" && country === "Mexico") ||
-    (teamName === "USA" && country === "United States")
+    (teamName === "Canada" && hostVenue?.country === "Canada") ||
+    (teamName === "Mexico" && hostVenue?.country === "Mexico") ||
+    (teamName === "USA" && hostVenue?.country === "United States")
   );
 }

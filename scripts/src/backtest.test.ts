@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import { ACTIVE_MODEL_VARIANT } from "@workspace/oracle-model";
+
 import {
+  DEFAULT_BACKTEST_OUTPUT,
   OUTCOMES,
   poissonOutcomeProbabilities,
   parseResultsCsv,
@@ -24,6 +28,14 @@ function match(
 ): HistoricalMatch {
   return { date, homeTeam, awayTeam, homeScore, awayScore, tournament, neutral };
 }
+
+test("latest generated backtest report matches the promoted active model variant", () => {
+  const report = JSON.parse(readFileSync(DEFAULT_BACKTEST_OUTPUT, "utf8")) as {
+    activeModel?: unknown;
+  };
+
+  assert.equal(report.activeModel, ACTIVE_MODEL_VARIANT);
+});
 
 test("parseResultsCsv handles quoted CSV fields without shifting the neutral flag", () => {
   const raw = [

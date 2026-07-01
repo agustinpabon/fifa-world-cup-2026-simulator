@@ -1,0 +1,4687 @@
+{
+  "reportVersion": 3,
+  "methodology": "Annual rolling-origin validation over 2021-2025. Lower Brier score and log loss are better; active model promotion requires consistent improvement over Elo-only.",
+  "activeModel": "elo-poisson-strength",
+  "models": {
+    "elo-baseline": "Elo-only baseline with a smoothed historical draw rate.",
+    "elo-poisson": "Elo ratings converted to independent Poisson score probabilities.",
+    "elo-poisson-dixon-coles": "Elo-Poisson score probabilities with Dixon-Coles low-score adjustment.",
+    "elo-poisson-strength": "Elo-Poisson probabilities with recent attack/defense multipliers.",
+    "uniform-baseline": "Uniform baseline: fixed 1/3 probability for home win, draw, and away win."
+  },
+  "selection": {
+    "activeModel": "elo-poisson-strength",
+    "baselineModel": "elo-baseline",
+    "primaryMetric": "logLoss",
+    "reason": "elo-poisson-strength beat the Elo-only baseline on Brier score and log loss in every evaluated annual window.",
+    "candidateResults": [
+      {
+        "model": "elo-poisson",
+        "windowsBetterThanBaselineOnBrier": 0,
+        "windowsBetterThanBaselineOnLogLoss": 0,
+        "windowsEvaluated": 5,
+        "averageBrierDeltaVsBaseline": 0.004683217303309628,
+        "averageLogLossDeltaVsBaseline": 0.007718705753586286
+      },
+      {
+        "model": "elo-poisson-dixon-coles",
+        "windowsBetterThanBaselineOnBrier": 0,
+        "windowsBetterThanBaselineOnLogLoss": 0,
+        "windowsEvaluated": 5,
+        "averageBrierDeltaVsBaseline": 0.005733271556067843,
+        "averageLogLossDeltaVsBaseline": 0.008117087518860111
+      },
+      {
+        "model": "elo-poisson-strength",
+        "windowsBetterThanBaselineOnBrier": 5,
+        "windowsBetterThanBaselineOnLogLoss": 5,
+        "windowsEvaluated": 5,
+        "averageBrierDeltaVsBaseline": -0.009049320604957233,
+        "averageLogLossDeltaVsBaseline": -0.01569868508925156
+      }
+    ]
+  },
+  "windows": [
+    {
+      "methodology": "Rolling-origin historical match backtest: train ratings before the window, score each test match before applying that result, and evaluate calibrated home/draw/away probabilities.",
+      "config": {
+        "testStart": "2021-01-01",
+        "testEnd": "2021-12-31",
+        "initialRating": 1500,
+        "homeAdvantageElo": 75,
+        "maxRecentGoalBlend": 0.1,
+        "recentMetricPriorWeight": 60,
+        "metricEloScale": 5000,
+        "baseXg": 1.25,
+        "maxGoals": 10,
+        "dixonColesRho": -0.06,
+        "sampleForecastLimit": 20,
+        "activeModel": "elo-poisson-strength",
+        "rollingUpdate": true
+      },
+      "dataset": {
+        "totalMatches": 49478,
+        "trainMatches": 43722,
+        "testMatches": 1115,
+        "excludedMatches": 4641,
+        "trainDateRange": {
+          "start": "1872-11-30",
+          "end": "2020-12-09"
+        },
+        "testDateRange": {
+          "start": "2021-01-12",
+          "end": "2021-12-31"
+        }
+      },
+      "metrics": {
+        "elo-baseline": {
+          "matches": 1115,
+          "brierScore": 0.5001356933312886,
+          "logLoss": 0.8586855416327969,
+          "accuracy": 0.6385650224215247,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 47,
+              "meanConfidence": 0.39328045064837347,
+              "accuracy": 0.2765957446808511,
+              "calibrationError": -0.1166847059675224
+            },
+            {
+              "bucket": "0.4-0.5",
+              "count": 347,
+              "meanConfidence": 0.45159864132231126,
+              "accuracy": 0.4610951008645533,
+              "calibrationError": 0.009496459542242042
+            },
+            {
+              "bucket": "0.5-0.6",
+              "count": 307,
+              "meanConfidence": 0.550158300271768,
+              "accuracy": 0.6384364820846905,
+              "calibrationError": 0.08827818181292246
+            },
+            {
+              "bucket": "0.6-0.7",
+              "count": 291,
+              "meanConfidence": 0.6476072770837104,
+              "accuracy": 0.8041237113402062,
+              "calibrationError": 0.15651643425649586
+            },
+            {
+              "bucket": "0.7-0.8",
+              "count": 123,
+              "meanConfidence": 0.7307033578257263,
+              "accuracy": 0.8861788617886179,
+              "calibrationError": 0.15547550396289167
+            }
+          ]
+        },
+        "elo-poisson": {
+          "matches": 1115,
+          "brierScore": 0.5068895102683867,
+          "logLoss": 0.8703381634277879,
+          "accuracy": 0.6385650224215247,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 139,
+              "meanConfidence": 0.3818824935852179,
+              "accuracy": 0.35251798561151076,
+              "calibrationError": -0.029364507973707155
+            },
+            {
+              "bucket": "0.4-0.5",
+              "count": 405,
+              "meanConfidence": 0.4465968091571851,
+              "accuracy": 0.5234567901234568,
+              "calibrationError": 0.07685998096627172
+            },
+            {
+              "bucket": "0.5-0.6",
+              "count": 290,
+              "meanConfidence": 0.5483964470603246,
+              "accuracy": 0.7137931034482758,
+              "calibrationError": 0.1653966563879512
+            },
+            {
+              "bucket": "0.6-0.7",
+              "count": 183,
+              "meanConfidence": 0.6427743188933058,
+              "accuracy": 0.8579234972677595,
+              "calibrationError": 0.2151491783744537
+            },
+            {
+              "bucket": "0.7-0.8",
+              "count": 77,
+              "meanConfidence": 0.7403562165461702,
+              "accuracy": 0.8571428571428571,
+              "calibrationError": 0.11678664059668686
+            },
+            {
+              "bucket": "0.8-0.9",
+              "count": 21,
+              "meanConfidence": 0.8024072420101731,
+              "accuracy": 1,
+              "calibrationError": 0.1975927579898269
+            }
+          ]
+        },
+        "elo-poisson-dixon-coles": {
+          "matches": 1115,
+          "brierScore": 0.507806543172179,
+          "logLoss": 0.8699794917000092,
+          "accuracy": 0.6385650224215247,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 180,
+              "meanConfidence": 0.3790949522809371,
+              "accuracy": 0.37222222222222223,
+              "calibrationError": -0.00687273005871486
+            },
+            {
+              "bucket": "0.4-0.5",
+              "count": 391,
+              "meanConfidence": 0.4475453689013797,
+              "accuracy": 0.5396419437340153,
+              "calibrationError": 0.09209657483263561
+            },
+            {
+              "bucket": "0.5-0.6",
+              "count": 286,
+              "meanConfidence": 0.5501398301088157,
+              "accuracy": 0.7237762237762237,
+              "calibrationError": 0.17363639366740802
+            },
+            {
+              "bucket": "0.6-0.7",
+              "count": 168,
+              "meanConfidence": 0.6449236051927097,
+              "accuracy": 0.875,
+              "calibrationError": 0.23007639480729025
+            },
+            {
+              "bucket": "0.7-0.8",
+              "count": 87,
+              "meanConfidence": 0.7522065384687263,
+              "accuracy": 0.8850574712643678,
+              "calibrationError": 0.13285093279564153
+            },
+            {
+              "bucket": "0.8-0.9",
+              "count": 3,
+              "meanConfidence": 0.8013358090164623,
+              "accuracy": 1,
+              "calibrationError": 0.19866419098353771
+            }
+          ]
+        },
+        "elo-poisson-strength": {
+          "matches": 1115,
+          "brierScore": 0.4880449311113388,
+          "logLoss": 0.8377496572103589,
+          "accuracy": 0.6394618834080718,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 122,
+              "meanConfidence": 0.3823243002280972,
+              "accuracy": 0.3770491803278688,
+              "calibrationError": -0.005275119900228387
+            },
+            {
+              "bucket": "0.4-0.5",
+              "count": 294,
+              "meanConfidence": 0.4485259074101129,
+              "accuracy": 0.4931972789115646,
+              "calibrationError": 0.04467137150145173
+            },
+            {
+              "bucket": "0.5-0.6",
+              "count": 255,
+              "meanConfidence": 0.5472370786773446,
+              "accuracy": 0.611764705882353,
+              "calibrationError": 0.06452762720500838
+            },
+            {
+              "bucket": "0.6-0.7",
+              "count": 206,
+              "meanConfidence": 0.6475659693499219,
+              "accuracy": 0.7621359223300971,
+              "calibrationError": 0.11456995298017514
+            },
+            {
+              "bucket": "0.7-0.8",
+              "count": 139,
+              "meanConfidence": 0.7422859207770371,
+              "accuracy": 0.8705035971223022,
+              "calibrationError": 0.12821767634526504
+            },
+            {
+              "bucket": "0.8-0.9",
+              "count": 75,
+              "meanConfidence": 0.8421381262963418,
+              "accuracy": 0.8533333333333334,
+              "calibrationError": 0.011195207036991617
+            },
+            {
+              "bucket": "0.9-1.0",
+              "count": 24,
+              "meanConfidence": 0.9211009758215051,
+              "accuracy": 1,
+              "calibrationError": 0.07889902417849493
+            }
+          ]
+        },
+        "uniform-baseline": {
+          "matches": 1115,
+          "brierScore": 0.6666666666666601,
+          "logLoss": 1.0986122886681404,
+          "accuracy": 0.48699551569506727,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 1115,
+              "meanConfidence": 0.33333333333333004,
+              "accuracy": 0.48699551569506727,
+              "calibrationError": 0.15366218236173723
+            }
+          ]
+        }
+      },
+      "sampleForecasts": [
+        {
+          "date": "2021-01-12",
+          "homeTeam": "United Arab Emirates",
+          "awayTeam": "Iraq",
+          "score": "0-0",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.32500257622454215,
+              "draw": 0.22723842195540306,
+              "away": 0.44775900182005474
+            },
+            "elo-poisson": {
+              "home": 0.3182587211389671,
+              "draw": 0.268399868073471,
+              "away": 0.4133414107875621
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.31061242120253724,
+              "draw": 0.28369246794633074,
+              "away": 0.40569511085113225
+            },
+            "elo-poisson-strength": {
+              "home": 0.2922899046047581,
+              "draw": 0.2669066172156733,
+              "away": 0.4408034781795681
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2021-01-18",
+          "homeTeam": "Kuwait",
+          "awayTeam": "Palestine",
+          "score": "0-1",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.4982958925458351,
+              "draw": 0.22723842195540306,
+              "away": 0.2744656854987616
+            },
+            "elo-poisson": {
+              "home": 0.4554363184227351,
+              "draw": 0.2644296218886036,
+              "away": 0.2801340596886612
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.44790940165609755,
+              "draw": 0.27948345542187875,
+              "away": 0.27260714292202365
+            },
+            "elo-poisson-strength": {
+              "home": 0.4591800726410276,
+              "draw": 0.26402569952216715,
+              "away": 0.27679422783680474
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2021-01-19",
+          "homeTeam": "Dominican Republic",
+          "awayTeam": "Puerto Rico",
+          "score": "0-1",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.5958952222978351,
+              "draw": 0.22723842195540317,
+              "away": 0.17686635574676166
+            },
+            "elo-poisson": {
+              "home": 0.5473536583023948,
+              "draw": 0.2482340434846433,
+              "away": 0.20441229821296228
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.5403263613855043,
+              "draw": 0.26228863731842444,
+              "away": 0.1973850012960717
+            },
+            "elo-poisson-strength": {
+              "home": 0.5926900280625279,
+              "draw": 0.23298761050075237,
+              "away": 0.1743223614367201
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2021-01-22",
+          "homeTeam": "Guatemala",
+          "awayTeam": "Puerto Rico",
+          "score": "1-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.6744678081208629,
+              "draw": 0.22723842195540303,
+              "away": 0.09829376992373406
+            },
+            "elo-poisson": {
+              "home": 0.6417783327948398,
+              "draw": 0.2215304448569276,
+              "away": 0.1366912223482327
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.6356234742042887,
+              "draw": 0.2338401620380298,
+              "away": 0.13053636375768166
+            },
+            "elo-poisson-strength": {
+              "home": 0.719339787707401,
+              "draw": 0.18459651520806936,
+              "away": 0.09606369708452928
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2021-01-25",
+          "homeTeam": "Dominican Republic",
+          "awayTeam": "Serbia",
+          "score": "0-0",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.19300229197535976,
+              "draw": 0.22723842195540306,
+              "away": 0.579759286069237
+            },
+            "elo-poisson": {
+              "home": 0.21732927043506903,
+              "draw": 0.25188398933106426,
+              "away": 0.5307867402338661
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.21018754822829114,
+              "draw": 0.26616743374462,
+              "away": 0.5236450180270882
+            },
+            "elo-poisson-strength": {
+              "home": 0.1638267254349809,
+              "draw": 0.22631652315245293,
+              "away": 0.6098567514125669
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2021-01-27",
+          "homeTeam": "Iraq",
+          "awayTeam": "Kuwait",
+          "score": "2-1",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.608085641138167,
+              "draw": 0.2272384219554032,
+              "away": 0.16467593690642984
+            },
+            "elo-poisson": {
+              "home": 0.5603619034851971,
+              "draw": 0.24514903407922353,
+              "away": 0.1944890624355795
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.553432182331967,
+              "draw": 0.2590084763856837,
+              "away": 0.18755934128234944
+            },
+            "elo-poisson-strength": {
+              "home": 0.5980960672311494,
+              "draw": 0.2339894877982715,
+              "away": 0.1679144449705792
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2021-01-28",
+          "homeTeam": "Panama",
+          "awayTeam": "Serbia",
+          "score": "0-0",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.3421680168619092,
+              "draw": 0.22723842195540322,
+              "away": 0.4305935611826881
+            },
+            "elo-poisson": {
+              "home": 0.3312326738389893,
+              "draw": 0.2691965043154056,
+              "away": 0.3995708218456046
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.3235625605236189,
+              "draw": 0.28453673094614634,
+              "away": 0.39190070853023423
+            },
+            "elo-poisson-strength": {
+              "home": 0.29805550074447607,
+              "draw": 0.26649598089407694,
+              "away": 0.4354485183614475
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2021-01-31",
+          "homeTeam": "United States",
+          "awayTeam": "Trinidad and Tobago",
+          "score": "7-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.6905857047016806,
+              "draw": 0.22723842195540297,
+              "away": 0.08217587334291633
+            },
+            "elo-poisson": {
+              "home": 0.6655693326849231,
+              "draw": 0.21323380740390047,
+              "away": 0.12119685991117582
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.6596992491215333,
+              "draw": 0.22497397453067988,
+              "away": 0.1153267763477861
+            },
+            "elo-poisson-strength": {
+              "home": 0.7532332526379838,
+              "draw": 0.1682476647768538,
+              "away": 0.0785190825851623
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2021-02-01",
+          "homeTeam": "Jordan",
+          "awayTeam": "Tajikistan",
+          "score": "2-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.5528551626292992,
+              "draw": 0.22723842195540317,
+              "away": 0.21990641541529748
+            },
+            "elo-poisson": {
+              "home": 0.5045578603923653,
+              "draw": 0.2570150728704958,
+              "away": 0.23842706673713904
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.49725710355484987,
+              "draw": 0.27161658654552595,
+              "away": 0.23112630989962396
+            },
+            "elo-poisson-strength": {
+              "home": 0.5569091662444339,
+              "draw": 0.24389712994504212,
+              "away": 0.1991937038105237
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2021-02-05",
+          "homeTeam": "Jordan",
+          "awayTeam": "Tajikistan",
+          "score": "0-1",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.5679859377397066,
+              "draw": 0.22723842195540295,
+              "away": 0.20477564030489045
+            },
+            "elo-poisson": {
+              "home": 0.5191120271833521,
+              "draw": 0.25426661673615986,
+              "away": 0.22662135608048767
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.5118961949860025,
+              "draw": 0.2686982811308589,
+              "away": 0.2194055238831381
+            },
+            "elo-poisson-strength": {
+              "home": 0.576162394739538,
+              "draw": 0.2385594143865478,
+              "away": 0.1852781908739135
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2021-02-15",
+          "homeTeam": "Jordan",
+          "awayTeam": "Uzbekistan",
+          "score": "0-2",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.3384136018543543,
+              "draw": 0.2272384219554032,
+              "away": 0.43434797619024296
+            },
+            "elo-poisson": {
+              "home": 0.32839108638256653,
+              "draw": 0.2690450321912746,
+              "away": 0.40256388142615873
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.32072549733595673,
+              "draw": 0.2843762102844943,
+              "away": 0.39489829237954893
+            },
+            "elo-poisson-strength": {
+              "home": 0.3170284478122878,
+              "draw": 0.2711843653958459,
+              "away": 0.41178718679186666
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2021-02-24",
+          "homeTeam": "Guatemala",
+          "awayTeam": "Nicaragua",
+          "score": "1-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.6350035985380537,
+              "draw": 0.2272384219554031,
+              "away": 0.137757979506543
+            },
+            "elo-poisson": {
+              "home": 0.5908947715403037,
+              "draw": 0.23715873840792215,
+              "away": 0.17194649005177515
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.5842215538952084,
+              "draw": 0.2505051736981127,
+              "away": 0.16527327240667988
+            },
+            "elo-poisson-strength": {
+              "home": 0.6500322592999327,
+              "draw": 0.21371543646758953,
+              "away": 0.13625230423247817
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2021-03-13",
+          "homeTeam": "Kenya",
+          "awayTeam": "South Sudan",
+          "score": "1-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.5927505641076177,
+              "draw": 0.22723842195540295,
+              "away": 0.18001101393697932
+            },
+            "elo-poisson": {
+              "home": 0.5440696165124367,
+              "draw": 0.24898249323245586,
+              "away": 0.20694789025510782
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.5370187664817115,
+              "draw": 0.26308419329390614,
+              "away": 0.19989704022438273
+            },
+            "elo-poisson-strength": {
+              "home": 0.5893647417988814,
+              "draw": 0.23659084653127843,
+              "away": 0.1740444116698399
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2021-03-15",
+          "homeTeam": "Kenya",
+          "awayTeam": "Tanzania",
+          "score": "2-1",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.5203764233504126,
+              "draw": 0.22723842195540322,
+              "away": 0.25238515469418454
+            },
+            "elo-poisson": {
+              "home": 0.47476247383546677,
+              "draw": 0.261860630905507,
+              "away": 0.2633768952590263
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.4673134378751898,
+              "draw": 0.276758702826061,
+              "away": 0.25592785929874934
+            },
+            "elo-poisson-strength": {
+              "home": 0.49135102079562054,
+              "draw": 0.2615614125497878,
+              "away": 0.2470875666545921
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2021-03-17",
+          "homeTeam": "Ethiopia",
+          "awayTeam": "Malawi",
+          "score": "4-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.43664208281566597,
+              "draw": 0.22723842195540314,
+              "away": 0.33611949522893075
+            },
+            "elo-poisson": {
+              "home": 0.40439778228442896,
+              "draw": 0.2689462421006549,
+              "away": 0.32665597561491627
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.3967351448744881,
+              "draw": 0.2842715169205366,
+              "away": 0.3189933382049754
+            },
+            "elo-poisson-strength": {
+              "home": 0.39398162102999185,
+              "draw": 0.2724557475068421,
+              "away": 0.33356263146316606
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2021-03-20",
+          "homeTeam": "Oman",
+          "awayTeam": "Jordan",
+          "score": "0-0",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.43425416010307194,
+              "draw": 0.22723842195540284,
+              "away": 0.33850741794152434
+            },
+            "elo-poisson": {
+              "home": 0.4024889670540798,
+              "draw": 0.269048971302573,
+              "away": 0.3284620616433474
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.39482326033013676,
+              "draw": 0.2843803847504593,
+              "away": 0.3207963549194043
+            },
+            "elo-poisson-strength": {
+              "home": 0.41154909163397574,
+              "draw": 0.27097192099465084,
+              "away": 0.31747898737137303
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2021-03-24",
+          "homeTeam": "Antigua and Barbuda",
+          "awayTeam": "Montserrat",
+          "score": "2-2",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.3750509615694643,
+              "draw": 0.227238421955403,
+              "away": 0.39771061647513256
+            },
+            "elo-poisson": {
+              "home": 0.3562680173609832,
+              "draw": 0.2699909632769782,
+              "away": 0.37374101936203863
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.34857420221433616,
+              "draw": 0.2853785935702721,
+              "away": 0.3660472042153916
+            },
+            "elo-poisson-strength": {
+              "home": 0.34955237271682205,
+              "draw": 0.26947519078616267,
+              "away": 0.38097243649701507
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2021-03-24",
+          "homeTeam": "Belarus",
+          "awayTeam": "Honduras",
+          "score": "1-1",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.2408951123894213,
+              "draw": 0.22723842195540309,
+              "away": 0.5318664656551756
+            },
+            "elo-poisson": {
+              "home": 0.2546005008812844,
+              "draw": 0.26029976115229286,
+              "away": 0.4850997379664233
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.24719903030781018,
+              "draw": 0.2751027022992412,
+              "away": 0.477698267392949
+            },
+            "elo-poisson-strength": {
+              "home": 0.2071012974997753,
+              "draw": 0.24733004884723453,
+              "away": 0.5455686536529903
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2021-03-24",
+          "homeTeam": "Belgium",
+          "awayTeam": "Wales",
+          "score": "3-1",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.6703898638097969,
+              "draw": 0.22723842195540309,
+              "away": 0.10237171423479978
+            },
+            "elo-poisson": {
+              "home": 0.6360846592377749,
+              "draw": 0.22342235569755794,
+              "away": 0.14049298506466765
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.6298658218183321,
+              "draw": 0.23586003053644364,
+              "away": 0.13427414764522483
+            },
+            "elo-poisson-strength": {
+              "home": 0.7121655820609695,
+              "draw": 0.18910526418561677,
+              "away": 0.09872915375341376
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2021-03-24",
+          "homeTeam": "Chad",
+          "awayTeam": "Namibia",
+          "score": "0-3",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.3727755687012535,
+              "draw": 0.22723842195540317,
+              "away": 0.39998600934334344
+            },
+            "elo-poisson": {
+              "home": 0.35452499984794317,
+              "draw": 0.2699664069225671,
+              "away": 0.37550859322948943
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.3468319166208877,
+              "draw": 0.28535257337667813,
+              "away": 0.36781551000243395
+            },
+            "elo-poisson-strength": {
+              "home": 0.32911178567325744,
+              "draw": 0.2716283427393645,
+              "away": 0.3992598715873782
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        }
+      ]
+    },
+    {
+      "methodology": "Rolling-origin historical match backtest: train ratings before the window, score each test match before applying that result, and evaluate calibrated home/draw/away probabilities.",
+      "config": {
+        "testStart": "2022-01-01",
+        "testEnd": "2022-12-31",
+        "initialRating": 1500,
+        "homeAdvantageElo": 75,
+        "maxRecentGoalBlend": 0.1,
+        "recentMetricPriorWeight": 60,
+        "metricEloScale": 5000,
+        "baseXg": 1.25,
+        "maxGoals": 10,
+        "dixonColesRho": -0.06,
+        "sampleForecastLimit": 20,
+        "activeModel": "elo-poisson-strength",
+        "rollingUpdate": true
+      },
+      "dataset": {
+        "totalMatches": 49478,
+        "trainMatches": 44837,
+        "testMatches": 970,
+        "excludedMatches": 3671,
+        "trainDateRange": {
+          "start": "1872-11-30",
+          "end": "2021-12-31"
+        },
+        "testDateRange": {
+          "start": "2022-01-01",
+          "end": "2022-12-30"
+        }
+      },
+      "metrics": {
+        "elo-baseline": {
+          "matches": 970,
+          "brierScore": 0.55822265800046,
+          "logLoss": 0.94736008532321,
+          "accuracy": 0.5752577319587628,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 56,
+              "meanConfidence": 0.39335483883264516,
+              "accuracy": 0.32142857142857145,
+              "calibrationError": -0.07192626740407371
+            },
+            {
+              "bucket": "0.4-0.5",
+              "count": 363,
+              "meanConfidence": 0.4472595075522528,
+              "accuracy": 0.4765840220385675,
+              "calibrationError": 0.02932451448631468
+            },
+            {
+              "bucket": "0.5-0.6",
+              "count": 312,
+              "meanConfidence": 0.5489097667376023,
+              "accuracy": 0.5833333333333334,
+              "calibrationError": 0.03442356659573109
+            },
+            {
+              "bucket": "0.6-0.7",
+              "count": 201,
+              "meanConfidence": 0.6439420291765776,
+              "accuracy": 0.7562189054726368,
+              "calibrationError": 0.1122768762960592
+            },
+            {
+              "bucket": "0.7-0.8",
+              "count": 38,
+              "meanConfidence": 0.7209374415938651,
+              "accuracy": 0.868421052631579,
+              "calibrationError": 0.1474836110377139
+            }
+          ]
+        },
+        "elo-poisson": {
+          "matches": 970,
+          "brierScore": 0.5637780923320216,
+          "logLoss": 0.9540014403981324,
+          "accuracy": 0.5762886597938144,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 177,
+              "meanConfidence": 0.3813558723120892,
+              "accuracy": 0.3785310734463277,
+              "calibrationError": -0.0028247988657614798
+            },
+            {
+              "bucket": "0.4-0.5",
+              "count": 396,
+              "meanConfidence": 0.44628942515518827,
+              "accuracy": 0.5353535353535354,
+              "calibrationError": 0.08906411019834709
+            },
+            {
+              "bucket": "0.5-0.6",
+              "count": 265,
+              "meanConfidence": 0.5462687182240461,
+              "accuracy": 0.6452830188679245,
+              "calibrationError": 0.0990143006438784
+            },
+            {
+              "bucket": "0.6-0.7",
+              "count": 105,
+              "meanConfidence": 0.6396003214692656,
+              "accuracy": 0.8095238095238095,
+              "calibrationError": 0.16992348805454394
+            },
+            {
+              "bucket": "0.7-0.8",
+              "count": 27,
+              "meanConfidence": 0.7328069038201774,
+              "accuracy": 0.8888888888888888,
+              "calibrationError": 0.1560819850687114
+            }
+          ]
+        },
+        "elo-poisson-dixon-coles": {
+          "matches": 970,
+          "brierScore": 0.5651499622774278,
+          "logLoss": 0.9553524408243352,
+          "accuracy": 0.5762886597938144,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 214,
+              "meanConfidence": 0.37762049157645905,
+              "accuracy": 0.397196261682243,
+              "calibrationError": 0.01957577010578393
+            },
+            {
+              "bucket": "0.4-0.5",
+              "count": 387,
+              "meanConfidence": 0.4469420074054404,
+              "accuracy": 0.5555555555555556,
+              "calibrationError": 0.1086135481501152
+            },
+            {
+              "bucket": "0.5-0.6",
+              "count": 251,
+              "meanConfidence": 0.5472353318185175,
+              "accuracy": 0.6414342629482072,
+              "calibrationError": 0.09419893112968969
+            },
+            {
+              "bucket": "0.6-0.7",
+              "count": 97,
+              "meanConfidence": 0.6427407221763295,
+              "accuracy": 0.8041237113402062,
+              "calibrationError": 0.16138298916387672
+            },
+            {
+              "bucket": "0.7-0.8",
+              "count": 21,
+              "meanConfidence": 0.7366986940395448,
+              "accuracy": 0.9523809523809523,
+              "calibrationError": 0.21568225834140753
+            }
+          ]
+        },
+        "elo-poisson-strength": {
+          "matches": 970,
+          "brierScore": 0.5549876923469534,
+          "logLoss": 0.9407645725189219,
+          "accuracy": 0.5793814432989691,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 146,
+              "meanConfidence": 0.38228721413150546,
+              "accuracy": 0.410958904109589,
+              "calibrationError": 0.02867168997808356
+            },
+            {
+              "bucket": "0.4-0.5",
+              "count": 323,
+              "meanConfidence": 0.44968406155886403,
+              "accuracy": 0.5077399380804953,
+              "calibrationError": 0.0580558765216313
+            },
+            {
+              "bucket": "0.5-0.6",
+              "count": 233,
+              "meanConfidence": 0.5481489581525315,
+              "accuracy": 0.6008583690987125,
+              "calibrationError": 0.05270941094618098
+            },
+            {
+              "bucket": "0.6-0.7",
+              "count": 167,
+              "meanConfidence": 0.6460551244958205,
+              "accuracy": 0.7005988023952096,
+              "calibrationError": 0.054543677899389076
+            },
+            {
+              "bucket": "0.7-0.8",
+              "count": 78,
+              "meanConfidence": 0.7439485086662992,
+              "accuracy": 0.7564102564102564,
+              "calibrationError": 0.012461747743957141
+            },
+            {
+              "bucket": "0.8-0.9",
+              "count": 21,
+              "meanConfidence": 0.8344853154691559,
+              "accuracy": 0.9523809523809523,
+              "calibrationError": 0.11789563691179639
+            },
+            {
+              "bucket": "0.9-1.0",
+              "count": 2,
+              "meanConfidence": 0.9080667698257817,
+              "accuracy": 1,
+              "calibrationError": 0.09193323017421828
+            }
+          ]
+        },
+        "uniform-baseline": {
+          "matches": 970,
+          "brierScore": 0.6666666666666647,
+          "logLoss": 1.098612288668137,
+          "accuracy": 0.4979381443298969,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 970,
+              "meanConfidence": 0.33333333333333237,
+              "accuracy": 0.4979381443298969,
+              "calibrationError": 0.16460481099656454
+            }
+          ]
+        }
+      },
+      "sampleForecasts": [
+        {
+          "date": "2022-01-01",
+          "homeTeam": "Thailand",
+          "awayTeam": "Indonesia",
+          "score": "2-2",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.5037208095599112,
+              "draw": 0.22718554861730608,
+              "away": 0.2690936418227831
+            },
+            "elo-poisson": {
+              "home": 0.46009377321522515,
+              "draw": 0.2638525488485948,
+              "away": 0.2760536779361801
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.4525843071725613,
+              "draw": 0.27887148093392256,
+              "away": 0.26854421189351624
+            },
+            "elo-poisson-strength": {
+              "home": 0.4959544242098219,
+              "draw": 0.2561929110858589,
+              "away": 0.2478526647043192
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2022-01-02",
+          "homeTeam": "Gabon",
+          "awayTeam": "Burkina Faso",
+          "score": "0-3",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.25311458466908376,
+              "draw": 0.22718554861730614,
+              "away": 0.5196998667136103
+            },
+            "elo-poisson": {
+              "home": 0.26391935361014557,
+              "draw": 0.26195215378427417,
+              "away": 0.47412849260558015
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.25646753442471926,
+              "draw": 0.27685579215512673,
+              "away": 0.4666766734201539
+            },
+            "elo-poisson-strength": {
+              "home": 0.23177152729749992,
+              "draw": 0.2573271842068749,
+              "away": 0.5109012884956253
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2022-01-02",
+          "homeTeam": "Sudan",
+          "awayTeam": "Zimbabwe",
+          "score": "0-0",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.3744044581745168,
+              "draw": 0.22718554861730605,
+              "away": 0.39840999320817777
+            },
+            "elo-poisson": {
+              "home": 0.3557529585025193,
+              "draw": 0.2699841768551781,
+              "away": 0.37426286464230335
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.34805934562558277,
+              "draw": 0.28537140260905125,
+              "away": 0.3665692517653668
+            },
+            "elo-poisson-strength": {
+              "home": 0.3438011154329996,
+              "draw": 0.2717132951332216,
+              "away": 0.38448558943377825
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2022-01-03",
+          "homeTeam": "Rwanda",
+          "awayTeam": "Guinea",
+          "score": "3-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.3352380576234546,
+              "draw": 0.22718554861730597,
+              "away": 0.4375763937592395
+            },
+            "elo-poisson": {
+              "home": 0.3259722037708466,
+              "draw": 0.26890599290862766,
+              "away": 0.40512180332052644
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.3183107691266664,
+              "draw": 0.284228862196988,
+              "away": 0.3974603686763463
+            },
+            "elo-poisson-strength": {
+              "home": 0.2959345270403534,
+              "draw": 0.2679488529071775,
+              "away": 0.4361166200524694
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2022-01-04",
+          "homeTeam": "Mauritania",
+          "awayTeam": "Gabon",
+          "score": "1-1",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.37524975398439864,
+              "draw": 0.22718554861730605,
+              "away": 0.3975646973982955
+            },
+            "elo-poisson": {
+              "home": 0.3564007091380227,
+              "draw": 0.26999264785282345,
+              "away": 0.37360664300915436
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.3487068437830134,
+              "draw": 0.285380378562842,
+              "away": 0.365912777654145
+            },
+            "elo-poisson-strength": {
+              "home": 0.34958114905732696,
+              "draw": 0.2735072477716291,
+              "away": 0.3769116031710444
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2022-01-05",
+          "homeTeam": "Algeria",
+          "awayTeam": "Ghana",
+          "score": "3-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.480668797166237,
+              "draw": 0.22718554861730603,
+              "away": 0.29214565421645733
+            },
+            "elo-poisson": {
+              "home": 0.44042402855202273,
+              "draw": 0.2661052598260169,
+              "away": 0.2934707116219595
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.4328465826164986,
+              "draw": 0.28126015169706525,
+              "away": 0.28589326568643536
+            },
+            "elo-poisson-strength": {
+              "home": 0.472175183192922,
+              "draw": 0.26115067205591147,
+              "away": 0.26667414475116713
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2022-01-06",
+          "homeTeam": "Rwanda",
+          "awayTeam": "Guinea",
+          "score": "0-2",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.35703286062308254,
+              "draw": 0.22718554861730605,
+              "away": 0.4157815907596114
+            },
+            "elo-poisson": {
+              "home": 0.34249421138970915,
+              "draw": 0.2696725113087324,
+              "away": 0.38783327730155887
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.3348098913573851,
+              "draw": 0.2850411513733802,
+              "away": 0.3801489572692348
+            },
+            "elo-poisson-strength": {
+              "home": 0.3171719154541519,
+              "draw": 0.27022343035055496,
+              "away": 0.412604654195293
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2022-01-09",
+          "homeTeam": "Cameroon",
+          "awayTeam": "Burkina Faso",
+          "score": "2-1",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.5128808936778407,
+              "draw": 0.22718554861730592,
+              "away": 0.2599335577048533
+            },
+            "elo-poisson": {
+              "home": 0.46809561829581087,
+              "draw": 0.2627985971182234,
+              "away": 0.26910578458596585
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.46061808899340295,
+              "draw": 0.2777536557230393,
+              "away": 0.26162825528355793
+            },
+            "elo-poisson-strength": {
+              "home": 0.47455814199378815,
+              "draw": 0.26513903455824217,
+              "away": 0.26030282344796934
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2022-01-09",
+          "homeTeam": "Ethiopia",
+          "awayTeam": "Cape Verde",
+          "score": "0-1",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.27000181380897365,
+              "draw": 0.2271855486173059,
+              "away": 0.5028126375737202
+            },
+            "elo-poisson": {
+              "home": 0.27674148644800334,
+              "draw": 0.2639519767600458,
+              "away": 0.45930653679195027
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.26922901190255694,
+              "draw": 0.27897692585093875,
+              "away": 0.45179406224650376
+            },
+            "elo-poisson-strength": {
+              "home": 0.24796711443476047,
+              "draw": 0.25888928848128273,
+              "away": 0.49314359708395744
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2022-01-10",
+          "homeTeam": "Comoros",
+          "awayTeam": "Gabon",
+          "score": "0-1",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.3187245583098189,
+              "draw": 0.22718554861730592,
+              "away": 0.4540898930728746
+            },
+            "elo-poisson": {
+              "home": 0.313506174155757,
+              "draw": 0.2680398191698698,
+              "away": 0.4184540066743729
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.3058706523133864,
+              "draw": 0.28331086285461077,
+              "away": 0.41081848483200234
+            },
+            "elo-poisson-strength": {
+              "home": 0.29338955112505116,
+              "draw": 0.26912641076844396,
+              "away": 0.437484038106505
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2022-01-10",
+          "homeTeam": "Guinea",
+          "awayTeam": "Malawi",
+          "score": "1-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.4959381879237808,
+              "draw": 0.227185548617306,
+              "away": 0.27687626345891325
+            },
+            "elo-poisson": {
+              "home": 0.4533816259693076,
+              "draw": 0.26467564127432336,
+              "away": 0.28194273275636966
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.4458472772117102,
+              "draw": 0.2797443387895182,
+              "away": 0.27440838399877204
+            },
+            "elo-poisson-strength": {
+              "home": 0.4834188647379064,
+              "draw": 0.26225359059634545,
+              "away": 0.2543275446657478
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2022-01-10",
+          "homeTeam": "Morocco",
+          "awayTeam": "Ghana",
+          "score": "1-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.47671868348898816,
+              "draw": 0.2271855486173059,
+              "away": 0.29609576789370573
+            },
+            "elo-poisson": {
+              "home": 0.43711436162125733,
+              "draw": 0.26643639712325984,
+              "away": 0.29644924125548283
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.42952695509602196,
+              "draw": 0.28161121017373064,
+              "away": 0.2888618347302474
+            },
+            "elo-poisson-strength": {
+              "home": 0.4637320435766948,
+              "draw": 0.2655269011469712,
+              "away": 0.270741055276334
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2022-01-10",
+          "homeTeam": "Senegal",
+          "awayTeam": "Zimbabwe",
+          "score": "1-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.6712671193901334,
+              "draw": 0.22718554861730608,
+              "away": 0.10154733199256104
+            },
+            "elo-poisson": {
+              "home": 0.6372357683973362,
+              "draw": 0.22304277294984293,
+              "away": 0.1397214586528209
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.6310297393868535,
+              "draw": 0.23545483097080833,
+              "away": 0.13351542964233817
+            },
+            "elo-poisson-strength": {
+              "home": 0.7237538013020259,
+              "draw": 0.18392178220744693,
+              "away": 0.09232441649052736
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2022-01-11",
+          "homeTeam": "Algeria",
+          "awayTeam": "Sierra Leone",
+          "score": "0-0",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.6570685982615582,
+              "draw": 0.22718554861730597,
+              "away": 0.11574585312113564
+            },
+            "elo-poisson": {
+              "home": 0.6181971735837133,
+              "draw": 0.22913136590069832,
+              "away": 0.15267146051558816
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.6117873599417888,
+              "draw": 0.24195099318454721,
+              "away": 0.14626164687366375
+            },
+            "elo-poisson-strength": {
+              "home": 0.7121843151785869,
+              "draw": 0.187297434555106,
+              "away": 0.10051825026630733
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2022-01-11",
+          "homeTeam": "Nigeria",
+          "awayTeam": "Egypt",
+          "score": "1-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.3587730233548659,
+              "draw": 0.22718554861730605,
+              "away": 0.41404142802782806
+            },
+            "elo-poisson": {
+              "home": 0.3438182163244949,
+              "draw": 0.2697156015700066,
+              "away": 0.3864661821054983
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.3361326110578952,
+              "draw": 0.285086812103206,
+              "away": 0.3787805768388986
+            },
+            "elo-poisson-strength": {
+              "home": 0.33301658642108134,
+              "draw": 0.27239698306313465,
+              "away": 0.39458643051578424
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2022-01-11",
+          "homeTeam": "Sudan",
+          "awayTeam": "Guinea-Bissau",
+          "score": "0-0",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.3155643690396044,
+              "draw": 0.22718554861730592,
+              "away": 0.4572500823430896
+            },
+            "elo-poisson": {
+              "home": 0.3111234213352113,
+              "draw": 0.2678452797044823,
+              "away": 0.4210312989603064
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.3034937270382233,
+              "draw": 0.28310466829845843,
+              "away": 0.41340160466331827
+            },
+            "elo-poisson-strength": {
+              "home": 0.29181544906504464,
+              "draw": 0.26738482664310537,
+              "away": 0.4407997242918498
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2022-01-12",
+          "homeTeam": "Equatorial Guinea",
+          "awayTeam": "Ivory Coast",
+          "score": "0-1",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.22148022203529408,
+              "draw": 0.2271855486173062,
+              "away": 0.5513342293474006
+            },
+            "elo-poisson": {
+              "home": 0.23963556821331122,
+              "draw": 0.2572793768182368,
+              "away": 0.5030850549684512
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.2323266761624901,
+              "draw": 0.27189716091987914,
+              "away": 0.4957761629176301
+            },
+            "elo-poisson-strength": {
+              "home": 0.20192994155350702,
+              "draw": 0.24681184512493484,
+              "away": 0.551258213321558
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2022-01-12",
+          "homeTeam": "Iceland",
+          "awayTeam": "Uganda",
+          "score": "1-1",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.31789151609138766,
+              "draw": 0.2271855486173057,
+              "away": 0.4549229352913058
+            },
+            "elo-poisson": {
+              "home": 0.3128780084697792,
+              "draw": 0.26798944640809313,
+              "away": 0.41913254512212805
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.30524399530465707,
+              "draw": 0.2832574727383373,
+              "away": 0.41149853195700603
+            },
+            "elo-poisson-strength": {
+              "home": 0.2945982769536852,
+              "draw": 0.2701131077345226,
+              "away": 0.43528861531179264
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2022-01-12",
+          "homeTeam": "Mauritania",
+          "awayTeam": "Gambia",
+          "score": "0-1",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.40402539530735726,
+              "draw": 0.22718554861730603,
+              "away": 0.36878905607533713
+            },
+            "elo-poisson": {
+              "home": 0.37863148438052374,
+              "draw": 0.26991216728139666,
+              "away": 0.35145634833807904
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.37094001796094356,
+              "draw": 0.2852951001205571,
+              "away": 0.34376488191849885
+            },
+            "elo-poisson-strength": {
+              "home": 0.3800070209231053,
+              "draw": 0.2731198294763568,
+              "away": 0.346873149600538
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2022-01-12",
+          "homeTeam": "Tunisia",
+          "awayTeam": "Mali",
+          "score": "0-1",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.42183576416281715,
+              "draw": 0.22718554861730597,
+              "away": 0.3509786872198766
+            },
+            "elo-poisson": {
+              "home": 0.39260401946481405,
+              "draw": 0.2695018624596995,
+              "away": 0.3378941180754866
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.38492479063812723,
+              "draw": 0.2848603201130733,
+              "away": 0.33021488924879966
+            },
+            "elo-poisson-strength": {
+              "home": 0.40270422744725237,
+              "draw": 0.2711489434119519,
+              "away": 0.3261468291407953
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        }
+      ]
+    },
+    {
+      "methodology": "Rolling-origin historical match backtest: train ratings before the window, score each test match before applying that result, and evaluate calibrated home/draw/away probabilities.",
+      "config": {
+        "testStart": "2023-01-01",
+        "testEnd": "2023-12-31",
+        "initialRating": 1500,
+        "homeAdvantageElo": 75,
+        "maxRecentGoalBlend": 0.1,
+        "recentMetricPriorWeight": 60,
+        "metricEloScale": 5000,
+        "baseXg": 1.25,
+        "maxGoals": 10,
+        "dixonColesRho": -0.06,
+        "sampleForecastLimit": 20,
+        "activeModel": "elo-poisson-strength",
+        "rollingUpdate": true
+      },
+      "dataset": {
+        "totalMatches": 49478,
+        "trainMatches": 45807,
+        "testMatches": 1054,
+        "excludedMatches": 2617,
+        "trainDateRange": {
+          "start": "1872-11-30",
+          "end": "2022-12-30"
+        },
+        "testDateRange": {
+          "start": "2023-01-02",
+          "end": "2023-12-16"
+        }
+      },
+      "metrics": {
+        "elo-baseline": {
+          "matches": 1054,
+          "brierScore": 0.5291539170152437,
+          "logLoss": 0.9004364914620931,
+          "accuracy": 0.6138519924098672,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 38,
+              "meanConfidence": 0.3942680855845727,
+              "accuracy": 0.42105263157894735,
+              "calibrationError": 0.02678454599437463
+            },
+            {
+              "bucket": "0.4-0.5",
+              "count": 352,
+              "meanConfidence": 0.4509843235779011,
+              "accuracy": 0.5028409090909091,
+              "calibrationError": 0.05185658551300798
+            },
+            {
+              "bucket": "0.5-0.6",
+              "count": 330,
+              "meanConfidence": 0.5494091253151577,
+              "accuracy": 0.5636363636363636,
+              "calibrationError": 0.01422723832120587
+            },
+            {
+              "bucket": "0.6-0.7",
+              "count": 230,
+              "meanConfidence": 0.6476568784601673,
+              "accuracy": 0.7521739130434782,
+              "calibrationError": 0.10451703458331096
+            },
+            {
+              "bucket": "0.7-0.8",
+              "count": 104,
+              "meanConfidence": 0.7297171037723127,
+              "accuracy": 0.9134615384615384,
+              "calibrationError": 0.18374443468922574
+            }
+          ]
+        },
+        "elo-poisson": {
+          "matches": 1054,
+          "brierScore": 0.5336374463706284,
+          "logLoss": 0.9085465476351704,
+          "accuracy": 0.6138519924098672,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 143,
+              "meanConfidence": 0.38264428041111953,
+              "accuracy": 0.43356643356643354,
+              "calibrationError": 0.05092215315531401
+            },
+            {
+              "bucket": "0.4-0.5",
+              "count": 406,
+              "meanConfidence": 0.4480395444744572,
+              "accuracy": 0.5123152709359606,
+              "calibrationError": 0.06427572646150342
+            },
+            {
+              "bucket": "0.5-0.6",
+              "count": 278,
+              "meanConfidence": 0.543525905511865,
+              "accuracy": 0.6726618705035972,
+              "calibrationError": 0.1291359649917322
+            },
+            {
+              "bucket": "0.6-0.7",
+              "count": 142,
+              "meanConfidence": 0.6454101529573474,
+              "accuracy": 0.7746478873239436,
+              "calibrationError": 0.12923773436659625
+            },
+            {
+              "bucket": "0.7-0.8",
+              "count": 70,
+              "meanConfidence": 0.7368690074359604,
+              "accuracy": 0.9285714285714286,
+              "calibrationError": 0.1917024211354682
+            },
+            {
+              "bucket": "0.8-0.9",
+              "count": 15,
+              "meanConfidence": 0.8028771244407856,
+              "accuracy": 1,
+              "calibrationError": 0.19712287555921437
+            }
+          ]
+        },
+        "elo-poisson-dixon-coles": {
+          "matches": 1054,
+          "brierScore": 0.5352224812478205,
+          "logLoss": 0.9099992958428621,
+          "accuracy": 0.6138519924098672,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 175,
+              "meanConfidence": 0.3789176086192316,
+              "accuracy": 0.46285714285714286,
+              "calibrationError": 0.08393953423791123
+            },
+            {
+              "bucket": "0.4-0.5",
+              "count": 402,
+              "meanConfidence": 0.44788986345491866,
+              "accuracy": 0.5199004975124378,
+              "calibrationError": 0.07201063405751917
+            },
+            {
+              "bucket": "0.5-0.6",
+              "count": 261,
+              "meanConfidence": 0.5433178922091685,
+              "accuracy": 0.6704980842911877,
+              "calibrationError": 0.12718019208201925
+            },
+            {
+              "bucket": "0.6-0.7",
+              "count": 139,
+              "meanConfidence": 0.646008871718405,
+              "accuracy": 0.7841726618705036,
+              "calibrationError": 0.13816379015209856
+            },
+            {
+              "bucket": "0.7-0.8",
+              "count": 73,
+              "meanConfidence": 0.7459478658418616,
+              "accuracy": 0.9452054794520548,
+              "calibrationError": 0.19925761361019323
+            },
+            {
+              "bucket": "0.8-0.9",
+              "count": 4,
+              "meanConfidence": 0.8015227838761632,
+              "accuracy": 1,
+              "calibrationError": 0.19847721612383684
+            }
+          ]
+        },
+        "elo-poisson-strength": {
+          "matches": 1054,
+          "brierScore": 0.5209552746132967,
+          "logLoss": 0.8862699251585613,
+          "accuracy": 0.6157495256166983,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 105,
+              "meanConfidence": 0.38311867770882735,
+              "accuracy": 0.45714285714285713,
+              "calibrationError": 0.07402417943402978
+            },
+            {
+              "bucket": "0.4-0.5",
+              "count": 330,
+              "meanConfidence": 0.4487332267578192,
+              "accuracy": 0.5212121212121212,
+              "calibrationError": 0.07247889445430206
+            },
+            {
+              "bucket": "0.5-0.6",
+              "count": 249,
+              "meanConfidence": 0.5494730229114686,
+              "accuracy": 0.5502008032128514,
+              "calibrationError": 0.0007277803013827633
+            },
+            {
+              "bucket": "0.6-0.7",
+              "count": 178,
+              "meanConfidence": 0.6435290857192798,
+              "accuracy": 0.7303370786516854,
+              "calibrationError": 0.0868079929324056
+            },
+            {
+              "bucket": "0.7-0.8",
+              "count": 111,
+              "meanConfidence": 0.7490024175995151,
+              "accuracy": 0.7837837837837838,
+              "calibrationError": 0.034781366184268636
+            },
+            {
+              "bucket": "0.8-0.9",
+              "count": 63,
+              "meanConfidence": 0.8407456162799875,
+              "accuracy": 0.9047619047619048,
+              "calibrationError": 0.06401628848191732
+            },
+            {
+              "bucket": "0.9-1.0",
+              "count": 18,
+              "meanConfidence": 0.9238754994378549,
+              "accuracy": 1,
+              "calibrationError": 0.07612450056214515
+            }
+          ]
+        },
+        "uniform-baseline": {
+          "matches": 1054,
+          "brierScore": 0.6666666666666619,
+          "logLoss": 1.098612288668139,
+          "accuracy": 0.4667931688804554,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 1054,
+              "meanConfidence": 0.33333333333333093,
+              "accuracy": 0.4667931688804554,
+              "calibrationError": 0.13345983554712448
+            }
+          ]
+        }
+      },
+      "sampleForecasts": [
+        {
+          "date": "2023-01-02",
+          "homeTeam": "Philippines",
+          "awayTeam": "Indonesia",
+          "score": "1-2",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.3576839310003545,
+              "draw": 0.22717747216764883,
+              "away": 0.4151385968319959
+            },
+            "elo-poisson": {
+              "home": 0.34298663737136853,
+              "draw": 0.2696888508087968,
+              "away": 0.38732451181983496
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.3353018299719389,
+              "draw": 0.2850584656076561,
+              "away": 0.37963970442040534
+            },
+            "elo-poisson-strength": {
+              "home": 0.31451727501246923,
+              "draw": 0.2657428535791047,
+              "away": 0.41973987140842617
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2023-01-02",
+          "homeTeam": "Thailand",
+          "awayTeam": "Cambodia",
+          "score": "3-1",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.6852382703672986,
+              "draw": 0.227177472167649,
+              "away": 0.08758425746505268
+            },
+            "elo-poisson": {
+              "home": 0.6573484123665545,
+              "draw": 0.2161722167239191,
+              "away": 0.12647937090952727
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.6513766740567898,
+              "draw": 0.22811569334344847,
+              "away": 0.12050763259976256
+            },
+            "elo-poisson-strength": {
+              "home": 0.7442729451728621,
+              "draw": 0.172643209853548,
+              "away": 0.08308384497359055
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2023-01-03",
+          "homeTeam": "Malaysia",
+          "awayTeam": "Singapore",
+          "score": "4-1",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.5621225585295553,
+              "draw": 0.22717747216764902,
+              "away": 0.210699969302796
+            },
+            "elo-poisson": {
+              "home": 0.5133723132373281,
+              "draw": 0.2553800647410168,
+              "away": 0.2312476220216552
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.5061220042355739,
+              "draw": 0.2698806827445251,
+              "away": 0.22399731301990106
+            },
+            "elo-poisson-strength": {
+              "home": 0.5456062412171142,
+              "draw": 0.2460202821880671,
+              "away": 0.2083734765948194
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2023-01-03",
+          "homeTeam": "Vietnam",
+          "awayTeam": "Myanmar",
+          "score": "3-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.6922682452733288,
+              "draw": 0.22717747216764908,
+              "away": 0.08055428255902253
+            },
+            "elo-poisson": {
+              "home": 0.668101313344785,
+              "draw": 0.21231354248382592,
+              "away": 0.11958514417138932
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.6622632498489147,
+              "draw": 0.22398966947556645,
+              "away": 0.11374708067551903
+            },
+            "elo-poisson-strength": {
+              "home": 0.7570166650144323,
+              "draw": 0.1666603355173833,
+              "away": 0.07632299946818522
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2023-01-06",
+          "homeTeam": "Indonesia",
+          "awayTeam": "Vietnam",
+          "score": "0-0",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.400589646524242,
+              "draw": 0.227177472167649,
+              "away": 0.37223288130810867
+            },
+            "elo-poisson": {
+              "home": 0.375953382475916,
+              "draw": 0.26995952694752645,
+              "away": 0.3540870905765572
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.3682605043193207,
+              "draw": 0.2853452832607171,
+              "away": 0.3463942124199619
+            },
+            "elo-poisson-strength": {
+              "home": 0.35520532404705757,
+              "draw": 0.26923002716960037,
+              "away": 0.3755646487833419
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2023-01-06",
+          "homeTeam": "Iraq",
+          "awayTeam": "Oman",
+          "score": "0-0",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.48253603172308324,
+              "draw": 0.2271774721676489,
+              "away": 0.29028649610926693
+            },
+            "elo-poisson": {
+              "home": 0.4419901209340048,
+              "draw": 0.26594371858149735,
+              "away": 0.2920661604844977
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.43441753712491893,
+              "draw": 0.28108888619966893,
+              "away": 0.2844935766754118
+            },
+            "elo-poisson-strength": {
+              "home": 0.44035063420416803,
+              "draw": 0.2685021243801065,
+              "away": 0.2911472414157255
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2023-01-06",
+          "homeTeam": "Yemen",
+          "awayTeam": "Saudi Arabia",
+          "score": "0-2",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.08991787645134687,
+              "draw": 0.22717747216764891,
+              "away": 0.6829046513810039
+            },
+            "elo-poisson": {
+              "home": 0.12873206504223778,
+              "draw": 0.21738995711545497,
+              "away": 0.6538779778423072
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.12271845715855012,
+              "draw": 0.2294171728828305,
+              "away": 0.6478643699586194
+            },
+            "elo-poisson-strength": {
+              "home": 0.07808618657891062,
+              "draw": 0.16895514784783153,
+              "away": 0.7529586655732579
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2023-01-07",
+          "homeTeam": "Bahrain",
+          "awayTeam": "United Arab Emirates",
+          "score": "2-1",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.4310701602408376,
+              "draw": 0.22717747216764908,
+              "away": 0.34175236759151395
+            },
+            "elo-poisson": {
+              "home": 0.3999231483847923,
+              "draw": 0.2691793041154403,
+              "away": 0.3308975474997674
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.3922535487313595,
+              "draw": 0.28451850342230595,
+              "away": 0.3232279478463346
+            },
+            "elo-poisson-strength": {
+              "home": 0.40961375886430074,
+              "draw": 0.26994846434077346,
+              "away": 0.3204377767949256
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2023-01-07",
+          "homeTeam": "Kuwait",
+          "awayTeam": "Qatar",
+          "score": "0-2",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.2182265890115234,
+              "draw": 0.22717747216764916,
+              "away": 0.5545959388208276
+            },
+            "elo-poisson": {
+              "home": 0.23710975135552034,
+              "draw": 0.25672341765079004,
+              "away": 0.5061668309936894
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.22981797798559134,
+              "draw": 0.27130696439064805,
+              "away": 0.4988750576237605
+            },
+            "elo-poisson-strength": {
+              "home": 0.19731504919847925,
+              "draw": 0.2421973304061749,
+              "away": 0.5604876203953455
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2023-01-07",
+          "homeTeam": "Malaysia",
+          "awayTeam": "Thailand",
+          "score": "1-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.41139160649884765,
+              "draw": 0.22717747216764886,
+              "away": 0.3614309213335031
+            },
+            "elo-poisson": {
+              "home": 0.38438452735392936,
+              "draw": 0.26977621654704553,
+              "away": 0.34583925609902566
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.3766971143814456,
+              "draw": 0.28515104249201306,
+              "away": 0.3381518431265419
+            },
+            "elo-poisson-strength": {
+              "home": 0.3660128376166582,
+              "draw": 0.2692617169167121,
+              "away": 0.36472544546663027
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2023-01-08",
+          "homeTeam": "Iceland",
+          "awayTeam": "Estonia",
+          "score": "1-1",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.5029876625728671,
+              "draw": 0.22717747216764894,
+              "away": 0.2698348652594839
+            },
+            "elo-poisson": {
+              "home": 0.45945361682187796,
+              "draw": 0.2639334587697433,
+              "away": 0.2766129244083783
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.45194170253947447,
+              "draw": 0.2789572873345502,
+              "away": 0.269101010125975
+            },
+            "elo-poisson-strength": {
+              "home": 0.49620595281756774,
+              "draw": 0.25798029194517524,
+              "away": 0.24581375523725707
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2023-01-09",
+          "homeTeam": "Iraq",
+          "awayTeam": "Saudi Arabia",
+          "score": "2-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.4613042746324915,
+              "draw": 0.22717747216764902,
+              "away": 0.31151825319985954
+            },
+            "elo-poisson": {
+              "home": 0.42434678714528606,
+              "draw": 0.26758224576668677,
+              "away": 0.3080709670880273
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.4167249766444672,
+              "draw": 0.28282586676832444,
+              "away": 0.3004491565872085
+            },
+            "elo-poisson-strength": {
+              "home": 0.41636927698077986,
+              "draw": 0.2705259080098488,
+              "away": 0.3131048150093708
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2023-01-09",
+          "homeTeam": "Oman",
+          "awayTeam": "Yemen",
+          "score": "3-2",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.6791219942213969,
+              "draw": 0.2271774721676489,
+              "away": 0.09370053361095475
+            },
+            "elo-poisson": {
+              "home": 0.6483497692520919,
+              "draw": 0.2193019673896797,
+              "away": 0.13234826335822797
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.6422707220508985,
+              "draw": 0.23146006179206643,
+              "away": 0.12626921615703457
+            },
+            "elo-poisson-strength": {
+              "home": 0.7450132509770482,
+              "draw": 0.17312120368308861,
+              "away": 0.08186554533986375
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2023-01-09",
+          "homeTeam": "Sweden",
+          "awayTeam": "Finland",
+          "score": "2-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.47463356843155863,
+              "draw": 0.22717747216764894,
+              "away": 0.2981889594007917
+            },
+            "elo-poisson": {
+              "home": 0.4353698064548426,
+              "draw": 0.2666053224183798,
+              "away": 0.29802487112677717
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.4277773218214129,
+              "draw": 0.28179029168523934,
+              "away": 0.2904323864933474
+            },
+            "elo-poisson-strength": {
+              "home": 0.4626493670101521,
+              "draw": 0.2653910976772322,
+              "away": 0.27195953531261585
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2023-01-09",
+          "homeTeam": "Vietnam",
+          "awayTeam": "Indonesia",
+          "score": "2-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.5322805185328875,
+              "draw": 0.22717747216764878,
+              "away": 0.24054200929946346
+            },
+            "elo-poisson": {
+              "home": 0.48543799655815517,
+              "draw": 0.2602465122889953,
+              "away": 0.25431549115284985
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.4780381519844871,
+              "draw": 0.2750462014363314,
+              "away": 0.2469156465791817
+            },
+            "elo-poisson-strength": {
+              "home": 0.5086085843868439,
+              "draw": 0.25469641584598063,
+              "away": 0.23669499976717484
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2023-01-10",
+          "homeTeam": "Qatar",
+          "awayTeam": "Bahrain",
+          "score": "1-2",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.353918564959444,
+              "draw": 0.227177472167649,
+              "away": 0.41890396287290727
+            },
+            "elo-poisson": {
+              "home": 0.34012392159337906,
+              "draw": 0.26958865400612325,
+              "away": 0.3902874244004976
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.3324421031262362,
+              "draw": 0.2849522909404091,
+              "away": 0.3826056059333547
+            },
+            "elo-poisson-strength": {
+              "home": 0.33423486636891236,
+              "draw": 0.2702971445270911,
+              "away": 0.39546798910399616
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2023-01-10",
+          "homeTeam": "Thailand",
+          "awayTeam": "Malaysia",
+          "score": "3-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.503611272723855,
+              "draw": 0.22717747216764886,
+              "away": 0.26921125510849575
+            },
+            "elo-poisson": {
+              "home": 0.45999420124669926,
+              "draw": 0.263865167103231,
+              "away": 0.2761406316500699
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.45248435335774756,
+              "draw": 0.2788848628811344,
+              "away": 0.26863078376111815
+            },
+            "elo-poisson-strength": {
+              "home": 0.47506952466008917,
+              "draw": 0.26055477247391445,
+              "away": 0.2643757028659963
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2023-01-10",
+          "homeTeam": "United Arab Emirates",
+          "awayTeam": "Kuwait",
+          "score": "0-1",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.5438066055339544,
+              "draw": 0.22717747216764905,
+              "away": 0.22901592229839696
+            },
+            "elo-poisson": {
+              "home": 0.4960321382015797,
+              "draw": 0.25850959471715934,
+              "away": 0.24545826708126106
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.48868545252308576,
+              "draw": 0.2732029660741472,
+              "away": 0.23811158140276714
+            },
+            "elo-poisson-strength": {
+              "home": 0.5448343647992389,
+              "draw": 0.24678366147356257,
+              "away": 0.20838197372719847
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2023-01-12",
+          "homeTeam": "Finland",
+          "awayTeam": "Estonia",
+          "score": "0-1",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.584118913247024,
+              "draw": 0.22717747216764905,
+              "away": 0.18870361458532695
+            },
+            "elo-poisson": {
+              "home": 0.5351482209736197,
+              "draw": 0.25095356591760165,
+              "away": 0.21389821310877818
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.5280355637442289,
+              "draw": 0.26517888037638315,
+              "away": 0.20678555587938746
+            },
+            "elo-poisson-strength": {
+              "home": 0.594362868949369,
+              "draw": 0.2345466328747177,
+              "away": 0.17109049817591396
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2023-01-12",
+          "homeTeam": "Iraq",
+          "awayTeam": "Yemen",
+          "score": "5-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.7165277134641549,
+              "draw": 0.2271774721676491,
+              "away": 0.05629481436819639
+            },
+            "elo-poisson": {
+              "home": 0.7095162630179495,
+              "draw": 0.19623232587966696,
+              "away": 0.09425141110238382
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.7042525218112785,
+              "draw": 0.20675980829300875,
+              "away": 0.08898766989571293
+            },
+            "elo-poisson-strength": {
+              "home": 0.7965752300803648,
+              "draw": 0.1477608209096209,
+              "away": 0.05566394901001411
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        }
+      ]
+    },
+    {
+      "methodology": "Rolling-origin historical match backtest: train ratings before the window, score each test match before applying that result, and evaluate calibrated home/draw/away probabilities.",
+      "config": {
+        "testStart": "2024-01-01",
+        "testEnd": "2024-12-31",
+        "initialRating": 1500,
+        "homeAdvantageElo": 75,
+        "maxRecentGoalBlend": 0.1,
+        "recentMetricPriorWeight": 60,
+        "metricEloScale": 5000,
+        "baseXg": 1.25,
+        "maxGoals": 10,
+        "dixonColesRho": -0.06,
+        "sampleForecastLimit": 20,
+        "activeModel": "elo-poisson-strength",
+        "rollingUpdate": true
+      },
+      "dataset": {
+        "totalMatches": 49478,
+        "trainMatches": 46861,
+        "testMatches": 1231,
+        "excludedMatches": 1386,
+        "trainDateRange": {
+          "start": "1872-11-30",
+          "end": "2023-12-16"
+        },
+        "testDateRange": {
+          "start": "2024-01-01",
+          "end": "2024-12-31"
+        }
+      },
+      "metrics": {
+        "elo-baseline": {
+          "matches": 1231,
+          "brierScore": 0.5509938099929892,
+          "logLoss": 0.9334442106480458,
+          "accuracy": 0.5816409423233144,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 60,
+              "meanConfidence": 0.39322826533070454,
+              "accuracy": 0.4166666666666667,
+              "calibrationError": 0.023438401335962145
+            },
+            {
+              "bucket": "0.4-0.5",
+              "count": 362,
+              "meanConfidence": 0.4512103767145174,
+              "accuracy": 0.4530386740331492,
+              "calibrationError": 0.0018282973186317664
+            },
+            {
+              "bucket": "0.5-0.6",
+              "count": 396,
+              "meanConfidence": 0.5482533265979919,
+              "accuracy": 0.547979797979798,
+              "calibrationError": -0.0002735286181938523
+            },
+            {
+              "bucket": "0.6-0.7",
+              "count": 345,
+              "meanConfidence": 0.64712930941442,
+              "accuracy": 0.7217391304347827,
+              "calibrationError": 0.07460982102036262
+            },
+            {
+              "bucket": "0.7-0.8",
+              "count": 68,
+              "meanConfidence": 0.722171255607621,
+              "accuracy": 0.8970588235294118,
+              "calibrationError": 0.17488756792179083
+            }
+          ]
+        },
+        "elo-poisson": {
+          "matches": 1231,
+          "brierScore": 0.5534850486222507,
+          "logLoss": 0.9375532083054914,
+          "accuracy": 0.5816409423233144,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 174,
+              "meanConfidence": 0.38153291463929123,
+              "accuracy": 0.39655172413793105,
+              "calibrationError": 0.015018809498639818
+            },
+            {
+              "bucket": "0.4-0.5",
+              "count": 455,
+              "meanConfidence": 0.4518232728991032,
+              "accuracy": 0.4879120879120879,
+              "calibrationError": 0.03608881501298472
+            },
+            {
+              "bucket": "0.5-0.6",
+              "count": 349,
+              "meanConfidence": 0.5483984830635645,
+              "accuracy": 0.6361031518624641,
+              "calibrationError": 0.0877046687988996
+            },
+            {
+              "bucket": "0.6-0.7",
+              "count": 206,
+              "meanConfidence": 0.6401150537835876,
+              "accuracy": 0.7912621359223301,
+              "calibrationError": 0.1511470821387425
+            },
+            {
+              "bucket": "0.7-0.8",
+              "count": 44,
+              "meanConfidence": 0.7312601983856198,
+              "accuracy": 0.8636363636363636,
+              "calibrationError": 0.1323761652507438
+            },
+            {
+              "bucket": "0.8-0.9",
+              "count": 3,
+              "meanConfidence": 0.8030714016582734,
+              "accuracy": 0.6666666666666666,
+              "calibrationError": -0.13640473499160677
+            }
+          ]
+        },
+        "elo-poisson-dixon-coles": {
+          "matches": 1231,
+          "brierScore": 0.5536555393306138,
+          "logLoss": 0.9366253724553868,
+          "accuracy": 0.5816409423233144,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 198,
+              "meanConfidence": 0.37648565204723683,
+              "accuracy": 0.398989898989899,
+              "calibrationError": 0.022504246942662176
+            },
+            {
+              "bucket": "0.4-0.5",
+              "count": 460,
+              "meanConfidence": 0.4500815675239883,
+              "accuracy": 0.4891304347826087,
+              "calibrationError": 0.03904886725862039
+            },
+            {
+              "bucket": "0.5-0.6",
+              "count": 344,
+              "meanConfidence": 0.5491220303652455,
+              "accuracy": 0.6482558139534884,
+              "calibrationError": 0.09913378358824287
+            },
+            {
+              "bucket": "0.6-0.7",
+              "count": 188,
+              "meanConfidence": 0.6407306781118927,
+              "accuracy": 0.824468085106383,
+              "calibrationError": 0.18373740699449037
+            },
+            {
+              "bucket": "0.7-0.8",
+              "count": 40,
+              "meanConfidence": 0.7341964634934645,
+              "accuracy": 0.825,
+              "calibrationError": 0.0908035365065355
+            },
+            {
+              "bucket": "0.8-0.9",
+              "count": 1,
+              "meanConfidence": 0.8015227838761632,
+              "accuracy": 1,
+              "calibrationError": 0.19847721612383684
+            }
+          ]
+        },
+        "elo-poisson-strength": {
+          "matches": 1231,
+          "brierScore": 0.5431354901494718,
+          "logLoss": 0.9201023461431576,
+          "accuracy": 0.5808285946385053,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 117,
+              "meanConfidence": 0.38130838055099087,
+              "accuracy": 0.38461538461538464,
+              "calibrationError": 0.0033070040643937704
+            },
+            {
+              "bucket": "0.4-0.5",
+              "count": 355,
+              "meanConfidence": 0.44936922139253915,
+              "accuracy": 0.4704225352112676,
+              "calibrationError": 0.021053313818728436
+            },
+            {
+              "bucket": "0.5-0.6",
+              "count": 313,
+              "meanConfidence": 0.5458009854366648,
+              "accuracy": 0.5431309904153354,
+              "calibrationError": -0.0026699950213293633
+            },
+            {
+              "bucket": "0.6-0.7",
+              "count": 252,
+              "meanConfidence": 0.6491335989376293,
+              "accuracy": 0.6825396825396826,
+              "calibrationError": 0.033406083602053216
+            },
+            {
+              "bucket": "0.7-0.8",
+              "count": 154,
+              "meanConfidence": 0.7444622992734528,
+              "accuracy": 0.8311688311688312,
+              "calibrationError": 0.08670653189537847
+            },
+            {
+              "bucket": "0.8-0.9",
+              "count": 37,
+              "meanConfidence": 0.8392732800937784,
+              "accuracy": 0.8378378378378378,
+              "calibrationError": -0.001435442255940611
+            },
+            {
+              "bucket": "0.9-1.0",
+              "count": 3,
+              "meanConfidence": 0.9192378933796573,
+              "accuracy": 0.6666666666666666,
+              "calibrationError": -0.2525712267129907
+            }
+          ]
+        },
+        "uniform-baseline": {
+          "matches": 1231,
+          "brierScore": 0.6666666666666571,
+          "logLoss": 1.0986122886681429,
+          "accuracy": 0.4614134849715678,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 1231,
+              "meanConfidence": 0.33333333333332854,
+              "accuracy": 0.4614134849715678,
+              "calibrationError": 0.12808015163823927
+            }
+          ]
+        }
+      },
+      "sampleForecasts": [
+        {
+          "date": "2024-01-01",
+          "homeTeam": "China",
+          "awayTeam": "Hong Kong",
+          "score": "1-2",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.6193467058899976,
+              "draw": 0.22686923864800282,
+              "away": 0.1537840554619992
+            },
+            "elo-poisson": {
+              "home": 0.5724744910949141,
+              "draw": 0.24210449970686793,
+              "away": 0.1854210091982186
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.5656418542898928,
+              "draw": 0.2557697733169106,
+              "away": 0.17858837239319728
+            },
+            "elo-poisson-strength": {
+              "home": 0.6455807087447946,
+              "draw": 0.21548425871325808,
+              "away": 0.13893503254194778
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2024-01-01",
+          "homeTeam": "Japan",
+          "awayTeam": "Thailand",
+          "score": "5-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.7078904207008683,
+              "draw": 0.22686923864800276,
+              "away": 0.06524034065112927
+            },
+            "elo-poisson": {
+              "home": 0.6933856922101155,
+              "draw": 0.202727504785934,
+              "away": 0.10388680300395013
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.6878865325930502,
+              "draw": 0.21372582402006463,
+              "away": 0.09838764338688485
+            },
+            "elo-poisson-strength": {
+              "home": 0.7832415918529636,
+              "draw": 0.15350589652434923,
+              "away": 0.06325251162268646
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2024-01-02",
+          "homeTeam": "Indonesia",
+          "awayTeam": "Libya",
+          "score": "0-4",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.40735526624442214,
+              "draw": 0.22686923864800268,
+              "away": 0.36577549510757534
+            },
+            "elo-poisson": {
+              "home": 0.3810997207526689,
+              "draw": 0.26985953919730377,
+              "away": 0.3490407400500278
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.3734098233082194,
+              "draw": 0.2852393340862028,
+              "away": 0.3413508426055783
+            },
+            "elo-poisson-strength": {
+              "home": 0.3911701409745622,
+              "draw": 0.2687034253612736,
+              "away": 0.34012643366416395
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2024-01-04",
+          "homeTeam": "Saudi Arabia",
+          "awayTeam": "Lebanon",
+          "score": "1-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.562539772983295,
+              "draw": 0.22686923864800268,
+              "away": 0.21059098836870177
+            },
+            "elo-poisson": {
+              "home": 0.5135585640170902,
+              "draw": 0.25534453630972104,
+              "away": 0.23109689967318947
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.5063093535910445,
+              "draw": 0.2698429571618128,
+              "away": 0.22384768924714366
+            },
+            "elo-poisson-strength": {
+              "home": 0.5638008497320907,
+              "draw": 0.24346308091497557,
+              "away": 0.1927360693529338
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2024-01-04",
+          "homeTeam": "Tajikistan",
+          "awayTeam": "Hong Kong",
+          "score": "2-1",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.5625906643596161,
+              "draw": 0.2268692386480026,
+              "away": 0.21054009699238105
+            },
+            "elo-poisson": {
+              "home": 0.513607684589579,
+              "draw": 0.2553351595278173,
+              "away": 0.2310571558826035
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.5063587641200427,
+              "draw": 0.2698330004668897,
+              "away": 0.22380823541306732
+            },
+            "elo-poisson-strength": {
+              "home": 0.5670500190979746,
+              "draw": 0.24106691337782382,
+              "away": 0.19188306752420145
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2024-01-05",
+          "homeTeam": "Indonesia",
+          "awayTeam": "Libya",
+          "score": "1-2",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.3839261322398562,
+              "draw": 0.2268692386480029,
+              "away": 0.38920462911214176
+            },
+            "elo-poisson": {
+              "home": 0.3629443905385014,
+              "draw": 0.2700434826230782,
+              "away": 0.3670121268384207
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.35524901016355304,
+              "draw": 0.28543424337297507,
+              "away": 0.3593167464634723
+            },
+            "elo-poisson-strength": {
+              "home": 0.3664639069383487,
+              "draw": 0.2691904200917506,
+              "away": 0.36434567296990017
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2024-01-05",
+          "homeTeam": "Iran",
+          "awayTeam": "Burkina Faso",
+          "score": "2-1",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.6249959617099377,
+              "draw": 0.22686923864800274,
+              "away": 0.14813479964205994
+            },
+            "elo-poisson": {
+              "home": 0.5788796962047768,
+              "draw": 0.24042783801806095,
+              "away": 0.18069246577716208
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.572100864823423,
+              "draw": 0.2539855007807681,
+              "away": 0.17391363439580848
+            },
+            "elo-poisson-strength": {
+              "home": 0.6329062845776999,
+              "draw": 0.22216978377449192,
+              "away": 0.1449239316478089
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2024-01-05",
+          "homeTeam": "Kyrgyzstan",
+          "awayTeam": "Syria",
+          "score": "1-1",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.3280171168463865,
+              "draw": 0.22686923864800274,
+              "away": 0.44511364450561075
+            },
+            "elo-poisson": {
+              "home": 0.32041596607060385,
+              "draw": 0.26855110885525524,
+              "away": 0.4110329250741413
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.3127651415848621,
+              "draw": 0.2838527578267387,
+              "away": 0.4033821005883996
+            },
+            "elo-poisson-strength": {
+              "home": 0.30974960963113596,
+              "draw": 0.26770300101187505,
+              "away": 0.42254738935698916
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2024-01-05",
+          "homeTeam": "Qatar",
+          "awayTeam": "Jordan",
+          "score": "1-2",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.4965701333040146,
+              "draw": 0.22686923864800276,
+              "away": 0.27656062804798265
+            },
+            "elo-poisson": {
+              "home": 0.4537494565488152,
+              "draw": 0.2646319852917417,
+              "away": 0.28161855815944314
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.4462164262599887,
+              "draw": 0.27969804586939484,
+              "away": 0.2740855278706167
+            },
+            "elo-poisson-strength": {
+              "home": 0.4600897517346216,
+              "draw": 0.2645519823737777,
+              "away": 0.27535826589160023
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2024-01-05",
+          "homeTeam": "Togo",
+          "awayTeam": "Algeria",
+          "score": "0-3",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.19193734824999953,
+              "draw": 0.2268692386480028,
+              "away": 0.5811934131019979
+            },
+            "elo-poisson": {
+              "home": 0.21641077657917895,
+              "draw": 0.2516376345749978,
+              "away": 0.5319515888458232
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.20927674325308127,
+              "draw": 0.26590570122719326,
+              "away": 0.5248175555197254
+            },
+            "elo-poisson-strength": {
+              "home": 0.15671148631559292,
+              "draw": 0.22372392424937007,
+              "away": 0.6195645894350368
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2024-01-06",
+          "homeTeam": "Bahrain",
+          "awayTeam": "Australia",
+          "score": "0-2",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.1965181581060911,
+              "draw": 0.22686923864800282,
+              "away": 0.5766126032459062
+            },
+            "elo-poisson": {
+              "home": 0.22004068433934923,
+              "draw": 0.25259974501437404,
+              "away": 0.5273595706462773
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.21287665089836103,
+              "draw": 0.26692781189635045,
+              "away": 0.5201955372052891
+            },
+            "elo-poisson-strength": {
+              "home": 0.1822009947950291,
+              "draw": 0.23811964768262575,
+              "away": 0.5796793575223452
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2024-01-06",
+          "homeTeam": "DR Congo",
+          "awayTeam": "Angola",
+          "score": "0-0",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.48254424413287234,
+              "draw": 0.2268692386480026,
+              "away": 0.2905865172191243
+            },
+            "elo-poisson": {
+              "home": 0.44183506826827074,
+              "draw": 0.26595985082776036,
+              "away": 0.29220508090396896
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.43426199881725575,
+              "draw": 0.28110598972979034,
+              "away": 0.28463201145295397
+            },
+            "elo-poisson-strength": {
+              "home": 0.4701993350624404,
+              "draw": 0.2640910784839336,
+              "away": 0.2657095864536263
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2024-01-06",
+          "homeTeam": "Iraq",
+          "awayTeam": "South Korea",
+          "score": "0-1",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.2789840596820337,
+              "draw": 0.22686923864800285,
+              "away": 0.4941467016699642
+            },
+            "elo-poisson": {
+              "home": 0.28344961249233597,
+              "draw": 0.26487606258392316,
+              "away": 0.45167432492374027
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.27590921258831813,
+              "draw": 0.2799568623919588,
+              "away": 0.4441339250197224
+            },
+            "elo-poisson-strength": {
+              "home": 0.2555063948528907,
+              "draw": 0.26224198680067784,
+              "away": 0.4822516183464316
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2024-01-06",
+          "homeTeam": "Ivory Coast",
+          "awayTeam": "Sierra Leone",
+          "score": "5-1",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.6754189852836793,
+              "draw": 0.22686923864800274,
+              "away": 0.09771177606831806
+            },
+            "elo-poisson": {
+              "home": 0.6426668045097117,
+              "draw": 0.2212319640318393,
+              "away": 0.13610123145844902
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.6365220716245622,
+              "draw": 0.2335214298021383,
+              "away": 0.12995649857329952
+            },
+            "elo-poisson-strength": {
+              "home": 0.7152080593323599,
+              "draw": 0.18828296187222873,
+              "away": 0.09650897879541112
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2024-01-06",
+          "homeTeam": "Mali",
+          "awayTeam": "Guinea-Bissau",
+          "score": "6-2",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.6157601027131703,
+              "draw": 0.22686923864800274,
+              "away": 0.1573706586388273
+            },
+            "elo-poisson": {
+              "home": 0.5684687086721464,
+              "draw": 0.2431296520092428,
+              "away": 0.18840163931861106
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.5616032933260023,
+              "draw": 0.25686048270153083,
+              "away": 0.18153622397246705
+            },
+            "elo-poisson-strength": {
+              "home": 0.6173226273205129,
+              "draw": 0.22783426032439563,
+              "away": 0.15484311235509218
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2024-01-06",
+          "homeTeam": "Mozambique",
+          "awayTeam": "Lesotho",
+          "score": "2-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.5150367081534218,
+              "draw": 0.22686923864800282,
+              "away": 0.2580940531985759
+            },
+            "elo-poisson": {
+              "home": 0.4698096610810359,
+              "draw": 0.2625626217373177,
+              "away": 0.2676277171816461
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.46233929386279843,
+              "draw": 0.2775033561737927,
+              "away": 0.26015734996340856
+            },
+            "elo-poisson-strength": {
+              "home": 0.5045328102820505,
+              "draw": 0.258046384837978,
+              "away": 0.2374208048799709
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2024-01-06",
+          "homeTeam": "Tunisia",
+          "awayTeam": "Mauritania",
+          "score": "0-0",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.6771317035832186,
+              "draw": 0.22686923864800268,
+              "away": 0.09599905776877883
+            },
+            "elo-poisson": {
+              "home": 0.6451012579409654,
+              "draw": 0.2204096054715185,
+              "away": 0.1344891365875159
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.6389844682297011,
+              "draw": 0.23264318489404684,
+              "away": 0.12837234687625174
+            },
+            "elo-poisson-strength": {
+              "home": 0.7172261817615077,
+              "draw": 0.1881136900929285,
+              "away": 0.09466012814556309
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2024-01-06",
+          "homeTeam": "United Arab Emirates",
+          "awayTeam": "Oman",
+          "score": "0-1",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.45813627245408733,
+              "draw": 0.22686923864800262,
+              "away": 0.3149944888979093
+            },
+            "elo-poisson": {
+              "home": 0.4216023586531582,
+              "draw": 0.2678009976703812,
+              "away": 0.31059664367646106
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.41397399124240186,
+              "draw": 0.2830577324918938,
+              "away": 0.3029682762657048
+            },
+            "elo-poisson-strength": {
+              "home": 0.41528127024073935,
+              "draw": 0.27010658791742337,
+              "away": 0.31461214184183733
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2024-01-07",
+          "homeTeam": "Egypt",
+          "awayTeam": "Tanzania",
+          "score": "2-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.6711623498621558,
+              "draw": 0.22686923864800262,
+              "away": 0.10196841148984158
+            },
+            "elo-poisson": {
+              "home": 0.6367099190094686,
+              "draw": 0.22321635685487642,
+              "away": 0.14007372413565516
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.6304980309544267,
+              "draw": 0.2356401329649602,
+              "away": 0.13386183608061322
+            },
+            "elo-poisson-strength": {
+              "home": 0.7057412149667053,
+              "draw": 0.19373776901596879,
+              "away": 0.10052101601732646
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2024-01-07",
+          "homeTeam": "Uzbekistan",
+          "awayTeam": "Palestine",
+          "score": "1-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.553128433289302,
+              "draw": 0.22686923864800282,
+              "away": 0.22000232806269546
+            },
+            "elo-poisson": {
+              "home": 0.5045665130699465,
+              "draw": 0.25701351255344096,
+              "away": 0.23841997437661233
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.4972658042749582,
+              "draw": 0.27161493014341764,
+              "away": 0.23111926558162396
+            },
+            "elo-poisson-strength": {
+              "home": 0.5485737988400144,
+              "draw": 0.24650635865673648,
+              "away": 0.204919842503249
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        }
+      ]
+    },
+    {
+      "methodology": "Rolling-origin historical match backtest: train ratings before the window, score each test match before applying that result, and evaluate calibrated home/draw/away probabilities.",
+      "config": {
+        "testStart": "2025-01-01",
+        "testEnd": "2025-12-31",
+        "initialRating": 1500,
+        "homeAdvantageElo": 75,
+        "maxRecentGoalBlend": 0.1,
+        "recentMetricPriorWeight": 60,
+        "metricEloScale": 5000,
+        "baseXg": 1.25,
+        "maxGoals": 10,
+        "dixonColesRho": -0.06,
+        "sampleForecastLimit": 20,
+        "activeModel": "elo-poisson-strength",
+        "rollingUpdate": true
+      },
+      "dataset": {
+        "totalMatches": 49478,
+        "trainMatches": 48092,
+        "testMatches": 1002,
+        "excludedMatches": 384,
+        "trainDateRange": {
+          "start": "1872-11-30",
+          "end": "2024-12-31"
+        },
+        "testDateRange": {
+          "start": "2025-01-02",
+          "end": "2025-12-31"
+        }
+      },
+      "metrics": {
+        "elo-baseline": {
+          "matches": 1002,
+          "brierScore": 0.5082509604028613,
+          "logLoss": 0.8707743758858238,
+          "accuracy": 0.6207584830339321,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 41,
+              "meanConfidence": 0.3939992070528711,
+              "accuracy": 0.4878048780487805,
+              "calibrationError": 0.09380567099590936
+            },
+            {
+              "bucket": "0.4-0.5",
+              "count": 313,
+              "meanConfidence": 0.44728457690951745,
+              "accuracy": 0.40894568690095845,
+              "calibrationError": -0.038338890008559
+            },
+            {
+              "bucket": "0.5-0.6",
+              "count": 289,
+              "meanConfidence": 0.5496575802283102,
+              "accuracy": 0.6089965397923875,
+              "calibrationError": 0.05933895956407731
+            },
+            {
+              "bucket": "0.6-0.7",
+              "count": 256,
+              "meanConfidence": 0.6513373896757927,
+              "accuracy": 0.77734375,
+              "calibrationError": 0.1260063603242073
+            },
+            {
+              "bucket": "0.7-0.8",
+              "count": 103,
+              "meanConfidence": 0.728488879667138,
+              "accuracy": 0.9611650485436893,
+              "calibrationError": 0.2326761688765513
+            }
+          ]
+        },
+        "elo-poisson": {
+          "matches": 1002,
+          "brierScore": 0.5123830276661037,
+          "logLoss": 0.8788548739533191,
+          "accuracy": 0.6207584830339321,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 143,
+              "meanConfidence": 0.3824636342363477,
+              "accuracy": 0.42657342657342656,
+              "calibrationError": 0.044109792337078846
+            },
+            {
+              "bucket": "0.4-0.5",
+              "count": 347,
+              "meanConfidence": 0.446625780943021,
+              "accuracy": 0.45821325648414984,
+              "calibrationError": 0.011587475541128822
+            },
+            {
+              "bucket": "0.5-0.6",
+              "count": 257,
+              "meanConfidence": 0.5454985134392512,
+              "accuracy": 0.7003891050583657,
+              "calibrationError": 0.15489059161911456
+            },
+            {
+              "bucket": "0.6-0.7",
+              "count": 178,
+              "meanConfidence": 0.6450788490093204,
+              "accuracy": 0.8202247191011236,
+              "calibrationError": 0.17514587009180316
+            },
+            {
+              "bucket": "0.7-0.8",
+              "count": 59,
+              "meanConfidence": 0.7376104673775448,
+              "accuracy": 0.9830508474576272,
+              "calibrationError": 0.2454403800800824
+            },
+            {
+              "bucket": "0.8-0.9",
+              "count": 18,
+              "meanConfidence": 0.8027476062957938,
+              "accuracy": 1,
+              "calibrationError": 0.19725239370420622
+            }
+          ]
+        },
+        "elo-poisson-dixon-coles": {
+          "matches": 1002,
+          "brierScore": 0.513588870495141,
+          "logLoss": 0.8793295417236769,
+          "accuracy": 0.6207584830339321,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 184,
+              "meanConfidence": 0.379484594503161,
+              "accuracy": 0.44021739130434784,
+              "calibrationError": 0.06073279680118682
+            },
+            {
+              "bucket": "0.4-0.5",
+              "count": 338,
+              "meanConfidence": 0.44971844235817077,
+              "accuracy": 0.47337278106508873,
+              "calibrationError": 0.023654338706917966
+            },
+            {
+              "bucket": "0.5-0.6",
+              "count": 243,
+              "meanConfidence": 0.5483711299745724,
+              "accuracy": 0.6954732510288066,
+              "calibrationError": 0.14710212105423426
+            },
+            {
+              "bucket": "0.6-0.7",
+              "count": 166,
+              "meanConfidence": 0.6456669190657284,
+              "accuracy": 0.8554216867469879,
+              "calibrationError": 0.20975476768125956
+            },
+            {
+              "bucket": "0.7-0.8",
+              "count": 67,
+              "meanConfidence": 0.7497553067394994,
+              "accuracy": 0.9850746268656716,
+              "calibrationError": 0.23531932012617218
+            },
+            {
+              "bucket": "0.8-0.9",
+              "count": 4,
+              "meanConfidence": 0.8015227838761632,
+              "accuracy": 1,
+              "calibrationError": 0.19847721612383684
+            }
+          ]
+        },
+        "elo-poisson-strength": {
+          "matches": 1002,
+          "brierScore": 0.4943870474969959,
+          "logLoss": 0.8473207784747123,
+          "accuracy": 0.6217564870259481,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 113,
+              "meanConfidence": 0.3827268127315856,
+              "accuracy": 0.4690265486725664,
+              "calibrationError": 0.08629973594098078
+            },
+            {
+              "bucket": "0.4-0.5",
+              "count": 282,
+              "meanConfidence": 0.44925344640433906,
+              "accuracy": 0.4219858156028369,
+              "calibrationError": -0.027267630801502185
+            },
+            {
+              "bucket": "0.5-0.6",
+              "count": 216,
+              "meanConfidence": 0.5489862556180737,
+              "accuracy": 0.6018518518518519,
+              "calibrationError": 0.05286559623377818
+            },
+            {
+              "bucket": "0.6-0.7",
+              "count": 176,
+              "meanConfidence": 0.6474936566875864,
+              "accuracy": 0.7329545454545454,
+              "calibrationError": 0.08546088876695901
+            },
+            {
+              "bucket": "0.7-0.8",
+              "count": 136,
+              "meanConfidence": 0.7443402084517823,
+              "accuracy": 0.8455882352941176,
+              "calibrationError": 0.10124802684233536
+            },
+            {
+              "bucket": "0.8-0.9",
+              "count": 60,
+              "meanConfidence": 0.8422958276951055,
+              "accuracy": 0.9666666666666667,
+              "calibrationError": 0.1243708389715612
+            },
+            {
+              "bucket": "0.9-1.0",
+              "count": 19,
+              "meanConfidence": 0.9193485876327043,
+              "accuracy": 1,
+              "calibrationError": 0.08065141236729567
+            }
+          ]
+        },
+        "uniform-baseline": {
+          "matches": 1002,
+          "brierScore": 0.6666666666666636,
+          "logLoss": 1.0986122886681378,
+          "accuracy": 0.48502994011976047,
+          "calibrationBuckets": [
+            {
+              "bucket": "0.3-0.4",
+              "count": 1002,
+              "meanConfidence": 0.3333333333333318,
+              "accuracy": 0.48502994011976047,
+              "calibrationError": 0.15169660678642866
+            }
+          ]
+        }
+      },
+      "sampleForecasts": [
+        {
+          "date": "2025-01-02",
+          "homeTeam": "Vietnam",
+          "awayTeam": "Thailand",
+          "score": "2-1",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.3516711923652015,
+              "draw": 0.22744568042416044,
+              "away": 0.4208831272106379
+            },
+            "elo-poisson": {
+              "home": 0.33850973663561396,
+              "draw": 0.269526592724313,
+              "away": 0.3919636706400739
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.33082976986400814,
+              "draw": 0.2848865262675246,
+              "away": 0.38428370386846816
+            },
+            "elo-poisson-strength": {
+              "home": 0.3114667925856697,
+              "draw": 0.26849505979116495,
+              "away": 0.4200381476231653
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2025-01-03",
+          "homeTeam": "Zanzibar",
+          "awayTeam": "Tanzania",
+          "score": "1-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.4221150396233582,
+              "draw": 0.22744568042416047,
+              "away": 0.3504392799524808
+            },
+            "elo-poisson": {
+              "home": 0.3929369552738197,
+              "draw": 0.2694887816084077,
+              "away": 0.33757426311777355
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.3852581167946168,
+              "draw": 0.28484645856681357,
+              "away": 0.32989542463857063
+            },
+            "elo-poisson-strength": {
+              "home": 0.3813904278310888,
+              "draw": 0.27251246316457595,
+              "away": 0.34609710900433494
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2025-01-04",
+          "homeTeam": "Burkina Faso",
+          "awayTeam": "Kenya",
+          "score": "1-1",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.5092229135014714,
+              "draw": 0.22744568042416055,
+              "away": 0.2633314060743678
+            },
+            "elo-poisson": {
+              "home": 0.4650365142008403,
+              "draw": 0.2632108135785261,
+              "away": 0.27175267222063326
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.4575464839035425,
+              "draw": 0.27819087417312166,
+              "away": 0.2642626419233355
+            },
+            "elo-poisson-strength": {
+              "home": 0.4995914983247135,
+              "draw": 0.2587573825125777,
+              "away": 0.24165111916270848
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2025-01-04",
+          "homeTeam": "Oman",
+          "awayTeam": "Bahrain",
+          "score": "1-2",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.40517810826702366,
+              "draw": 0.2274456804241606,
+              "away": 0.36737621130881565
+            },
+            "elo-poisson": {
+              "home": 0.3796367399685648,
+              "draw": 0.2698917701425587,
+              "away": 0.3504714898888772
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.37194588161475917,
+              "draw": 0.28527348685016995,
+              "away": 0.3427806315350716
+            },
+            "elo-poisson-strength": {
+              "home": 0.38361255765209207,
+              "draw": 0.27207774588811345,
+              "away": 0.3443096964597947
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2025-01-05",
+          "homeTeam": "Thailand",
+          "awayTeam": "Vietnam",
+          "score": "2-3",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.5520441902790792,
+              "draw": 0.22744568042416063,
+              "away": 0.22051012929675995
+            },
+            "elo-poisson": {
+              "home": 0.5039309218322976,
+              "draw": 0.25712789287101584,
+              "away": 0.238941185296687
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.4966266917488926,
+              "draw": 0.2717363530378259,
+              "away": 0.23163695521328204
+            },
+            "elo-poisson-strength": {
+              "home": 0.5261481198388929,
+              "draw": 0.2525578893247894,
+              "away": 0.22129399083631754
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2025-01-06",
+          "homeTeam": "Zanzibar",
+          "awayTeam": "Burkina Faso",
+          "score": "0-1",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.33904094354481645,
+              "draw": 0.22744568042416044,
+              "away": 0.43351337603102313
+            },
+            "elo-poisson": {
+              "home": 0.32893454435769837,
+              "draw": 0.26907499021855896,
+              "away": 0.40199046542374267
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.3212680603712032,
+              "draw": 0.28440795819154946,
+              "away": 0.39432398143724745
+            },
+            "elo-poisson-strength": {
+              "home": 0.29531270731657605,
+              "draw": 0.26676893401713886,
+              "away": 0.437918358666285
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2025-01-07",
+          "homeTeam": "Tanzania",
+          "awayTeam": "Kenya",
+          "score": "0-2",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.402971062150865,
+              "draw": 0.22744568042416044,
+              "away": 0.3695832574249744
+            },
+            "elo-poisson": {
+              "home": 0.37791567962320277,
+              "draw": 0.2699258207223765,
+              "away": 0.35215849965442103
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.37022380619345047,
+              "draw": 0.2853095675818811,
+              "away": 0.3444666262246688
+            },
+            "elo-poisson-strength": {
+              "home": 0.378271766391749,
+              "draw": 0.27407701646252264,
+              "away": 0.34765121714572783
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2025-01-09",
+          "homeTeam": "Tanzania",
+          "awayTeam": "Burkina Faso",
+          "score": "0-2",
+          "actual": "away",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.2603073260095622,
+              "draw": 0.22744568042416058,
+              "away": 0.5122469935662777
+            },
+            "elo-poisson": {
+              "home": 0.2694562634502353,
+              "draw": 0.26285394164765175,
+              "away": 0.4676897949021132
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.2619770550017196,
+              "draw": 0.2778123585446834,
+              "away": 0.46021058645359736
+            },
+            "elo-poisson-strength": {
+              "home": 0.23753619178617646,
+              "draw": 0.2587550444584423,
+              "away": 0.5037087637553815
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2025-01-10",
+          "homeTeam": "Zanzibar",
+          "awayTeam": "Kenya",
+          "score": "1-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.4317280601305022,
+              "draw": 0.22744568042416047,
+              "away": 0.3408262594453372
+            },
+            "elo-poisson": {
+              "home": 0.4005664768612987,
+              "draw": 0.2691474630840069,
+              "away": 0.33028606005469446
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.3928978281568836,
+              "draw": 0.28448476049283694,
+              "away": 0.32261741135027944
+            },
+            "elo-poisson-strength": {
+              "home": 0.3902268506024713,
+              "draw": 0.27153714693565584,
+              "away": 0.33823600246187246
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2025-01-13",
+          "homeTeam": "Zanzibar",
+          "awayTeam": "Burkina Faso",
+          "score": "2-1",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.3185646272364632,
+              "draw": 0.22744568042416052,
+              "away": 0.4539896923393764
+            },
+            "elo-poisson": {
+              "home": 0.31346646001317985,
+              "draw": 0.2680366538144067,
+              "away": 0.41849688617241365
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.30583103296849573,
+              "draw": 0.28330750790377496,
+              "away": 0.41086145912772953
+            },
+            "elo-poisson-strength": {
+              "home": 0.27603137659988874,
+              "draw": 0.26405082564623794,
+              "away": 0.45991779775387354
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2025-01-18",
+          "homeTeam": "United States",
+          "awayTeam": "Venezuela",
+          "score": "3-1",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.6259334155643738,
+              "draw": 0.22744568042416052,
+              "away": 0.14662090401146544
+            },
+            "elo-poisson": {
+              "home": 0.5804910121262149,
+              "draw": 0.23999880733488796,
+              "away": 0.17951018053889697
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.5737259878862087,
+              "draw": 0.25352885581490064,
+              "away": 0.17274515629889062
+            },
+            "elo-poisson-strength": {
+              "home": 0.6450592039013254,
+              "draw": 0.216489931983963,
+              "away": 0.13845086411471172
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2025-01-22",
+          "homeTeam": "United States",
+          "awayTeam": "Costa Rica",
+          "score": "3-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.5929176760541319,
+              "draw": 0.2274456804241606,
+              "away": 0.17963664352170775
+            },
+            "elo-poisson": {
+              "home": 0.5444089527931645,
+              "draw": 0.24890572606196648,
+              "away": 0.2066853211448698
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.5373605164304165,
+              "draw": 0.2630025987874625,
+              "away": 0.19963688478212174
+            },
+            "elo-poisson-strength": {
+              "home": 0.5964038290528522,
+              "draw": 0.23341907081160082,
+              "away": 0.17017710013554743
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2025-01-22",
+          "homeTeam": "Uzbekistan",
+          "awayTeam": "Jordan",
+          "score": "0-0",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.463386150233296,
+              "draw": 0.22744568042416052,
+              "away": 0.30916816934254343
+            },
+            "elo-poisson": {
+              "home": 0.4261895221040364,
+              "draw": 0.26742986374402694,
+              "away": 0.30638061415193646
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.4185722812274644,
+              "draw": 0.2826643454971706,
+              "away": 0.29876337327536456
+            },
+            "elo-poisson-strength": {
+              "home": 0.44326283775255954,
+              "draw": 0.26725105573592184,
+              "away": 0.2894861065115185
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2025-02-07",
+          "homeTeam": "Jamaica",
+          "awayTeam": "Trinidad and Tobago",
+          "score": "1-0",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.5691704680631133,
+              "draw": 0.22744568042416063,
+              "away": 0.20338385151272648
+            },
+            "elo-poisson": {
+              "home": 0.520421879110563,
+              "draw": 0.25400715098027515,
+              "away": 0.22557096990916137
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.5132140952484795,
+              "draw": 0.2684227187044422,
+              "away": 0.21836318604707786
+            },
+            "elo-poisson-strength": {
+              "home": 0.5585111636231016,
+              "draw": 0.2430013005281623,
+              "away": 0.1984875358487358
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2025-02-08",
+          "homeTeam": "Chile",
+          "awayTeam": "Panama",
+          "score": "6-1",
+          "actual": "home",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.34375169688307683,
+              "draw": 0.2274456804241605,
+              "away": 0.4288026226927628
+            },
+            "elo-poisson": {
+              "home": 0.3325019671225229,
+              "draw": 0.269260046382944,
+              "away": 0.39823798649453246
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.32482995639327367,
+              "draw": 0.2846040678414425,
+              "away": 0.39056597576528324
+            },
+            "elo-poisson-strength": {
+              "home": 0.3005667923404513,
+              "draw": 0.2674215513816213,
+              "away": 0.43201165627792715
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2025-02-10",
+          "homeTeam": "Jamaica",
+          "awayTeam": "Trinidad and Tobago",
+          "score": "1-1",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.5781223374481242,
+              "draw": 0.22744568042416052,
+              "away": 0.194431982127715
+            },
+            "elo-poisson": {
+              "home": 0.5292991531982982,
+              "draw": 0.252196330076837,
+              "away": 0.21850451672486462
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.5221476897321811,
+              "draw": 0.2664992570090715,
+              "away": 0.2113530532587474
+            },
+            "elo-poisson-strength": {
+              "home": 0.5701794593483555,
+              "draw": 0.23989493780197685,
+              "away": 0.18992560284966747
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2025-02-13",
+          "homeTeam": "Oman",
+          "awayTeam": "Sudan",
+          "score": "0-0",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.5504774153585693,
+              "draw": 0.22744568042416066,
+              "away": 0.2220769042172701
+            },
+            "elo-poisson": {
+              "home": 0.5024520703856604,
+              "draw": 0.257392185097421,
+              "away": 0.24015574451691868
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.4951397077964962,
+              "draw": 0.27201691027574887,
+              "away": 0.23284338192775472
+            },
+            "elo-poisson-strength": {
+              "home": 0.535117250171753,
+              "draw": 0.2510720615284147,
+              "away": 0.21381068829983285
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2025-03-09",
+          "homeTeam": "Saint Vincent and the Grenadines",
+          "awayTeam": "Grenada",
+          "score": "1-1",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.554225460973369,
+              "draw": 0.22744568042416072,
+              "away": 0.2183288586024707
+            },
+            "elo-poisson": {
+              "home": 0.5059977511537688,
+              "draw": 0.2567542094738147,
+              "away": 0.23724803937241667
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.49870502902749697,
+              "draw": 0.27133965372635793,
+              "away": 0.22995531724614507
+            },
+            "elo-poisson-strength": {
+              "home": 0.538183318885824,
+              "draw": 0.2463423705636987,
+              "away": 0.21547431055047755
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2025-03-13",
+          "homeTeam": "Oman",
+          "awayTeam": "Sudan",
+          "score": "0-0",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.5426534330921493,
+              "draw": 0.22744568042416066,
+              "away": 0.2299008864836903
+            },
+            "elo-poisson": {
+              "home": 0.4951364531426704,
+              "draw": 0.2586616136251861,
+              "away": 0.24620193323214348
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.48778510550263443,
+              "draw": 0.2733643089052579,
+              "away": 0.23885058559210753
+            },
+            "elo-poisson-strength": {
+              "home": 0.5253733013860117,
+              "draw": 0.25344747430449416,
+              "away": 0.2211792243094949
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        },
+        {
+          "date": "2025-03-14",
+          "homeTeam": "Jordan",
+          "awayTeam": "North Korea",
+          "score": "1-1",
+          "actual": "draw",
+          "probabilities": {
+            "elo-baseline": {
+              "home": 0.6166725706311811,
+              "draw": 0.22744568042416058,
+              "away": 0.15588174894465853
+            },
+            "elo-poisson": {
+              "home": 0.5699963086277224,
+              "draw": 0.2427408402995532,
+              "away": 0.18726285107272472
+            },
+            "elo-poisson-dixon-coles": {
+              "home": 0.5631433146516673,
+              "draw": 0.2564468282516632,
+              "away": 0.18040985709666968
+            },
+            "elo-poisson-strength": {
+              "home": 0.6263772288117411,
+              "draw": 0.22280143625206772,
+              "away": 0.1508213349361911
+            },
+            "uniform-baseline": {
+              "home": 0.3333333333333333,
+              "draw": 0.3333333333333333,
+              "away": 0.3333333333333333
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

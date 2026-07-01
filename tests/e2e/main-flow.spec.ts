@@ -159,6 +159,8 @@ test.describe("World Cup Oracle smoke", () => {
     await page.getByTestId("predictor-home-team-option").filter({ hasText: "France" }).click();
     await page.getByTestId("predictor-away-team").fill("Argentina");
     await page.getByTestId("predictor-away-team-option").filter({ hasText: "Argentina" }).click();
+    await page.getByTestId("predictor-venue-team-1-home").click();
+    await expect(page.getByTestId("predictor-venue-team-1-home")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("predict-match-button")).toBeEnabled();
     await page.getByTestId("predict-match-button").click();
     await expect(page.getByTestId("predictor-loading")).toBeVisible();

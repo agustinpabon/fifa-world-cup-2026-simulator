@@ -3,14 +3,33 @@ import { useGetTeams, usePredictMatch, type MatchPredictionData, type Team } fro
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AnimatedNumber } from "@/components/ui/animated-number";
-import { AlertTriangle, Search, X, Zap } from "lucide-react";
+import { AlertTriangle, MapPin, Search, X, Zap } from "lucide-react";
 
 const MIN_LOADING_MS = 2200;
+type VenueMode = "neutral" | "team-1-home" | "team-2-home";
+
+const VENUE_OPTIONS: Array<{ value: VenueMode; label: string }> = [
+  { value: "neutral", label: "Neutral" },
+  { value: "team-1-home", label: "Team 1 Home" },
+  { value: "team-2-home", label: "Team 2 Home" },
+];
+
+function getVenuePayload(venueMode: VenueMode): { neutral: boolean; isHomeA: boolean; isHomeB: boolean } {
+  switch (venueMode) {
+    case "team-1-home":
+      return { neutral: false, isHomeA: true, isHomeB: false };
+    case "team-2-home":
+      return { neutral: false, isHomeA: false, isHomeB: true };
+    case "neutral":
+      return { neutral: true, isHomeA: false, isHomeB: false };
+  }
+}
 
 export function MatchSimulator() {
   const { data: teamsResponse, isLoading: teamsLoading, isError: teamsError } = useGetTeams();
   const [homeTeam, setHomeTeam] = useState<string>("");
   const [awayTeam, setAwayTeam] = useState<string>("");
+  const [venueMode, setVenueMode] = useState<VenueMode>("neutral");
   const [isSimulating, setIsSimulating] = useState(false);
   const [result, setResult] = useState<MatchPredictionData | undefined>(undefined);
 
@@ -33,7 +52,7 @@ export function MatchSimulator() {
     const fetchStart = Date.now();
 
     predictMatch.mutate(
-      { data: { homeTeam, awayTeam } },
+      { data: { homeTeam, awayTeam, ...getVenuePayload(venueMode) } },
       {
         onSettled: (response) => {
           const elapsed = Date.now() - fetchStart;
@@ -52,6 +71,7 @@ export function MatchSimulator() {
 
   const homeFlag = homeTeamInfo?.flagEmoji ?? "";
   const awayFlag = awayTeamInfo?.flagEmoji ?? "";
+  const predictorDisabled = teamsLoading || teamsError || isOracleUnavailable || isSimulating;
 
   return (
     <Card data-testid="match-predictor" className="border-card-border bg-card/50 backdrop-blur-sm">
@@ -76,7 +96,7 @@ export function MatchSimulator() {
         )}
 
         {/* Controls row */}
-        <div className="flex flex-col md:flex-row gap-4 items-end mb-8">
+        <div className="flex flex-col md:flex-row gap-4 items-end mb-4">
           <TeamPicker
             id="predictor-home-team"
             label="Team 1"
@@ -84,7 +104,7 @@ export function MatchSimulator() {
             teams={sortedTeams}
             value={homeTeam}
             opponentValue={awayTeam}
-            disabled={teamsLoading || teamsError || isOracleUnavailable || isSimulating}
+            disabled={predictorDisabled}
             onChange={(teamName) => {
               setHomeTeam(teamName);
               setResult(undefined);
@@ -100,7 +120,7 @@ export function MatchSimulator() {
             teams={sortedTeams}
             value={awayTeam}
             opponentValue={homeTeam}
-            disabled={teamsLoading || teamsError || isOracleUnavailable || isSimulating}
+            disabled={predictorDisabled}
             onChange={(teamName) => {
               setAwayTeam(teamName);
               setResult(undefined);
@@ -117,11 +137,49 @@ export function MatchSimulator() {
           </Button>
         </div>
 
+        <div className="mb-8">
+          <div className="mb-2 flex items-center gap-2 text-xs uppercase text-muted-foreground font-mono">
+            <MapPin className="h-3.5 w-3.5" />
+            <span>Venue</span>
+          </div>
+          <div
+            role="group"
+            aria-label="Venue context"
+            data-testid="predictor-venue-selector"
+            className="grid grid-cols-3 overflow-hidden rounded-md border border-border bg-background/40"
+          >
+            {VENUE_OPTIONS.map((option) => {
+              const isSelected = venueMode === option.value;
+
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={isSelected}
+                  data-testid={`predictor-venue-${option.value}`}
+                  disabled={predictorDisabled}
+                  onClick={() => {
+                    setVenueMode(option.value);
+                    setResult(undefined);
+                  }}
+                  className={`min-h-9 border-r border-border px-2 py-2 text-[11px] font-mono uppercase leading-tight transition-colors last:border-r-0 disabled:cursor-not-allowed disabled:opacity-50 ${
+                    isSelected
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-secondary/70 hover:text-foreground"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <div
           data-testid="predictor-team-count"
           className="mb-8 -mt-4 text-[11px] text-muted-foreground font-mono uppercase tracking-wider"
         >
-          {sortedTeams.length} teams available for neutral-site prediction.
+          {sortedTeams.length} teams available for venue-adjusted prediction.
         </div>
 
         {/* Pre-simulation Comparative Strengths Panel */}
@@ -157,7 +215,7 @@ export function MatchSimulator() {
                   VS
                 </div>
                 <div className="text-[10px] text-muted-foreground leading-normal max-w-[120px]">
-                  Neutral-site Elo comparison with attack and defense adjustments.
+                  Venue-adjusted Elo comparison with attack and defense adjustments.
                 </div>
               </div>
 

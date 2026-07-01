@@ -213,7 +213,7 @@ function applyEloUpdate(
   const effectiveHomeRating = homeRating + (match.neutral ? 0 : options.config.homeAdvantageElo);
   const expectedHome = expectedEloScore(effectiveHomeRating, awayRating);
   const actualHome = actualHomeScore(match);
-  const multiplier = goalDifferenceMultiplier(Math.abs(match.homeScore - match.awayScore));
+  const multiplier = marginOfVictoryEloMultiplier(match, effectiveHomeRating, awayRating, options.config);
   const delta =
     kFactor(match.tournament) *
     recencyWeight(match.date, options.referenceYear) *
@@ -342,10 +342,29 @@ function actualHomeScore(match: HistoricalMatch): number {
   return 0.5;
 }
 
-function goalDifferenceMultiplier(goalDifference: number): number {
-  if (goalDifference <= 1) return 1;
-  if (goalDifference === 2) return 1.5;
-  return (3 + (goalDifference - 2) / 2) / 4;
+function marginOfVictoryEloMultiplier(
+  match: HistoricalMatch,
+  effectiveHomeRating: number,
+  awayRating: number,
+  config: ModelConfig
+): number {
+  if (!config.useMarginOfVictoryElo) return 1;
+
+  const goalDifference = Math.abs(match.homeScore - match.awayScore);
+  if (goalDifference === 0) return 1;
+
+  if (
+    !Number.isFinite(config.marginOfVictoryEloScalingConstant) ||
+    config.marginOfVictoryEloScalingConstant <= 0
+  ) {
+    throw new Error("marginOfVictoryEloScalingConstant must be positive");
+  }
+
+  const winnerEloDiff =
+    match.homeScore > match.awayScore ? effectiveHomeRating - awayRating : awayRating - effectiveHomeRating;
+  const denominator = Math.max(1, config.marginOfVictoryEloScalingConstant + winnerEloDiff);
+
+  return Math.log(goalDifference + 1) * (config.marginOfVictoryEloScalingConstant / denominator);
 }
 
 function normalizeRatingOptions(options: RatingComputationOptions = {}): NormalizedRatingOptions {

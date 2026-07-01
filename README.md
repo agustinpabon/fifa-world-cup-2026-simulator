@@ -1,17 +1,17 @@
 ```text
-  ██████╗██╗███████╗ █████╗     ██╗    ██╗ ██████╗ ██████╗ ██╗     ██████╗      ██████╗██╗   ██╗██████╗ 
-  ██╔════╝██║██╔════╝██╔══██╗    ██║    ██║██╔═══██╗██╔══██╗██║     ██╔══██╗    ██╔════╝██║   ██║██╔══██╗
-  █████╗  ██║█████╗  ███████║    ██║ █╗ ██║██║   ██║██████╔╝██║     ██║  ██║    ██║     ██║   ██║██████╔╝
-  ██╔══╝  ██║██╔══╝  ██╔══██║    ██║███╗██║██║   ██║██╔══██╗██║     ██║  ██║    ██║     ██║   ██║██╔═══╝ 
-  ██║     ██║██║     ██║  ██║    ╚███╔███╔╝╚██████╔╝██║  ██║███████╗██████╔╝    ╚██████╗╚██████╔╝██║     
-  ╚═╝     ╚═╝╚═╝     ╚═╝  ╚═╝     ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═════╝      ╚═════╝ ╚══════╝╚═╝     
+██╗    ██╗ ██████╗ ██████╗ ██╗     ██████╗      ██████╗██╗   ██╗██████╗ 
+██║    ██║██╔═══██╗██╔══██╗██║     ██╔══██╗    ██╔════╝██║   ██║██╔══██╗
+██║ █╗ ██║██║   ██║██████╔╝██║     ██║  ██║    ██║     ██║   ██║██████╔╝
+██║███╗██║██║   ██║██╔══██╗██║     ██║  ██║    ██║     ██║   ██║██╔═══╝ 
+╚███╔███╔╝╚██████╔╝██║  ██║███████╗██████╔╝    ╚██████╗╚██████╔╝██║     
+ ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═════╝      ╚═════╝ ╚══════╝╚═╝     
 
-                              Monte Carlo Tournament Simulator & Elo Engine
+                Monte Carlo Tournament Simulator & Elo Engine
 
-                             - 49,000+ Historical International Matches
-                             - Exponential Time-Decay Elo Rating Model
-                             - Validated Elo + Attack/Defense Poisson Model
-                             - 10,000 Tournament Monte Carlo Runs
+               - 49,000+ Historical International Matches
+               - Exponential Time-Decay Elo Rating Model
+               - Validated Elo + Attack/Defense Poisson Model
+               - 10,000 Tournament Monte Carlo Runs
 ```
 
 A local tournament simulator for the 48-team FIFA World Cup 2026 (hosted across USA, Mexico, and Canada). It combines a time-decay Elo rating engine, validated attack/defense Poisson goal modeling, and Monte Carlo tournament simulations.

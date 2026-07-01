@@ -3,7 +3,14 @@ import test from "node:test";
 import { predictMatch } from "@workspace/oracle-model";
 
 import {
+  ALTITUDE_ELO_PENALTY,
+  HIGH_ALTITUDE_THRESHOLD_METERS,
+  TRAVEL_FATIGUE_DISTANCE_THRESHOLD_KM,
+  TRAVEL_FATIGUE_ELO_PENALTY,
+  applyMatchContextRatingAdjustments,
   calculateProbabilityUncertainty,
+  calculateTravelDistanceKm,
+  calculateTravelFatigueAdjustment,
   createSeededRng,
   getPlayedKnockoutWinner,
   matchProbabilities,
@@ -15,7 +22,7 @@ import {
   type GroupStanding,
   type SimResult,
 } from "./simulation.js";
-import { WC2026_TEAMS, type WCTeam } from "./worldcup2026.js";
+import { WC2026_TEAMS, getHostVenueByName, type WCTeam } from "./worldcup2026.js";
 
 function team(name: string): WCTeam {
   return {
@@ -165,6 +172,91 @@ test("match probabilities mirror non-neutral home advantage for team two", () =>
   assertAlmostEqual(teamOneHome.pDraw, teamTwoHome.pDraw);
   assertAlmostEqual(teamOneHome.xgA, teamTwoHome.xgB);
   assertAlmostEqual(teamOneHome.xgB, teamTwoHome.xgA);
+});
+
+test("match probabilities apply high-altitude venue penalties to non-acclimatized teams", () => {
+  const neutral = matchProbabilities(1500, 1500, undefined, undefined, undefined, false, false, true);
+  const mexicoCity = matchProbabilities(
+    1500,
+    1500,
+    undefined,
+    undefined,
+    undefined,
+    false,
+    false,
+    true,
+    {},
+    undefined,
+    {
+      teamNameA: "Mexico",
+      teamNameB: "South Africa",
+      venue: "Mexico City",
+      matchDate: "2026-06-11",
+    }
+  );
+
+  assert.ok(HIGH_ALTITUDE_THRESHOLD_METERS < 2240);
+  assert.equal(ALTITUDE_ELO_PENALTY, -50);
+  assert.ok(mexicoCity.pWinA > neutral.pWinA);
+  assert.ok(mexicoCity.pWinB < neutral.pWinB);
+});
+
+test("altitude adjustment exempts high-altitude home nations and acclimatized teams", () => {
+  const mexicoCity = getHostVenueByName("Mexico City");
+  assert.ok(mexicoCity);
+
+  const freshArrival = applyMatchContextRatingAdjustments({
+    ratingA: 1500,
+    ratingB: 1500,
+    teamNameA: "Mexico",
+    teamNameB: "South Africa",
+    venue: mexicoCity.name,
+    matchDate: "2026-06-11",
+  });
+  const acclimatized = applyMatchContextRatingAdjustments({
+    ratingA: 1500,
+    ratingB: 1500,
+    teamNameA: "Mexico",
+    teamNameB: "South Africa",
+    venue: mexicoCity.name,
+    matchDate: "2026-06-18",
+    travelStateB: {
+      lastVenue: "Guadalajara",
+      lastMatchDate: "2026-06-11",
+    },
+  });
+
+  assert.equal(freshArrival.ratingA, 1500);
+  assert.equal(freshArrival.ratingB, 1450);
+  assert.equal(acclimatized.ratingB, 1500);
+});
+
+test("travel fatigue applies after long travel with less than five rest days", () => {
+  const vancouver = getHostVenueByName("Vancouver");
+  const miami = getHostVenueByName("Miami");
+  assert.ok(vancouver);
+  assert.ok(miami);
+
+  const distanceKm = calculateTravelDistanceKm(vancouver, miami);
+
+  assert.ok(distanceKm > TRAVEL_FATIGUE_DISTANCE_THRESHOLD_KM);
+  assert.equal(TRAVEL_FATIGUE_ELO_PENALTY, -30);
+  assert.equal(
+    calculateTravelFatigueAdjustment(
+      { lastVenue: "Vancouver", lastMatchDate: "2026-06-27" },
+      miami,
+      "2026-07-01"
+    ),
+    TRAVEL_FATIGUE_ELO_PENALTY
+  );
+  assert.equal(
+    calculateTravelFatigueAdjustment(
+      { lastVenue: "Vancouver", lastMatchDate: "2026-06-27" },
+      miami,
+      "2026-07-04"
+    ),
+    0
+  );
 });
 
 test("played knockout winner honors penalty or provider winner when scores are level", () => {

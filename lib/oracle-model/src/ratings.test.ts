@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { computeRatingsAndTeamMetrics, type RatingMatchRow } from "./ratings.js";
+import { createModelConfig } from "./config.js";
+import { computeRatingsAndTeamMetrics, summarizeStrengthMetrics, type RatingMatchRow } from "./ratings.js";
 
 function match(
   date: string,
@@ -32,6 +33,44 @@ test("rating center, fallback, and strength factor are aligned at neutral one", 
   assert.equal(teamMetrics["New Team"]?.elo, 1500);
   assert.equal(teamMetrics["New Team"]?.attackStrength, 1);
   assert.equal(teamMetrics["New Team"]?.defenseStrength, 1);
+});
+
+test("model config defaults recent strength metric half-life to two years", () => {
+  assert.equal(createModelConfig().recentMetricHalfLifeYears, 2);
+});
+
+test("strength metrics give matches one half-life ago half the statistical weight of current matches", () => {
+  const samples = new Map([
+    [
+      "Target",
+      [
+        {
+          date: "2026-06-30",
+          adjustedScored: 2,
+          adjustedConceded: 1,
+          adjustedWeight: 1,
+        },
+        {
+          date: "2024-06-30",
+          adjustedScored: 8,
+          adjustedConceded: 5,
+          adjustedWeight: 1,
+        },
+      ],
+    ],
+  ]);
+  const metrics = summarizeStrengthMetrics(samples, "Target", "2026-06-30", 1500, {
+    goalsPerTeamBaseline: 1,
+    maxRecentGoalBlend: 1,
+    recentMetricHalfLifeYears: 2,
+    recentMetricPriorWeight: 0,
+    recentMetricWindowYears: 8,
+    strengthMin: 0,
+    strengthMax: 10,
+  });
+
+  assert.ok(Math.abs(metrics.attackStrength - 4) < 1e-12);
+  assert.ok(Math.abs(metrics.defenseStrength - 7 / 3) < 1e-12);
 });
 
 test("team metrics reward goals scored against stronger opponents at match time", () => {

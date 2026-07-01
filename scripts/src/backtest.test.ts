@@ -200,6 +200,7 @@ test("runHistoricalBacktest applies XG and strength metric parameter overrides",
     initialRating: 1500,
     homeAdvantageElo: 75,
     maxRecentGoalBlend: 0.4,
+    recentMetricHalfLifeYears: 1.5,
     recentMetricPriorWeight: 10,
     metricEloScale: 2500,
     baseXg: 1.75,
@@ -208,6 +209,7 @@ test("runHistoricalBacktest applies XG and strength metric parameter overrides",
 
   assert.equal(tuned.config.homeAdvantageElo, 75);
   assert.equal(tuned.config.maxRecentGoalBlend, 0.4);
+  assert.equal(tuned.config.recentMetricHalfLifeYears, 1.5);
   assert.equal(tuned.config.recentMetricPriorWeight, 10);
   assert.equal(tuned.config.metricEloScale, 2500);
   assert.equal(tuned.config.baseXg, 1.75);

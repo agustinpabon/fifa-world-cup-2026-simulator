@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { Router, type Response } from "express";
+import { MODEL_VARIANTS } from "@workspace/oracle-model";
 import { DeleteLiveMatchBody, PredictMatchBody, RecordLiveMatchBody } from "@workspace/api-zod";
 import {
   DEFAULT_MODEL_CONFIG,
@@ -41,8 +43,16 @@ const MAX_SEED_LENGTH = 128;
 const RECALCULATION_BATCH_SIZE = 500;
 const DEFAULT_LIVE_DATA_REFRESH_INTERVAL_MS = 30_000;
 const TEAM_NAMES = new Set(WC2026_TEAMS.map((team) => team.name));
+const BEST_MODEL_CONFIG_FILENAME = "best-model-config.json";
+const SOURCE_BEST_MODEL_CONFIG_URL = new URL(`../data/${BEST_MODEL_CONFIG_FILENAME}`, import.meta.url);
+const REPO_SOURCE_BEST_MODEL_CONFIG_URL = new URL(
+  `../src/data/${BEST_MODEL_CONFIG_FILENAME}`,
+  import.meta.url
+);
+const BUNDLED_BEST_MODEL_CONFIG_URL = new URL(`./data/${BEST_MODEL_CONFIG_FILENAME}`, import.meta.url);
 
 type ValidationIssuePath = Array<string | number>;
+type UnknownRecord = Record<string, unknown>;
 type ValidationIssueContext = {
   addIssue(issue: { code: "custom"; message: string; path?: ValidationIssuePath }): void;
 };
@@ -110,6 +120,7 @@ type LiveDataOptions = FetchLiveTournamentFeedOptions & {
 };
 type OracleInitOptions = LoadHistoricalDatasetOptions & {
   liveData?: LiveDataOptions;
+  bestModelConfigPath?: string | URL;
 };
 type LiveDataCacheState = {
   provider: LiveDataProviderName;
@@ -529,21 +540,39 @@ function isLockedExternalMatch(match: PlayedMatch): boolean {
   return (match.source === "official" || match.source === "espn") && match.status !== "scheduled";
 }
 
-function recalculateCachedSimulation(): void {
-  cache.simulationSeed = createSimulationSeed();
-  cache.simResult = runSimulations(cache.ratings, getSimulationMatches(), cache.teamMetrics, {
-    seed: cache.simulationSeed,
-    modelConfig: cache.modelConfig,
-  });
+async function recalculateCachedSimulation(): Promise<void> {
+  const snapshot = createRecalculationSnapshot(cache.recalculation.requestedVersion);
+
   cache.recalculation = {
     ...cache.recalculation,
-    publishedVersion: cache.recalculation.requestedVersion,
-    runningVersion: null,
     pending: false,
-    running: false,
-    lastUpdated: new Date().toISOString(),
+    running: true,
+    runningVersion: snapshot.version,
     error: null,
   };
+
+  try {
+    cache.simResult = await simulationRunner(snapshot);
+    cache.simulationSeed = snapshot.seed;
+    cache.recalculation = {
+      ...cache.recalculation,
+      publishedVersion: snapshot.version,
+      runningVersion: null,
+      pending: false,
+      running: false,
+      lastUpdated: new Date().toISOString(),
+      error: null,
+    };
+  } catch (error) {
+    cache.recalculation = {
+      ...cache.recalculation,
+      runningVersion: null,
+      pending: false,
+      running: false,
+      error: formatSimulationRecalculationError(error),
+    };
+    throw error;
+  }
 }
 
 function getIsRecalculating(): boolean {
@@ -698,6 +727,123 @@ function sendOracleSuccess<TData>(res: Response, data: TData) {
   return sendApiSuccess(res, data, getOracleResponseMeta());
 }
 
+export async function loadBestModelConfigOverrides(
+  configPath?: string | URL
+): Promise<Partial<ModelConfig>> {
+  const raw = await readOptionalBestModelConfig(configPath);
+
+  if (!raw) {
+    return {};
+  }
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`Best model config JSON is malformed: ${getErrorMessage(error)}`);
+  }
+
+  return parseBestModelConfigOverrides(parsed);
+}
+
+async function readOptionalBestModelConfig(configPath?: string | URL): Promise<string | null> {
+  const candidates = configPath
+    ? [configPath]
+    : [SOURCE_BEST_MODEL_CONFIG_URL, REPO_SOURCE_BEST_MODEL_CONFIG_URL, BUNDLED_BEST_MODEL_CONFIG_URL];
+
+  for (const candidate of candidates) {
+    try {
+      return await readFile(candidate, "utf8");
+    } catch (error) {
+      if (isMissingFileError(error)) {
+        continue;
+      }
+
+      throw new Error(
+        `Best model config could not be read from ${formatModelConfigPath(candidate)}: ${getErrorMessage(error)}`
+      );
+    }
+  }
+
+  return null;
+}
+
+function parseBestModelConfigOverrides(input: unknown): Partial<ModelConfig> {
+  if (!isRecord(input)) {
+    throw new Error("Best model config must be a JSON object");
+  }
+
+  const modelConfig = "modelConfig" in input ? input.modelConfig : input;
+
+  if (!isRecord(modelConfig)) {
+    throw new Error("Best model config modelConfig must be a JSON object");
+  }
+
+  const overrides: Partial<ModelConfig> = {};
+  const mutableOverrides = overrides as UnknownRecord;
+
+  for (const [key, value] of Object.entries(modelConfig)) {
+    if (!(key in DEFAULT_MODEL_CONFIG)) {
+      throw new Error(`Unknown model config key: ${key}`);
+    }
+
+    const configKey = key as keyof ModelConfig;
+    const defaultValue = DEFAULT_MODEL_CONFIG[configKey];
+
+    if (configKey === "variant") {
+      if (typeof value !== "string" || !(MODEL_VARIANTS as readonly string[]).includes(value)) {
+        throw new Error(`variant must be one of: ${MODEL_VARIANTS.join(", ")}`);
+      }
+
+      mutableOverrides[configKey] = value;
+      continue;
+    }
+
+    if (typeof defaultValue === "number") {
+      if (typeof value !== "number" || !Number.isFinite(value)) {
+        throw new Error(`${key} must be a finite number`);
+      }
+
+      mutableOverrides[configKey] = value;
+      continue;
+    }
+
+    if (typeof defaultValue === "boolean") {
+      if (typeof value !== "boolean") {
+        throw new Error(`${key} must be a boolean`);
+      }
+
+      mutableOverrides[configKey] = value;
+      continue;
+    }
+
+    throw new Error(`Unsupported model config key: ${key}`);
+  }
+
+  return overrides;
+}
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isMissingFileError(error: unknown): boolean {
+  return isRecord(error) && error.code === "ENOENT";
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+}
+
+function formatModelConfigPath(configPath: string | URL): string {
+  return typeof configPath === "string" ? configPath : configPath.pathname;
+}
+
 export function resetOracleForTests(): void {
   Object.assign(cache, createInitialCache());
 }
@@ -754,11 +900,14 @@ export function seedReadyOracleForTests(
 
 // ---- Initialize on startup ----
 export async function initOracle(options: OracleInitOptions = {}): Promise<void> {
+  const { bestModelConfigPath, liveData, ...datasetOptions } = options;
+
   cache.ready = false;
   cache.loadingError = null;
-  configureLiveData(options.liveData);
+  configureLiveData(liveData);
 
   try {
+    const modelConfigOverrides = await loadBestModelConfigOverrides(bestModelConfigPath);
     const {
       ratings: allRatings,
       teamMetrics,
@@ -766,7 +915,10 @@ export async function initOracle(options: OracleInitOptions = {}): Promise<void>
       fixtureMatches,
       dataset,
       modelConfig,
-    } = await computeEloRatings(options);
+    } = await computeEloRatings({
+      ...datasetOptions,
+      modelConfigOverrides,
+    });
     const wcRatings = getWCTeamRatings(allRatings);
     cache.matchCount = matchCount;
     cache.ratings = wcRatings;
@@ -776,7 +928,7 @@ export async function initOracle(options: OracleInitOptions = {}): Promise<void>
     cache.dataset = dataset;
 
     await refreshLiveDataIfNeeded({ force: true, scheduleRecalculation: false });
-    recalculateCachedSimulation();
+    await recalculateCachedSimulation();
     cache.ready = true;
   } catch (err) {
     cache.ready = false;

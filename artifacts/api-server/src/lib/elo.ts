@@ -80,6 +80,10 @@ export interface LoadHistoricalDatasetOptions {
   timeoutMs?: number;
 }
 
+export interface ComputeEloRatingsOptions extends LoadHistoricalDatasetOptions {
+  modelConfigOverrides?: Partial<ModelConfig>;
+}
+
 export class HistoricalDataLoadError extends Error {
   readonly code = "HISTORICAL_DATA_LOAD_FAILED";
   readonly remoteError?: unknown;
@@ -218,7 +222,7 @@ function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
-export async function computeEloRatings(options: LoadHistoricalDatasetOptions = {}): Promise<{
+export async function computeEloRatings(options: ComputeEloRatingsOptions = {}): Promise<{
   ratings: EloRatings;
   teamMetrics: Record<string, TeamMetrics>;
   matchCount: number;
@@ -232,6 +236,7 @@ export async function computeEloRatings(options: LoadHistoricalDatasetOptions = 
   const rows = dataset.rows;
   const modelConfig = createModelConfig({
     variant: ACTIVE_MODEL_VARIANT,
+    ...options.modelConfigOverrides,
     drawRate: estimateDrawRate(rows),
   });
 

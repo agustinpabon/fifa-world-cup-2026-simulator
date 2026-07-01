@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import app from "../app.js";
 import { WC2026_TEAMS } from "../lib/worldcup2026.js";
 import type { SimResult } from "../lib/simulation.js";
 import {
   initOracle,
+  loadBestModelConfigOverrides,
   resetOracleForTests,
   seedReadyOracleForTests,
   setSimulationRunnerForTests,
@@ -97,6 +101,54 @@ function createMarkedSimResult(champion: string): SimResult {
     groupWins: { ...counts, [champion]: 10_000 },
     groupAdvances: { ...counts, [champion]: 10_000 },
   };
+}
+
+async function createTempDir(prefix: string): Promise<string> {
+  return mkdtemp(join(tmpdir(), prefix));
+}
+
+async function writeTinySnapshot(dir: string): Promise<string> {
+  const snapshotPath = join(dir, "results.csv");
+  const raw = [
+    "date,home_team,away_team,home_score,away_score,tournament,city,country,neutral",
+    "2024-01-01,Argentina,Brazil,2,1,Friendly,City,Country,TRUE",
+    "2024-02-01,Brazil,Argentina,0,0,Friendly,City,Country,TRUE",
+  ].join("\n");
+
+  await writeFile(snapshotPath, raw, "utf8");
+  return snapshotPath;
+}
+
+async function writeBestModelConfig(dir: string): Promise<string> {
+  const configPath = join(dir, "best-model-config.json");
+
+  await writeFile(
+    configPath,
+    `${JSON.stringify(
+      {
+        generatedAt: "2026-06-30T00:00:00.000Z",
+        candidatesEvaluated: 1,
+        modelConfig: {
+          variant: "elo-baseline",
+          homeAdvantageElo: 25,
+          useMarginOfVictoryElo: false,
+          recentMetricHalfLifeYears: 1.5,
+        },
+        metrics: {
+          matches: 2,
+          windows: 1,
+          brierScore: 0.5,
+          logLoss: 0.75,
+          accuracy: 0.5,
+        },
+      },
+      null,
+      2
+    )}\n`,
+    "utf8"
+  );
+
+  return configPath;
 }
 
 function createDeferredSimulationRunner() {
@@ -387,6 +439,57 @@ test("GET /api/oracle/status exposes an explicit error state when historical dat
   assert.match(String(data.message), /could not be loaded/i);
 
   resetOracleForTests();
+});
+
+test("initOracle loads best model config overrides from optimizer JSON on startup", async () => {
+  resetOracleForTests();
+  const dir = await createTempDir("oracle-best-model-");
+  const restoreRunner = setSimulationRunnerForTests(async () => createMarkedSimResult("Argentina"));
+
+  try {
+    const snapshotPath = await writeTinySnapshot(dir);
+    const bestModelConfigPath = await writeBestModelConfig(dir);
+
+    await initOracle({
+      maxAttempts: 0,
+      snapshotPath,
+      bestModelConfigPath,
+      liveData: { provider: "disabled" },
+    });
+
+    const response = await requestGet("/api/oracle/status");
+    const data = readData(await readJson(response));
+
+    assert.equal(response.status, 200);
+    assert.equal(data.ready, true);
+    assert.equal(data.activeModel, "elo-baseline");
+  } finally {
+    restoreRunner();
+    resetOracleForTests();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("loadBestModelConfigOverrides ignores a missing optimizer JSON file", async () => {
+  const overrides = await loadBestModelConfigOverrides("/definitely/missing/best-model-config.json");
+
+  assert.deepEqual(overrides, {});
+});
+
+test("loadBestModelConfigOverrides rejects invalid optimizer JSON values", async () => {
+  const dir = await createTempDir("oracle-bad-model-");
+
+  try {
+    const configPath = join(dir, "best-model-config.json");
+    await writeFile(configPath, JSON.stringify({ modelConfig: { homeAdvantageElo: "high" } }), "utf8");
+
+    await assert.rejects(
+      () => loadBestModelConfigOverrides(configPath),
+      /homeAdvantageElo must be a finite number/
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("GET /api/oracle/simulation accepts an optional seed", async () => {

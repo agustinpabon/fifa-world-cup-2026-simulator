@@ -34,6 +34,7 @@ export interface BacktestOptions {
   initialRating?: number;
   homeAdvantageElo?: number;
   maxRecentGoalBlend?: number;
+  recentMetricHalfLifeYears?: number;
   recentMetricPriorWeight?: number;
   metricEloScale?: number;
   baseXg?: number;
@@ -141,6 +142,7 @@ const DEFAULT_BACKTEST_OPTIONS: NormalizedBacktestOptions = {
   initialRating: DEFAULT_MODEL_CONFIG.initialRating,
   homeAdvantageElo: DEFAULT_MODEL_CONFIG.homeAdvantageElo,
   maxRecentGoalBlend: DEFAULT_MODEL_CONFIG.maxRecentGoalBlend,
+  recentMetricHalfLifeYears: DEFAULT_MODEL_CONFIG.recentMetricHalfLifeYears,
   recentMetricPriorWeight: DEFAULT_MODEL_CONFIG.recentMetricPriorWeight,
   metricEloScale: DEFAULT_MODEL_CONFIG.metricEloScale,
   baseXg: DEFAULT_MODEL_CONFIG.baseXg,
@@ -213,6 +215,7 @@ export function runHistoricalBacktest(
     fallbackRating: normalized.initialRating,
     homeAdvantageElo: normalized.homeAdvantageElo,
     maxRecentGoalBlend: normalized.maxRecentGoalBlend,
+    recentMetricHalfLifeYears: normalized.recentMetricHalfLifeYears,
     recentMetricPriorWeight: normalized.recentMetricPriorWeight,
     metricEloScale: normalized.metricEloScale,
     baseXg: normalized.baseXg,
@@ -422,6 +425,7 @@ function normalizeBacktestOptions(options: BacktestOptions): NormalizedBacktestO
   assertFiniteOption(normalized.initialRating, "initialRating");
   assertFiniteOption(normalized.homeAdvantageElo, "homeAdvantageElo");
   assertFiniteOption(normalized.maxRecentGoalBlend, "maxRecentGoalBlend");
+  assertFiniteOption(normalized.recentMetricHalfLifeYears, "recentMetricHalfLifeYears");
   assertFiniteOption(normalized.recentMetricPriorWeight, "recentMetricPriorWeight");
   assertFiniteOption(normalized.metricEloScale, "metricEloScale");
   assertFiniteOption(normalized.baseXg, "baseXg");
@@ -431,6 +435,9 @@ function normalizeBacktestOptions(options: BacktestOptions): NormalizedBacktestO
   }
   if (normalized.maxRecentGoalBlend < 0 || normalized.maxRecentGoalBlend > 1) {
     throw new Error("maxRecentGoalBlend must be between 0 and 1");
+  }
+  if (normalized.recentMetricHalfLifeYears <= 0) {
+    throw new Error("recentMetricHalfLifeYears must be positive");
   }
   if (normalized.recentMetricPriorWeight < 0) {
     throw new Error("recentMetricPriorWeight must be non-negative");
@@ -459,6 +466,7 @@ function toBacktestOptions(options: CliOptions): Partial<BacktestOptions> {
     initialRating: options.initialRating,
     homeAdvantageElo: options.homeAdvantageElo,
     maxRecentGoalBlend: options.maxRecentGoalBlend,
+    recentMetricHalfLifeYears: options.recentMetricHalfLifeYears,
     recentMetricPriorWeight: options.recentMetricPriorWeight,
     metricEloScale: options.metricEloScale,
     baseXg: options.baseXg,
@@ -527,6 +535,9 @@ function parseCliOptions(argv: readonly string[]): CliOptions {
         break;
       case "--max-recent-goal-blend":
         options.maxRecentGoalBlend = parseFiniteNumber(value, key);
+        break;
+      case "--recent-metric-half-life-years":
+        options.recentMetricHalfLifeYears = parseFiniteNumber(value, key);
         break;
       case "--recent-metric-prior-weight":
         options.recentMetricPriorWeight = parseFiniteNumber(value, key);

@@ -20,6 +20,7 @@ export interface ModelConfig {
   dixonColesRho: number;
   drawRate: number;
   recentMetricWindowYears: number;
+  recentMetricHalfLifeYears: number;
   goalsPerTeamBaseline: number;
   maxRecentGoalBlend: number;
   recentMetricPriorWeight: number;
@@ -43,6 +44,7 @@ export const DEFAULT_MODEL_CONFIG: ModelConfig = {
   dixonColesRho: -0.06,
   drawRate: 0.27,
   recentMetricWindowYears: 8,
+  recentMetricHalfLifeYears: 2.0,
   goalsPerTeamBaseline: 1.35,
   maxRecentGoalBlend: 0.1,
   recentMetricPriorWeight: 60,

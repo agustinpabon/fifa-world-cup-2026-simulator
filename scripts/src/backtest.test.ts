@@ -199,6 +199,8 @@ test("runHistoricalBacktest applies XG and strength metric parameter overrides",
     testEnd: "2021-12-31",
     initialRating: 1500,
     homeAdvantageElo: 75,
+    useMarginOfVictoryElo: false,
+    marginOfVictoryEloScalingConstant: 1800,
     maxRecentGoalBlend: 0.4,
     recentMetricHalfLifeYears: 1.5,
     recentMetricPriorWeight: 10,
@@ -208,6 +210,8 @@ test("runHistoricalBacktest applies XG and strength metric parameter overrides",
   });
 
   assert.equal(tuned.config.homeAdvantageElo, 75);
+  assert.equal(tuned.config.useMarginOfVictoryElo, false);
+  assert.equal(tuned.config.marginOfVictoryEloScalingConstant, 1800);
   assert.equal(tuned.config.maxRecentGoalBlend, 0.4);
   assert.equal(tuned.config.recentMetricHalfLifeYears, 1.5);
   assert.equal(tuned.config.recentMetricPriorWeight, 10);

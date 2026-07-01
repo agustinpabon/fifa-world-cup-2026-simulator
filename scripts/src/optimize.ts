@@ -1,10 +1,11 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   ACTIVE_MODEL_VARIANT,
   DEFAULT_MODEL_CONFIG,
   MODEL_VARIANTS,
+  type ModelConfig,
   type ModelVariant,
 } from "@workspace/oracle-model";
 
@@ -59,10 +60,20 @@ export interface OptimizerSummary {
   results: OptimizerResult[];
 }
 
+export type OptimizedModelConfig = Pick<ModelConfig, "variant" | OptimizerParameter>;
+
+export interface BestModelConfigFile {
+  generatedAt: string;
+  candidatesEvaluated: number;
+  modelConfig: OptimizedModelConfig;
+  metrics: Omit<OptimizerResult, "parameters">;
+}
+
 type SearchMode = "grid" | "random";
 
 interface CliOptions {
   input: string;
+  output: string;
   mode: SearchMode;
   iterations: number;
   seed: number;
@@ -72,6 +83,12 @@ interface CliOptions {
   testEnd?: string;
   searchSpace: OptimizerSearchSpace;
 }
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+export const DEFAULT_BEST_MODEL_CONFIG_OUTPUT = path.join(
+  REPO_ROOT,
+  "artifacts/api-server/src/data/best-model-config.json"
+);
 
 export const DEFAULT_OPTIMIZER_SEARCH_SPACE: OptimizerSearchSpace = {
   maxRecentGoalBlend: [0.05, DEFAULT_MODEL_CONFIG.maxRecentGoalBlend, 0.2],
@@ -192,6 +209,32 @@ export function optimizeBacktestParameters(
   };
 }
 
+export function buildBestModelConfig(
+  summary: OptimizerSummary,
+  generatedAt = new Date().toISOString()
+): BestModelConfigFile {
+  const { parameters, ...metrics } = summary.best;
+
+  return {
+    generatedAt,
+    candidatesEvaluated: summary.candidatesEvaluated,
+    modelConfig: {
+      variant: summary.model,
+      ...parameters,
+    },
+    metrics,
+  };
+}
+
+export async function writeBestModelConfig(
+  summary: OptimizerSummary,
+  outputPath = DEFAULT_BEST_MODEL_CONFIG_OUTPUT,
+  generatedAt?: string
+): Promise<void> {
+  await mkdir(path.dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, `${JSON.stringify(buildBestModelConfig(summary, generatedAt), null, 2)}\n`, "utf8");
+}
+
 export function formatOptimizationSummary(summary: OptimizerSummary, top = DEFAULT_TOP_RESULTS): string {
   const lines = [
     `Optimization target: ${summary.model}`,
@@ -234,6 +277,8 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   });
 
   console.log(formatOptimizationSummary(summary, options.top));
+  await writeBestModelConfig(summary, options.output);
+  console.log(`Wrote best model config to ${formatOutputPath(options.output)}`);
 }
 
 function aggregateMetrics(report: RollingBacktestReport, model: BacktestModelKey): Omit<OptimizerResult, "parameters"> {
@@ -338,6 +383,7 @@ function formatMetric(value: number): string {
 function parseCliOptions(argv: readonly string[]): CliOptions {
   const options: CliOptions = {
     input: DEFAULT_BACKTEST_INPUT,
+    output: DEFAULT_BEST_MODEL_CONFIG_OUTPUT,
     mode: "random",
     iterations: DEFAULT_RANDOM_ITERATIONS,
     seed: DEFAULT_RANDOM_SEED,
@@ -363,6 +409,9 @@ function parseCliOptions(argv: readonly string[]): CliOptions {
     switch (key) {
       case "--input":
         options.input = value;
+        break;
+      case "--output":
+        options.output = value;
         break;
       case "--mode":
         options.mode = parseSearchMode(value);
@@ -472,6 +521,15 @@ function parseBoolean(value: string, flag: string): boolean {
   if (value === "true") return true;
   if (value === "false") return false;
   throw new Error(`${flag} must be true or false`);
+}
+
+function formatOutputPath(outputPath: string): string {
+  const relativeToRepo = path.relative(REPO_ROOT, outputPath);
+  if (!relativeToRepo.startsWith("..") && !path.isAbsolute(relativeToRepo)) {
+    return relativeToRepo;
+  }
+
+  return outputPath;
 }
 
 function createSeededRandom(seed: number): () => number {

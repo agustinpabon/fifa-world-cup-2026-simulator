@@ -1,0 +1,321 @@
+{
+  "schemaVersion": 1,
+  "version": "2026.1",
+  "competition": "FIFA World Cup 2026",
+  "provenance": {
+    "sourceName": "World Cup Oracle curated squads snapshot",
+    "sourceUrl": "https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/articles/fifa-world-cup-2026-squads-confirmed",
+    "sourceTitle": "FIFA World Cup 2026 squads confirmed",
+    "publishedDate": "2026-06-03",
+    "accessedDate": "2026-07-01",
+    "notes": [
+      "Versioned local snapshot for official or curated FIFA World Cup 2026 squads.",
+      "All 48 qualified teams are present so clients can render stable squad availability states.",
+      "Incomplete squads are explicit and do not affect startup or team ratings."
+    ]
+  },
+  "sources": [
+    {
+      "id": "fifa-squads-confirmed-2026-06-03",
+      "sourceName": "FIFA",
+      "sourceUrl": "https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/articles/fifa-world-cup-2026-squads-confirmed",
+      "sourceTitle": "FIFA World Cup 2026 squads confirmed",
+      "publishedDate": "2026-06-03",
+      "accessedDate": "2026-07-01",
+      "notes": [
+        "FIFA confirmed that 48 final squads totaling 1,248 players were submitted for the tournament.",
+        "This local snapshot intentionally leaves player arrays empty until the official or curated player lists are transcribed team by team."
+      ]
+    }
+  ],
+  "squads": [
+    {
+      "team": "Mexico",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "South Africa",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Korea Republic",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Czechia",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Canada",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Bosnia & Herzegovina",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Qatar",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Switzerland",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Brazil",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Morocco",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Haiti",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Scotland",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "USA",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Paraguay",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Australia",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Türkiye",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Germany",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Curaçao",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Côte d'Ivoire",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Ecuador",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Netherlands",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Japan",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Sweden",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Tunisia",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Belgium",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Egypt",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "IR Iran",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "New Zealand",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Spain",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Cabo Verde",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Saudi Arabia",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Uruguay",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "France",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Senegal",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Iraq",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Norway",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Argentina",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Algeria",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Austria",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Jordan",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Portugal",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Congo DR",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Uzbekistan",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Colombia",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "England",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Croatia",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Ghana",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    },
+    {
+      "team": "Panama",
+      "sourceId": "fifa-squads-confirmed-2026-06-03",
+      "completeness": { "status": "incomplete", "expectedPlayerCount": 26, "notes": ["Official FIFA squad list exists but the player list has not been transcribed into this local snapshot yet."] },
+      "players": []
+    }
+  ]
+}

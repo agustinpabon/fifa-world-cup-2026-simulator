@@ -1,4 +1,11 @@
-import { WC2026_GROUPS, WC2026_TEAMS, type WCGroup, type WCTeam } from "./worldcup2026.js";
+import {
+  WC2026_GROUPS,
+  WC2026_TEAMS,
+  getHostVenueByName,
+  type WCHostVenue,
+  type WCGroup,
+  type WCTeam,
+} from "./worldcup2026.js";
 import {
   DEFAULT_MODEL_CONFIG,
   createModelConfig,
@@ -22,6 +29,9 @@ import {
 
 export const NUM_SIMULATIONS = 10_000;
 export const DEFAULT_SIMULATION_SEED = "world-cup-oracle-simulation-v1";
+export const HIGH_ALTITUDE_THRESHOLD_METERS = 1200;
+export const ALTITUDE_ELO_PENALTY = -50;
+export const ACCLIMATIZATION_REST_DAYS = 5;
 
 export type Rng = () => number;
 export type SimulationSeed = string | number;
@@ -55,6 +65,148 @@ export interface PlayedMatch {
   winnerTeam?: string;
 }
 
+export interface TeamTravelState {
+  lastVenue: string;
+  lastMatchDate: string;
+}
+
+export interface MatchContextRatingInput {
+  ratingA: number;
+  ratingB: number;
+  teamNameA?: string;
+  teamNameB?: string;
+  venue?: string;
+  matchDate?: string;
+  travelStateA?: TeamTravelState;
+  travelStateB?: TeamTravelState;
+  acclimatizationDaysA?: number;
+  acclimatizationDaysB?: number;
+}
+
+export interface MatchContextRatingAdjustments {
+  altitude: number;
+}
+
+export interface MatchContextRatingResult {
+  ratingA: number;
+  ratingB: number;
+  adjustmentsA: MatchContextRatingAdjustments;
+  adjustmentsB: MatchContextRatingAdjustments;
+}
+
+export type MatchPredictionContext = Omit<MatchContextRatingInput, "ratingA" | "ratingB">;
+
+function parseUtcDate(date: string): number | null {
+  const timestamp = Date.parse(`${date}T00:00:00.000Z`);
+
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function calculateRestDaysSinceLastMatch(previousDate: string, matchDate: string): number | null {
+  const previousTimestamp = parseUtcDate(previousDate);
+  const matchTimestamp = parseUtcDate(matchDate);
+
+  if (previousTimestamp === null || matchTimestamp === null) {
+    return null;
+  }
+
+  const daysBetween = Math.floor((matchTimestamp - previousTimestamp) / 86_400_000);
+
+  return Math.max(0, daysBetween - 1);
+}
+
+function isHighAltitudeVenue(venue: WCHostVenue): boolean {
+  return venue.altitudeMeters > HIGH_ALTITUDE_THRESHOLD_METERS;
+}
+
+function isHighAltitudeHomeNation(teamName: string | undefined, venue: WCHostVenue): boolean {
+  return teamName === "Mexico" && venue.country === "Mexico" && isHighAltitudeVenue(venue);
+}
+
+function hasSufficientAltitudeAcclimatization(
+  venue: WCHostVenue,
+  matchDate: string | undefined,
+  travelState: TeamTravelState | undefined,
+  acclimatizationDays: number | undefined
+): boolean {
+  if (!isHighAltitudeVenue(venue)) {
+    return true;
+  }
+
+  if (acclimatizationDays !== undefined) {
+    return acclimatizationDays >= ACCLIMATIZATION_REST_DAYS;
+  }
+
+  if (!matchDate || !travelState) {
+    return false;
+  }
+
+  const lastVenue = getHostVenueByName(travelState.lastVenue);
+  const restDays = calculateRestDaysSinceLastMatch(travelState.lastMatchDate, matchDate);
+
+  return Boolean(lastVenue && isHighAltitudeVenue(lastVenue) && restDays !== null && restDays >= ACCLIMATIZATION_REST_DAYS);
+}
+
+export function calculateAltitudeEloAdjustment(
+  teamName: string | undefined,
+  venue: WCHostVenue,
+  options: {
+    matchDate?: string;
+    travelState?: TeamTravelState;
+    acclimatizationDays?: number;
+  } = {}
+): number {
+  if (!isHighAltitudeVenue(venue)) {
+    return 0;
+  }
+
+  if (isHighAltitudeHomeNation(teamName, venue)) {
+    return 0;
+  }
+
+  if (
+    hasSufficientAltitudeAcclimatization(
+      venue,
+      options.matchDate,
+      options.travelState,
+      options.acclimatizationDays
+    )
+  ) {
+    return 0;
+  }
+
+  return ALTITUDE_ELO_PENALTY;
+}
+
+export function applyMatchContextRatingAdjustments(input: MatchContextRatingInput): MatchContextRatingResult {
+  const venue = input.venue ? getHostVenueByName(input.venue) : undefined;
+  const altitudeA = venue
+    ? calculateAltitudeEloAdjustment(input.teamNameA, venue, {
+        matchDate: input.matchDate,
+        travelState: input.travelStateA,
+        acclimatizationDays: input.acclimatizationDaysA,
+      })
+    : 0;
+  const altitudeB = venue
+    ? calculateAltitudeEloAdjustment(input.teamNameB, venue, {
+        matchDate: input.matchDate,
+        travelState: input.travelStateB,
+        acclimatizationDays: input.acclimatizationDaysB,
+      })
+    : 0;
+
+  return {
+    ratingA: input.ratingA + altitudeA,
+    ratingB: input.ratingB + altitudeB,
+    adjustmentsA: {
+      altitude: altitudeA,
+    },
+    adjustmentsB: {
+      altitude: altitudeB,
+    },
+  };
+}
+
 function simulateMatch(
   eloA: number,
   eloB: number,
@@ -64,16 +216,23 @@ function simulateMatch(
   isHomeA = false,
   isHomeB = false,
   random: Rng = createSeededRng(DEFAULT_SIMULATION_SEED),
-  modelConfig: Partial<ModelConfig> = DEFAULT_MODEL_CONFIG
+  modelConfig: Partial<ModelConfig> = DEFAULT_MODEL_CONFIG,
+  matchContext: MatchPredictionContext = {}
 ): { goalsA: number; goalsB: number } {
   if (playedMatch) {
     return { goalsA: playedMatch.homeScore, goalsB: playedMatch.awayScore };
   }
 
+  const adjustedRatings = applyMatchContextRatingAdjustments({
+    ratingA: eloA,
+    ratingB: eloB,
+    ...matchContext,
+  });
+
   return sampleMatchScore(
     {
-      ratingA: eloA,
-      ratingB: eloB,
+      ratingA: adjustedRatings.ratingA,
+      ratingB: adjustedRatings.ratingB,
       metricsA,
       metricsB,
       neutral: true,
@@ -97,13 +256,19 @@ export function matchProbabilities(
   isHomeB = false,
   neutral = true,
   _options: RandomSourceOptions = {},
-  modelConfig: Partial<ModelConfig> = DEFAULT_MODEL_CONFIG
+  modelConfig: Partial<ModelConfig> = DEFAULT_MODEL_CONFIG,
+  matchContext: MatchPredictionContext = {}
 ): { pWinA: number; pDraw: number; pWinB: number; xgA: number; xgB: number; mostLikelyScore: string } {
+  const adjustedRatings = applyMatchContextRatingAdjustments({
+    ratingA: eloA,
+    ratingB: eloB,
+    ...matchContext,
+  });
   const teamBHasNonNeutralHomeAdvantage = neutral === false && isHomeB && !isHomeA;
   const prediction = teamBHasNonNeutralHomeAdvantage
     ? predictMatch({
-        ratingA: eloB,
-        ratingB: eloA,
+        ratingA: adjustedRatings.ratingB,
+        ratingB: adjustedRatings.ratingA,
         metricsA: metricsB,
         metricsB: metricsA,
         neutral,
@@ -112,8 +277,8 @@ export function matchProbabilities(
         modelConfig,
       })
     : predictMatch({
-        ratingA: eloA,
-        ratingB: eloB,
+        ratingA: adjustedRatings.ratingA,
+        ratingB: adjustedRatings.ratingB,
         metricsA,
         metricsB,
         neutral,
@@ -447,7 +612,13 @@ function simulateGroup(
         isHomeA,
         isHomeB,
         random,
-        resolvedModelConfig
+        resolvedModelConfig,
+        {
+          teamNameA: home.team.name,
+          teamNameB: away.team.name,
+          venue: fixture.venue,
+          matchDate: fixture.date,
+        }
       );
       goalsHome = sim.goalsA;
       goalsAway = sim.goalsB;

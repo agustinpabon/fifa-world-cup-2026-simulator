@@ -7,12 +7,16 @@ export const MODEL_VARIANTS = [
 
 export type ModelVariant = (typeof MODEL_VARIANTS)[number];
 
+export const DEFAULT_MARGIN_OF_VICTORY_ELO_SCALING_CONSTANT = 2200;
+
 export interface ModelConfig {
   variant: ModelVariant;
   initialRating: number;
   fallbackRating: number;
   ratingCenter: number;
   homeAdvantageElo: number;
+  useMarginOfVictoryElo: boolean;
+  marginOfVictoryEloScalingConstant: number;
   hostBoost: number;
   baseXg: number;
   eloScale: number;
@@ -37,6 +41,8 @@ export const DEFAULT_MODEL_CONFIG: ModelConfig = {
   fallbackRating: 1500,
   ratingCenter: 1500,
   homeAdvantageElo: 75,
+  useMarginOfVictoryElo: true,
+  marginOfVictoryEloScalingConstant: DEFAULT_MARGIN_OF_VICTORY_ELO_SCALING_CONSTANT,
   hostBoost: 50,
   baseXg: 1.25,
   eloScale: 400,

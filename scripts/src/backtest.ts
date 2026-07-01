@@ -33,6 +33,8 @@ export interface BacktestOptions {
   testEnd: string;
   initialRating?: number;
   homeAdvantageElo?: number;
+  useMarginOfVictoryElo?: boolean;
+  marginOfVictoryEloScalingConstant?: number;
   maxRecentGoalBlend?: number;
   recentMetricHalfLifeYears?: number;
   recentMetricPriorWeight?: number;
@@ -141,6 +143,8 @@ const DEFAULT_BACKTEST_OPTIONS: NormalizedBacktestOptions = {
   testEnd: "2024-12-31",
   initialRating: DEFAULT_MODEL_CONFIG.initialRating,
   homeAdvantageElo: DEFAULT_MODEL_CONFIG.homeAdvantageElo,
+  useMarginOfVictoryElo: DEFAULT_MODEL_CONFIG.useMarginOfVictoryElo,
+  marginOfVictoryEloScalingConstant: DEFAULT_MODEL_CONFIG.marginOfVictoryEloScalingConstant,
   maxRecentGoalBlend: DEFAULT_MODEL_CONFIG.maxRecentGoalBlend,
   recentMetricHalfLifeYears: DEFAULT_MODEL_CONFIG.recentMetricHalfLifeYears,
   recentMetricPriorWeight: DEFAULT_MODEL_CONFIG.recentMetricPriorWeight,
@@ -214,6 +218,8 @@ export function runHistoricalBacktest(
     initialRating: normalized.initialRating,
     fallbackRating: normalized.initialRating,
     homeAdvantageElo: normalized.homeAdvantageElo,
+    useMarginOfVictoryElo: normalized.useMarginOfVictoryElo,
+    marginOfVictoryEloScalingConstant: normalized.marginOfVictoryEloScalingConstant,
     maxRecentGoalBlend: normalized.maxRecentGoalBlend,
     recentMetricHalfLifeYears: normalized.recentMetricHalfLifeYears,
     recentMetricPriorWeight: normalized.recentMetricPriorWeight,
@@ -424,6 +430,7 @@ function normalizeBacktestOptions(options: BacktestOptions): NormalizedBacktestO
   }
   assertFiniteOption(normalized.initialRating, "initialRating");
   assertFiniteOption(normalized.homeAdvantageElo, "homeAdvantageElo");
+  assertFiniteOption(normalized.marginOfVictoryEloScalingConstant, "marginOfVictoryEloScalingConstant");
   assertFiniteOption(normalized.maxRecentGoalBlend, "maxRecentGoalBlend");
   assertFiniteOption(normalized.recentMetricHalfLifeYears, "recentMetricHalfLifeYears");
   assertFiniteOption(normalized.recentMetricPriorWeight, "recentMetricPriorWeight");
@@ -435,6 +442,12 @@ function normalizeBacktestOptions(options: BacktestOptions): NormalizedBacktestO
   }
   if (normalized.maxRecentGoalBlend < 0 || normalized.maxRecentGoalBlend > 1) {
     throw new Error("maxRecentGoalBlend must be between 0 and 1");
+  }
+  if (normalized.marginOfVictoryEloScalingConstant <= 0) {
+    throw new Error("marginOfVictoryEloScalingConstant must be positive");
+  }
+  if (typeof normalized.useMarginOfVictoryElo !== "boolean") {
+    throw new Error("useMarginOfVictoryElo must be a boolean");
   }
   if (normalized.recentMetricHalfLifeYears <= 0) {
     throw new Error("recentMetricHalfLifeYears must be positive");
@@ -465,6 +478,8 @@ function toBacktestOptions(options: CliOptions): Partial<BacktestOptions> {
   return {
     initialRating: options.initialRating,
     homeAdvantageElo: options.homeAdvantageElo,
+    useMarginOfVictoryElo: options.useMarginOfVictoryElo,
+    marginOfVictoryEloScalingConstant: options.marginOfVictoryEloScalingConstant,
     maxRecentGoalBlend: options.maxRecentGoalBlend,
     recentMetricHalfLifeYears: options.recentMetricHalfLifeYears,
     recentMetricPriorWeight: options.recentMetricPriorWeight,
@@ -533,6 +548,12 @@ function parseCliOptions(argv: readonly string[]): CliOptions {
       case "--home-advantage-elo":
         options.homeAdvantageElo = parseFiniteNumber(value, key);
         break;
+      case "--use-margin-of-victory-elo":
+        options.useMarginOfVictoryElo = parseBoolean(value, key);
+        break;
+      case "--margin-of-victory-elo-scaling-constant":
+        options.marginOfVictoryEloScalingConstant = parseFiniteNumber(value, key);
+        break;
       case "--max-recent-goal-blend":
         options.maxRecentGoalBlend = parseFiniteNumber(value, key);
         break;
@@ -572,6 +593,12 @@ function parseFiniteNumber(value: string, flag: string): number {
   }
 
   return parsed;
+}
+
+function parseBoolean(value: string, flag: string): boolean {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  throw new Error(`${flag} must be true or false`);
 }
 
 function printSummary(report: RollingBacktestReport, outputPath: string): void {

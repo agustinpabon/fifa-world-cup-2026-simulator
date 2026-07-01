@@ -4,6 +4,7 @@ import {
   createModelConfig,
   predictMatch,
   sampleMatchScore,
+  type MatchPrediction,
   type ModelConfig,
 } from "@workspace/oracle-model";
 import { type EloRatings, type TeamMetrics } from "./elo.js";
@@ -94,20 +95,41 @@ export function matchProbabilities(
   metricsB?: TeamMetrics,
   isHomeA = false,
   isHomeB = false,
+  neutral = true,
   _options: RandomSourceOptions = {},
   modelConfig: Partial<ModelConfig> = DEFAULT_MODEL_CONFIG
 ): { pWinA: number; pDraw: number; pWinB: number; xgA: number; xgB: number; mostLikelyScore: string } {
-  const prediction = predictMatch({
-    ratingA: eloA,
-    ratingB: eloB,
-    metricsA,
-    metricsB,
-    neutral: true,
-    isHomeA,
-    isHomeB,
-    modelConfig,
-  });
+  const teamBHasNonNeutralHomeAdvantage = neutral === false && isHomeB && !isHomeA;
+  const prediction = teamBHasNonNeutralHomeAdvantage
+    ? predictMatch({
+        ratingA: eloB,
+        ratingB: eloA,
+        metricsA: metricsB,
+        metricsB: metricsA,
+        neutral,
+        isHomeA: true,
+        isHomeB: false,
+        modelConfig,
+      })
+    : predictMatch({
+        ratingA: eloA,
+        ratingB: eloB,
+        metricsA,
+        metricsB,
+        neutral,
+        isHomeA,
+        isHomeB,
+        modelConfig,
+      });
 
+  return teamBHasNonNeutralHomeAdvantage
+    ? summarizeMirroredMatchPrediction(prediction)
+    : summarizeMatchPrediction(prediction);
+}
+
+function summarizeMatchPrediction(
+  prediction: MatchPrediction
+): { pWinA: number; pDraw: number; pWinB: number; xgA: number; xgB: number; mostLikelyScore: string } {
   return {
     pWinA: prediction.probabilities.pWinA,
     pDraw: prediction.probabilities.pDraw,
@@ -116,6 +138,24 @@ export function matchProbabilities(
     xgB: prediction.xgB,
     mostLikelyScore: prediction.mostLikelyScore,
   };
+}
+
+function summarizeMirroredMatchPrediction(
+  prediction: MatchPrediction
+): { pWinA: number; pDraw: number; pWinB: number; xgA: number; xgB: number; mostLikelyScore: string } {
+  return {
+    pWinA: prediction.probabilities.pWinB,
+    pDraw: prediction.probabilities.pDraw,
+    pWinB: prediction.probabilities.pWinA,
+    xgA: prediction.xgB,
+    xgB: prediction.xgA,
+    mostLikelyScore: reverseScoreline(prediction.mostLikelyScore),
+  };
+}
+
+function reverseScoreline(scoreline: string): string {
+  const [goalsA, goalsB] = scoreline.split("-");
+  return `${goalsB}-${goalsA}`;
 }
 
 // ---------- Group stage ----------

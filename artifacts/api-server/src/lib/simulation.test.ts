@@ -62,8 +62,8 @@ function assertNormalized(probabilities: { pWinA: number; pDraw: number; pWinB: 
 }
 
 test("match probabilities are deterministic and symmetric for evenly matched neutral teams", () => {
-  const first = matchProbabilities(1500, 1500, 1, undefined, undefined, false, false, { random: () => 0 });
-  const second = matchProbabilities(1500, 1500, 100_000, undefined, undefined, false, false, {
+  const first = matchProbabilities(1500, 1500, 1, undefined, undefined, false, false, true, { random: () => 0 });
+  const second = matchProbabilities(1500, 1500, 100_000, undefined, undefined, false, false, true, {
     random: () => 0.99,
   });
 
@@ -117,6 +117,7 @@ test("production match probabilities use the shared oracle-model predictor", () 
     metricsB,
     true,
     false,
+    false,
     {},
     { variant: "elo-poisson-strength", drawRate: 0.25 }
   );
@@ -125,7 +126,7 @@ test("production match probabilities use the shared oracle-model predictor", () 
     ratingB: 1580,
     metricsA,
     metricsB,
-    neutral: true,
+    neutral: false,
     isHomeA: true,
     isHomeB: false,
     modelConfig: { variant: "elo-poisson-strength", drawRate: 0.25 },
@@ -135,6 +136,35 @@ test("production match probabilities use the shared oracle-model predictor", () 
   assertAlmostEqual(production.pDraw, shared.probabilities.pDraw);
   assertAlmostEqual(production.pWinB, shared.probabilities.pWinB);
   assert.equal(production.mostLikelyScore, shared.mostLikelyScore);
+});
+
+test("match probabilities mirror non-neutral home advantage for team two", () => {
+  const teamOneHome = matchProbabilities(
+    1500,
+    1500,
+    undefined,
+    undefined,
+    undefined,
+    true,
+    false,
+    false
+  );
+  const teamTwoHome = matchProbabilities(
+    1500,
+    1500,
+    undefined,
+    undefined,
+    undefined,
+    false,
+    true,
+    false
+  );
+
+  assertAlmostEqual(teamOneHome.pWinA, teamTwoHome.pWinB);
+  assertAlmostEqual(teamOneHome.pWinB, teamTwoHome.pWinA);
+  assertAlmostEqual(teamOneHome.pDraw, teamTwoHome.pDraw);
+  assertAlmostEqual(teamOneHome.xgA, teamTwoHome.xgB);
+  assertAlmostEqual(teamOneHome.xgB, teamTwoHome.xgA);
 });
 
 test("played knockout winner honors penalty or provider winner when scores are level", () => {

@@ -635,6 +635,54 @@ test("POST /api/oracle/predict-match validates valid and invalid payloads", asyn
   }, "Unrecognized key");
 });
 
+test("POST /api/oracle/predict-match applies venue context fields", async () => {
+  resetOracleForTests();
+  seedReadyOracleForTests({
+    ratings: {
+      Brazil: 1500,
+      Morocco: 1500,
+    },
+  });
+
+  try {
+    const neutralResponse = await requestJson("POST", "/api/oracle/predict-match", {
+      homeTeam: "Brazil",
+      awayTeam: "Morocco",
+      neutral: true,
+      isHomeA: false,
+      isHomeB: false,
+    });
+    const teamOneHomeResponse = await requestJson("POST", "/api/oracle/predict-match", {
+      homeTeam: "Brazil",
+      awayTeam: "Morocco",
+      neutral: false,
+      isHomeA: true,
+      isHomeB: false,
+    });
+    const teamTwoHomeResponse = await requestJson("POST", "/api/oracle/predict-match", {
+      homeTeam: "Brazil",
+      awayTeam: "Morocco",
+      neutral: false,
+      isHomeA: false,
+      isHomeB: true,
+    });
+
+    assert.equal(neutralResponse.status, 200);
+    assert.equal(teamOneHomeResponse.status, 200);
+    assert.equal(teamTwoHomeResponse.status, 200);
+
+    const neutral = readData(await readJson(neutralResponse));
+    const teamOneHome = readData(await readJson(teamOneHomeResponse));
+    const teamTwoHome = readData(await readJson(teamTwoHomeResponse));
+
+    assert.ok(Number(teamOneHome.homeWinPct) > Number(neutral.homeWinPct));
+    assert.ok(Number(teamTwoHome.awayWinPct) > Number(neutral.awayWinPct));
+    assert.equal(teamOneHome.homeWinPct, teamTwoHome.awayWinPct);
+  } finally {
+    resetOracleForTests();
+  }
+});
+
 test("mutable oracle endpoints return a JSON envelope for malformed JSON", async () => {
   const response = await requestMalformedJson("POST", "/api/oracle/live-match");
   const body = await readJson(response);

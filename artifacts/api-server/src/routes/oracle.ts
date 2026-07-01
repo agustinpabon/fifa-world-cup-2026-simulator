@@ -59,6 +59,11 @@ type MatchTeams = {
   homeTeam: string;
   awayTeam: string;
 };
+type MatchPredictionInput = MatchTeams & {
+  neutral?: boolean;
+  isHomeA?: boolean;
+  isHomeB?: boolean;
+};
 type LiveMatchInput = MatchTeams & {
   homeScore: number;
   awayScore: number;
@@ -953,13 +958,13 @@ router.get("/oracle/simulation", async (req, res) => {
 });
 
 router.post("/oracle/predict-match", (req, res) => {
-  const parsed = parseBody<MatchTeams>(matchTeamsSchema, req.body);
+  const parsed = parseBody<MatchPredictionInput>(matchTeamsSchema, req.body);
 
   if (!parsed.success) {
     return sendValidationError(res, parsed.issues);
   }
 
-  const { homeTeam, awayTeam } = parsed.data;
+  const { homeTeam, awayTeam, neutral = true, isHomeA = false, isHomeB = false } = parsed.data;
 
   const eloHome = cache.ratings[homeTeam] ?? cache.modelConfig.fallbackRating;
   const eloAway = cache.ratings[awayTeam] ?? cache.modelConfig.fallbackRating;
@@ -972,8 +977,9 @@ router.post("/oracle/predict-match", (req, res) => {
     undefined,
     metricsHome,
     metricsAway,
-    false,
-    false,
+    isHomeA,
+    isHomeB,
+    neutral,
     {},
     cache.modelConfig
   );

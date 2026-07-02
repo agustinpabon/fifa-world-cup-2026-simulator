@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { predictMatch } from "@workspace/oracle-model";
+import { buildScoreProbabilityMatrix, predictMatch } from "@workspace/oracle-model";
 
 import {
   ACCLIMATIZATION_REST_DAYS,
@@ -22,6 +22,7 @@ import {
   rankGroupStandingsByFifaCriteria,
   rankThirdPlacedTeamsByFifaCriteria,
   runSimulations,
+  simulateKnockout,
   toPublishedSimulationResults,
   type GroupMatchScore,
   type GroupStanding,
@@ -56,6 +57,48 @@ function match(homeTeam: string, awayTeam: string, homeScore: number, awayScore:
 
 function rankedNames(standings: readonly GroupStanding[]): string[] {
   return standings.map((entry) => entry.team.name);
+}
+
+function sequenceRng(values: readonly number[]): () => number {
+  let index = 0;
+
+  return () => {
+    const value = values[index];
+    if (value === undefined) {
+      throw new Error(`RNG sequence exhausted after ${index} draws`);
+    }
+    index += 1;
+    return value;
+  };
+}
+
+function scriptedRng(values: readonly number[], fallback = 0.9): () => number {
+  let index = 0;
+
+  return () => {
+    const value = values[index] ?? fallback;
+    index += 1;
+    return value;
+  };
+}
+
+function randomValueForScore(
+  matrix: readonly { goalsA: number; goalsB: number; probability: number }[],
+  goalsA: number,
+  goalsB: number
+): number {
+  let cumulative = 0;
+
+  for (const cell of matrix) {
+    const start = cumulative;
+    cumulative += cell.probability;
+
+    if (cell.goalsA === goalsA && cell.goalsB === goalsB) {
+      return start + cell.probability / 2;
+    }
+  }
+
+  throw new Error(`No ${goalsA}-${goalsB} score cell found`);
 }
 
 function buildRatings(): Record<string, number> {
@@ -352,6 +395,89 @@ test("played knockout winner falls back to scoreline for completed non-draws", (
       source: "espn",
     }),
     "Germany"
+  );
+});
+
+test("drawn knockout matches can be resolved by extra-time goals for either team", () => {
+  const modelConfig = { variant: "elo-poisson" as const, maxGoals: 5 };
+  const alpha = team("Alpha");
+  const bravo = team("Bravo");
+  const fullTimePrediction = predictMatch({
+    ratingA: 1700,
+    ratingB: 1500,
+    modelConfig,
+  });
+  const extraTimeMatrix = buildScoreProbabilityMatrix(fullTimePrediction.xgA / 3, fullTimePrediction.xgB / 3, {
+    maxGoals: modelConfig.maxGoals,
+  });
+  const fullTimeDraw = randomValueForScore(fullTimePrediction.scoreMatrix, 0, 0);
+  const extraTimeAlphaGoal = randomValueForScore(extraTimeMatrix, 1, 0);
+  const extraTimeBravoGoal = randomValueForScore(extraTimeMatrix, 0, 1);
+
+  assert.equal(
+    simulateKnockout(
+      alpha,
+      bravo,
+      1700,
+      1500,
+      [],
+      undefined,
+      "R32",
+      sequenceRng([fullTimeDraw, extraTimeAlphaGoal]),
+      modelConfig
+    ),
+    true
+  );
+  assert.equal(
+    simulateKnockout(
+      alpha,
+      bravo,
+      1700,
+      1500,
+      [],
+      undefined,
+      "R32",
+      sequenceRng([fullTimeDraw, extraTimeBravoGoal]),
+      modelConfig
+    ),
+    false
+  );
+});
+
+test("drawn knockout matches use Elo-biased penalty shootouts after extra time", () => {
+  const modelConfig = { variant: "elo-poisson" as const, maxGoals: 5 };
+  const alpha = team("Alpha");
+  const bravo = team("Bravo");
+  const eloA = 1800;
+  const eloB = 1600;
+  const fullTimePrediction = predictMatch({
+    ratingA: eloA,
+    ratingB: eloB,
+    modelConfig,
+  });
+  const extraTimeMatrix = buildScoreProbabilityMatrix(fullTimePrediction.xgA / 3, fullTimePrediction.xgB / 3, {
+    maxGoals: modelConfig.maxGoals,
+  });
+  const fullTimeDraw = randomValueForScore(fullTimePrediction.scoreMatrix, 0, 0);
+  const extraTimeDraw = randomValueForScore(extraTimeMatrix, 0, 0);
+  const penaltyDraw = 0.55;
+  const shootoutWinProbabilityA = 1 / (1 + 10 ** ((eloB - eloA) / 800));
+
+  assert.ok(penaltyDraw > 0.5);
+  assert.ok(penaltyDraw < shootoutWinProbabilityA);
+  assert.equal(
+    simulateKnockout(
+      alpha,
+      bravo,
+      eloA,
+      eloB,
+      [],
+      undefined,
+      "R32",
+      sequenceRng([fullTimeDraw, extraTimeDraw, penaltyDraw]),
+      modelConfig
+    ),
+    true
   );
 });
 

@@ -9,6 +9,8 @@ import {
 import {
   DEFAULT_MODEL_CONFIG,
   createModelConfig,
+  expectedEloScore,
+  kFactor,
   mirrorMatchContextModifiers,
   mirrorMatchContextModifiersReport,
   predictMatch,
@@ -16,6 +18,7 @@ import {
   type MatchContextModifiers,
   type MatchContextModifiersReport,
   type MatchPrediction,
+  type MatchPredictionInput,
   type ModelConfig,
 } from "@workspace/oracle-model";
 import { type EloRatings, type TeamMetrics } from "./elo.js";
@@ -42,6 +45,9 @@ export const TRAVEL_FATIGUE_DISTANCE_CAP_KM = 5000;
 export const TRAVEL_FATIGUE_REST_DECAY_RATE = 0.2;
 export const TRAVEL_FATIGUE_ELO_PENALTY = -30;
 const EARTH_RADIUS_KM = 6371;
+const EXTRA_TIME_XG_SCALE = 30 / 90;
+const SIMULATION_ELO_TOURNAMENT = "FIFA World Cup";
+const SIMULATION_ELO_K_FACTOR = kFactor(SIMULATION_ELO_TOURNAMENT);
 
 export type Rng = () => number;
 export type SimulationSeed = string | number;
@@ -117,6 +123,18 @@ export interface MatchProbabilitiesResult {
   xgB: number;
   mostLikelyScore: string;
   modifiers: MatchContextModifiersReport;
+}
+
+type SimulationEloRatings = Map<string, number>;
+
+interface MatchEloOutcome {
+  goalsA: number;
+  goalsB: number;
+  actualScoreA?: number;
+}
+
+interface KnockoutSimulationResult extends MatchEloOutcome {
+  aWins: boolean;
 }
 
 function parseUtcDate(date: string): number | null {
@@ -317,26 +335,48 @@ function simulateMatch(
     return { goalsA: playedMatch.homeScore, goalsB: playedMatch.awayScore };
   }
 
+  return sampleMatchScore(
+    createMatchPredictionInput(
+      eloA,
+      eloB,
+      metricsA,
+      metricsB,
+      isHomeA,
+      isHomeB,
+      modelConfig,
+      matchContext
+    ),
+    random
+  );
+}
+
+function createMatchPredictionInput(
+  eloA: number,
+  eloB: number,
+  metricsA: TeamMetrics | undefined,
+  metricsB: TeamMetrics | undefined,
+  isHomeA: boolean,
+  isHomeB: boolean,
+  modelConfig: Partial<ModelConfig>,
+  matchContext: MatchPredictionContext
+): MatchPredictionInput {
   const adjustedRatings = applyMatchContextRatingAdjustments({
     ratingA: eloA,
     ratingB: eloB,
     ...matchContext,
   });
 
-  return sampleMatchScore(
-    {
-      ratingA: adjustedRatings.ratingA,
-      ratingB: adjustedRatings.ratingB,
-      metricsA,
-      metricsB,
-      neutral: true,
-      isHomeA,
-      isHomeB,
-      modelConfig,
-      contextModifiers: matchContext.modifiers,
-    },
-    random
-  );
+  return {
+    ratingA: adjustedRatings.ratingA,
+    ratingB: adjustedRatings.ratingB,
+    metricsA,
+    metricsB,
+    neutral: true,
+    isHomeA,
+    isHomeB,
+    modelConfig,
+    contextModifiers: matchContext.modifiers,
+  };
 }
 
 type TeamTravelStates = Map<string, TeamTravelState>;
@@ -792,7 +832,7 @@ function simulateGroup(
 
 // ---------- Knockout ----------
 
-function simulateKnockout(
+export function simulateKnockout(
   a: WCTeam,
   b: WCTeam,
   eloA: number,
@@ -804,31 +844,103 @@ function simulateKnockout(
   modelConfig: Partial<ModelConfig> = DEFAULT_MODEL_CONFIG,
   matchContext: MatchPredictionContext = {}
 ): boolean {
+  return simulateKnockoutResult(
+    a,
+    b,
+    eloA,
+    eloB,
+    playedMatches,
+    teamMetrics,
+    stage,
+    random,
+    modelConfig,
+    matchContext
+  ).aWins;
+}
+
+function simulateKnockoutResult(
+  a: WCTeam,
+  b: WCTeam,
+  eloA: number,
+  eloB: number,
+  playedMatches: PlayedMatch[] = [],
+  teamMetrics?: Record<string, TeamMetrics>,
+  stage: "R32" | "R16" | "QF" | "SF" | "F" = "R32",
+  random: Rng = createSeededRng(DEFAULT_SIMULATION_SEED),
+  modelConfig: Partial<ModelConfig> = DEFAULT_MODEL_CONFIG,
+  matchContext: MatchPredictionContext = {}
+): KnockoutSimulationResult {
   const played = findPlayedMatch(a.name, b.name, playedMatches);
 
   if (played) {
     const winner = getPlayedKnockoutWinner(a.name, b.name, played);
-    if (winner) return winner === a.name;
+    if (winner) {
+      const goalsA = played.homeTeam === a.name ? played.homeScore : played.awayScore;
+      const goalsB = played.homeTeam === a.name ? played.awayScore : played.homeScore;
+
+      return {
+        aWins: winner === a.name,
+        goalsA,
+        goalsB,
+        actualScoreA: winner === a.name ? 1 : 0,
+      };
+    }
   }
 
   const metricsA = teamMetrics?.[a.name];
   const metricsB = teamMetrics?.[b.name];
   const { isHomeA, isHomeB } = getHomeStatus(a.name, b.name, stage);
-  const { goalsA, goalsB } = simulateMatch(
+  const predictionInput = createMatchPredictionInput(
     eloA,
     eloB,
-    undefined,
     metricsA,
     metricsB,
     isHomeA,
     isHomeB,
-    random,
     modelConfig,
     matchContext
   );
-  if (goalsA > goalsB) return true;
-  if (goalsB > goalsA) return false;
-  return random() < 0.5;
+  const { goalsA, goalsB } = sampleMatchScore(predictionInput, random);
+
+  if (goalsA > goalsB) {
+    return { aWins: true, goalsA, goalsB };
+  }
+  if (goalsB > goalsA) {
+    return { aWins: false, goalsA, goalsB };
+  }
+
+  const fullTimePrediction = predictMatch(predictionInput);
+  const { goalsA: extraTimeGoalsA, goalsB: extraTimeGoalsB } = sampleMatchScore(
+    {
+      xgA: fullTimePrediction.xgA * EXTRA_TIME_XG_SCALE,
+      xgB: fullTimePrediction.xgB * EXTRA_TIME_XG_SCALE,
+      modelConfig,
+    },
+    random
+  );
+
+  const totalGoalsA = goalsA + extraTimeGoalsA;
+  const totalGoalsB = goalsB + extraTimeGoalsB;
+
+  if (extraTimeGoalsA > extraTimeGoalsB) {
+    return { aWins: true, goalsA: totalGoalsA, goalsB: totalGoalsB };
+  }
+  if (extraTimeGoalsB > extraTimeGoalsA) {
+    return { aWins: false, goalsA: totalGoalsA, goalsB: totalGoalsB };
+  }
+
+  const aWins = random() < penaltyShootoutWinProbability(eloA, eloB);
+
+  return {
+    aWins,
+    goalsA: totalGoalsA,
+    goalsB: totalGoalsB,
+    actualScoreA: aWins ? 1 : 0,
+  };
+}
+
+function penaltyShootoutWinProbability(eloA: number, eloB: number): number {
+  return 1 / (1 + 10 ** ((eloB - eloA) / 800));
 }
 
 export function getPlayedKnockoutWinner(

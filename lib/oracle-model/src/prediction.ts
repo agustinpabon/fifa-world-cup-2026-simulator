@@ -32,6 +32,13 @@ export interface MatchPredictionInput {
   contextModifiers?: MatchContextModifiers;
 }
 
+export interface FixedExpectedGoalsScoreInput {
+  xgA: number;
+  xgB: number;
+  modelConfig?: Partial<ModelConfig>;
+  variant?: ModelVariant;
+}
+
 export interface ExpectedGoalsInput extends MatchPredictionInput {
   useStrengthMetrics?: boolean;
 }
@@ -66,24 +73,52 @@ export function predictMatch(input: MatchPredictionInput): MatchPrediction {
   return summarizePrediction(scoreMatrix, modifiers);
 }
 
-export function sampleMatchScore(input: MatchPredictionInput, random: Rng): { goalsA: number; goalsB: number } {
-  const prediction = predictMatch(input);
+export function sampleMatchScore(
+  input: MatchPredictionInput | FixedExpectedGoalsScoreInput,
+  random: Rng
+): { goalsA: number; goalsB: number } {
+  const scoreMatrix = isFixedExpectedGoalsScoreInput(input)
+    ? buildScoreProbabilityMatrixFromExpectedGoals(input)
+    : predictMatch(input).scoreMatrix;
   const draw = random();
   let cumulative = 0;
 
-  for (const cell of prediction.scoreMatrix) {
+  for (const cell of scoreMatrix) {
     cumulative += cell.probability;
     if (draw <= cumulative) {
       return { goalsA: cell.goalsA, goalsB: cell.goalsB };
     }
   }
 
-  const last = prediction.scoreMatrix.at(-1);
+  const last = scoreMatrix.at(-1);
   if (!last) {
     throw new Error("Cannot sample from an empty score matrix");
   }
 
   return { goalsA: last.goalsA, goalsB: last.goalsB };
+}
+
+function isFixedExpectedGoalsScoreInput(
+  input: MatchPredictionInput | FixedExpectedGoalsScoreInput
+): input is FixedExpectedGoalsScoreInput {
+  return "xgA" in input && "xgB" in input;
+}
+
+function buildScoreProbabilityMatrixFromExpectedGoals(input: FixedExpectedGoalsScoreInput): ScoreProbability[] {
+  if (!Number.isFinite(input.xgA) || !Number.isFinite(input.xgB) || input.xgA < 0 || input.xgB < 0) {
+    throw new Error("Expected goals must be non-negative finite numbers");
+  }
+
+  const config = createModelConfig({
+    ...input.modelConfig,
+    ...(input.variant ? { variant: input.variant } : {}),
+  });
+
+  return buildScoreProbabilityMatrix(input.xgA, input.xgB, {
+    maxGoals: config.maxGoals,
+    dixonColesRho: config.dixonColesRho,
+    useDixonColes: usesDixonColes(config.variant),
+  });
 }
 
 export function outcomeProbabilitiesForVariant(input: MatchPredictionInput): OutcomeProbabilities {

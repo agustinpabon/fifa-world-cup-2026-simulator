@@ -3,6 +3,7 @@ export const MODEL_VARIANTS = [
   "elo-poisson",
   "elo-poisson-dixon-coles",
   "elo-poisson-strength",
+  "elo-poisson-strength-dixon-coles",
 ] as const;
 
 export type ModelVariant = (typeof MODEL_VARIANTS)[number];
@@ -38,7 +39,7 @@ export interface ModelConfig {
   modifierXgMultiplierMax: number;
 }
 
-export const ACTIVE_MODEL_VARIANT: ModelVariant = "elo-poisson-strength";
+export const ACTIVE_MODEL_VARIANT: ModelVariant = "elo-poisson-strength-dixon-coles";
 
 export const DEFAULT_MODEL_CONFIG: ModelConfig = {
   variant: ACTIVE_MODEL_VARIANT,
@@ -78,11 +79,11 @@ export function createModelConfig(overrides: Partial<ModelConfig> = {}): ModelCo
 }
 
 export function usesDixonColes(variant: ModelVariant): boolean {
-  return variant === "elo-poisson-dixon-coles";
+  return variant === "elo-poisson-dixon-coles" || variant === "elo-poisson-strength-dixon-coles";
 }
 
 export function usesStrengthMetrics(variant: ModelVariant): boolean {
-  return variant === "elo-poisson-strength";
+  return variant === "elo-poisson-strength" || variant === "elo-poisson-strength-dixon-coles";
 }
 
 export function describeModelVariant(variant: ModelVariant): string {
@@ -95,5 +96,7 @@ export function describeModelVariant(variant: ModelVariant): string {
       return "Elo-Poisson score probabilities with Dixon-Coles low-score adjustment.";
     case "elo-poisson-strength":
       return "Elo-Poisson probabilities with recent attack/defense multipliers.";
+    case "elo-poisson-strength-dixon-coles":
+      return "Elo-Poisson probabilities with recent attack/defense multipliers and Dixon-Coles low-score adjustment.";
   }
 }

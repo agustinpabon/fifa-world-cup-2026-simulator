@@ -204,3 +204,31 @@ test("match context modifiers are bounded and keep probabilities normalized", ()
   assert.ok(prediction.xgB >= 0.05);
   assert.ok(Math.abs(total - 1) < 1e-12);
 });
+
+test("hybrid variant elo-poisson-strength-dixon-coles triggers both strength metrics and Dixon-Coles", () => {
+  const predictionWithStrengthAndDc = predictMatch({
+    ratingA: 1500,
+    ratingB: 1500,
+    metricsA: { attackStrength: 1.2, defenseStrength: 0.8 },
+    metricsB: { attackStrength: 0.9, defenseStrength: 1.1 },
+    variant: "elo-poisson-strength-dixon-coles",
+  });
+
+  const predictionWithoutStrengthButWithDc = predictMatch({
+    ratingA: 1500,
+    ratingB: 1500,
+    metricsA: { attackStrength: 1.2, defenseStrength: 0.8 },
+    metricsB: { attackStrength: 0.9, defenseStrength: 1.1 },
+    variant: "elo-poisson-dixon-coles",
+  });
+
+  // Verify strength metrics are applied: expected goals should differ from non-strength model
+  assert.notEqual(predictionWithStrengthAndDc.xgA, predictionWithoutStrengthButWithDc.xgA);
+
+  // Verify Dixon-Coles adjustments are applied: the probability matrix should differ from independent Poisson probabilities
+  const rawMatrix = buildScoreProbabilityMatrix(predictionWithStrengthAndDc.xgA, predictionWithStrengthAndDc.xgB, { useDixonColes: false });
+  const firstRawCell = rawMatrix.find(c => c.goalsA === 0 && c.goalsB === 0)?.probability ?? 0;
+  const firstPredictedCell = predictionWithStrengthAndDc.scoreMatrix.find(c => c.goalsA === 0 && c.goalsB === 0)?.probability ?? 0;
+  assert.notEqual(firstRawCell, firstPredictedCell);
+});
+

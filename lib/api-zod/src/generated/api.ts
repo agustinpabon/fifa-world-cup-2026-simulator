@@ -52,6 +52,7 @@ export const GetOracleStatusResponse = zod.object({
   "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
   "message": zod.string()
 }).optional(),
+  "activeModel": zod.enum(['elo-baseline', 'elo-poisson', 'elo-poisson-dixon-coles', 'elo-poisson-strength', 'elo-poisson-strength-dixon-coles']),
   "message": zod.string()
 }),
   "meta": zod.object({

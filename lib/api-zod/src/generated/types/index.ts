@@ -61,6 +61,7 @@ export * from './oracleReadinessState';
 export * from './oracleResponseMeta';
 export * from './oracleStatus';
 export * from './oracleStatusData';
+export * from './oracleStatusDataActiveModel';
 export * from './oracleStatusDataLiveDataProvider';
 export * from './oracleStatusDataState';
 export * from './playedMatch';

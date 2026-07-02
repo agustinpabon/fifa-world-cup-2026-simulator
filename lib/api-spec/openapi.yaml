@@ -336,6 +336,16 @@ components:
           nullable: true
         error:
           $ref: "#/components/schemas/OracleLoadError"
+        activeModel:
+          type: string
+          enum:
+            [
+              elo-baseline,
+              elo-poisson,
+              elo-poisson-dixon-coles,
+              elo-poisson-strength,
+              elo-poisson-strength-dixon-coles,
+            ]
         message:
           type: string
       required:
@@ -355,6 +365,7 @@ components:
         - lastUpdated
         - recalculationError
         - dataset
+        - activeModel
         - message
 
     OracleResponseMeta:

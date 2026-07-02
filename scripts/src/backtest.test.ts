@@ -143,6 +143,7 @@ test("runHistoricalBacktest evaluates a dated holdout against model and baseline
     "elo-poisson",
     "elo-poisson-dixon-coles",
     "elo-poisson-strength",
+    "elo-poisson-strength-dixon-coles",
     "uniform-baseline",
   ]);
   assert.ok(Math.abs(report.metrics["uniform-baseline"].brierScore - 2 / 3) < 1e-12);

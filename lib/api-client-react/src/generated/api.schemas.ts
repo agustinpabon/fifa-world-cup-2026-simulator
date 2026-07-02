@@ -61,6 +61,17 @@ export interface OracleLoadError {
   message: string;
 }
 
+export type OracleStatusDataActiveModel = typeof OracleStatusDataActiveModel[keyof typeof OracleStatusDataActiveModel];
+
+
+export const OracleStatusDataActiveModel = {
+  'elo-baseline': 'elo-baseline',
+  'elo-poisson': 'elo-poisson',
+  'elo-poisson-dixon-coles': 'elo-poisson-dixon-coles',
+  'elo-poisson-strength': 'elo-poisson-strength',
+  'elo-poisson-strength-dixon-coles': 'elo-poisson-strength-dixon-coles',
+} as const;
+
 export interface OracleStatusData {
   state: OracleStatusDataState;
   ready: boolean;
@@ -82,6 +93,7 @@ export interface OracleStatusData {
   recalculationError: string | null;
   dataset: HistoricalDatasetMetadata | null;
   error?: OracleLoadError;
+  activeModel: OracleStatusDataActiveModel;
   message: string;
 }
 

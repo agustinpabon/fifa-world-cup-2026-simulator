@@ -728,6 +728,7 @@ function modelDescriptions(): Record<BacktestModelKey, string> {
     "elo-poisson": describeModelVariant("elo-poisson"),
     "elo-poisson-dixon-coles": describeModelVariant("elo-poisson-dixon-coles"),
     "elo-poisson-strength": describeModelVariant("elo-poisson-strength"),
+    "elo-poisson-strength-dixon-coles": describeModelVariant("elo-poisson-strength-dixon-coles"),
     "uniform-baseline": "Uniform baseline: fixed 1/3 probability for home win, draw, and away win.",
   };
 }

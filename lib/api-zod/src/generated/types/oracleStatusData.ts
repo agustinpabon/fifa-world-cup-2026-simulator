@@ -7,6 +7,7 @@
  */
 import type { HistoricalDatasetMetadata } from './historicalDatasetMetadata';
 import type { OracleLoadError } from './oracleLoadError';
+import type { OracleStatusDataActiveModel } from './oracleStatusDataActiveModel';
 import type { OracleStatusDataLiveDataProvider } from './oracleStatusDataLiveDataProvider';
 import type { OracleStatusDataState } from './oracleStatusDataState';
 
@@ -31,5 +32,6 @@ export interface OracleStatusData {
   recalculationError: string | null;
   dataset: HistoricalDatasetMetadata | null;
   error?: OracleLoadError;
+  activeModel: OracleStatusDataActiveModel;
   message: string;
 }

@@ -305,6 +305,23 @@ export interface SimulationResponse {
   meta: OracleResponseMeta;
 }
 
+export interface LiveMatchRequest {
+  /** @minLength 1 */
+  homeTeam: string;
+  /** @minLength 1 */
+  awayTeam: string;
+  /**
+     * @minimum 0
+     * @maximum 30
+     */
+  homeScore: number;
+  /**
+     * @minimum 0
+     * @maximum 30
+     */
+  awayScore: number;
+}
+
 export interface MatchPredictionRequest {
   /** @minLength 1 */
   homeTeam: string;
@@ -316,6 +333,11 @@ export interface MatchPredictionRequest {
   isHomeA?: boolean;
   /** Whether Team 2 receives host/home context. Defaults to false when omitted. */
   isHomeB?: boolean;
+  /**
+     * Request-local manual match overrides used only for this prediction.
+     * @maxItems 104
+     */
+  customMatches?: LiveMatchRequest[];
 }
 
 export type AppliedMatchContextModifierKind = typeof AppliedMatchContextModifierKind[keyof typeof AppliedMatchContextModifierKind];
@@ -426,23 +448,6 @@ export interface ApiError {
 
 export interface ErrorResponse {
   error: ApiError;
-}
-
-export interface LiveMatchRequest {
-  /** @minLength 1 */
-  homeTeam: string;
-  /** @minLength 1 */
-  awayTeam: string;
-  /**
-     * @minimum 0
-     * @maximum 30
-     */
-  homeScore: number;
-  /**
-     * @minimum 0
-     * @maximum 30
-     */
-  awayScore: number;
 }
 
 export interface LiveMatchData {
@@ -696,6 +701,10 @@ export type GetSimulationParams = {
  * @maxLength 128
  */
 seed?: string;
+/**
+ * JSON-encoded array of request-local manual match overrides. When provided, these overrides are used only for this simulation response.
+ */
+customMatches?: string;
 };
 
 export type PredictMatchParams = {

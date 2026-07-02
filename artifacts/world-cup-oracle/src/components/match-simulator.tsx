@@ -1,9 +1,18 @@
 import React, { useMemo, useState } from "react";
-import { useGetTeams, usePredictMatch, type MatchPredictionData, type Team } from "@workspace/api-client-react";
+import {
+  useGetTeams,
+  usePredictMatch,
+  type MatchPredictionData,
+  type Team,
+} from "@workspace/api-client-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AnimatedNumber } from "@/components/ui/animated-number";
 import { AlertTriangle, MapPin, Search, X, Zap } from "lucide-react";
+import {
+  toCustomMatchPayloads,
+  useCustomMatches,
+} from "@/hooks/use-custom-matches";
 
 const MIN_LOADING_MS = 2200;
 type VenueMode = "neutral" | "team-1-home" | "team-2-home";
@@ -14,7 +23,11 @@ const VENUE_OPTIONS: Array<{ value: VenueMode; label: string }> = [
   { value: "team-2-home", label: "Team 2 Home" },
 ];
 
-function getVenuePayload(venueMode: VenueMode): { neutral: boolean; isHomeA: boolean; isHomeB: boolean } {
+function getVenuePayload(venueMode: VenueMode): {
+  neutral: boolean;
+  isHomeA: boolean;
+  isHomeB: boolean;
+} {
   switch (venueMode) {
     case "team-1-home":
       return { neutral: false, isHomeA: true, isHomeB: false };
@@ -26,19 +39,30 @@ function getVenuePayload(venueMode: VenueMode): { neutral: boolean; isHomeA: boo
 }
 
 export function MatchSimulator() {
-  const { data: teamsResponse, isLoading: teamsLoading, isError: teamsError } = useGetTeams();
+  const {
+    data: teamsResponse,
+    isLoading: teamsLoading,
+    isError: teamsError,
+  } = useGetTeams();
   const [homeTeam, setHomeTeam] = useState<string>("");
   const [awayTeam, setAwayTeam] = useState<string>("");
   const [venueMode, setVenueMode] = useState<VenueMode>("neutral");
   const [isSimulating, setIsSimulating] = useState(false);
-  const [result, setResult] = useState<MatchPredictionData | undefined>(undefined);
+  const [result, setResult] = useState<MatchPredictionData | undefined>(
+    undefined,
+  );
+  const { customMatches } = useCustomMatches();
 
   const predictMatch = usePredictMatch();
 
   const teams = teamsResponse?.data.teams ?? [];
   const sortedTeams = useMemo(
-    () => [...teams].sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name)),
-    [teams]
+    () =>
+      [...teams].sort(
+        (a, b) =>
+          a.group.localeCompare(b.group) || a.name.localeCompare(b.name),
+      ),
+    [teams],
   );
   const readiness = teamsResponse?.meta.readiness;
   const isOracleUnavailable = readiness ? readiness.state !== "ready" : false;
@@ -51,8 +75,19 @@ export function MatchSimulator() {
 
     const fetchStart = Date.now();
 
+    const customMatchPayloads = toCustomMatchPayloads(customMatches);
+
     predictMatch.mutate(
-      { data: { homeTeam, awayTeam, ...getVenuePayload(venueMode) } },
+      {
+        data: {
+          homeTeam,
+          awayTeam,
+          ...getVenuePayload(venueMode),
+          ...(customMatchPayloads.length > 0
+            ? { customMatches: customMatchPayloads }
+            : {}),
+        },
+      },
       {
         onSettled: (response) => {
           const elapsed = Date.now() - fetchStart;
@@ -62,7 +97,7 @@ export function MatchSimulator() {
             setIsSimulating(false);
           }, remaining);
         },
-      }
+      },
     );
   };
 
@@ -71,10 +106,14 @@ export function MatchSimulator() {
 
   const homeFlag = homeTeamInfo?.flagEmoji ?? "";
   const awayFlag = awayTeamInfo?.flagEmoji ?? "";
-  const predictorDisabled = teamsLoading || teamsError || isOracleUnavailable || isSimulating;
+  const predictorDisabled =
+    teamsLoading || teamsError || isOracleUnavailable || isSimulating;
 
   return (
-    <Card data-testid="match-predictor" className="border-card-border bg-card/50 backdrop-blur-sm">
+    <Card
+      data-testid="match-predictor"
+      className="border-card-border bg-card/50 backdrop-blur-sm"
+    >
       <CardHeader>
         <CardTitle className="text-xl uppercase tracking-wider text-muted-foreground font-mono flex items-center justify-between">
           <span>Match Predictor</span>
@@ -86,7 +125,9 @@ export function MatchSimulator() {
       <CardContent>
         {(teamsError || isOracleUnavailable) && (
           <div className="mb-6 flex items-center gap-3 rounded-lg border border-border bg-background/40 p-4 text-sm text-muted-foreground">
-            <AlertTriangle className={`h-4 w-4 shrink-0 ${teamsError ? "text-destructive" : "text-yellow-500"}`} />
+            <AlertTriangle
+              className={`h-4 w-4 shrink-0 ${teamsError ? "text-destructive" : "text-yellow-500"}`}
+            />
             <span>
               {teamsError
                 ? "Unable to load teams for match prediction."
@@ -111,7 +152,9 @@ export function MatchSimulator() {
             }}
           />
 
-          <div className="text-muted-foreground pb-2 px-2 font-mono text-sm hidden md:block">VS</div>
+          <div className="text-muted-foreground pb-2 px-2 font-mono text-sm hidden md:block">
+            VS
+          </div>
 
           <TeamPicker
             id="predictor-away-team"
@@ -130,7 +173,14 @@ export function MatchSimulator() {
           <Button
             data-testid="predict-match-button"
             onClick={handleSimulate}
-            disabled={!homeTeam || !awayTeam || homeTeam === awayTeam || teamsError || isOracleUnavailable || isSimulating}
+            disabled={
+              !homeTeam ||
+              !awayTeam ||
+              homeTeam === awayTeam ||
+              teamsError ||
+              isOracleUnavailable ||
+              isSimulating
+            }
             className="w-full md:w-auto font-mono uppercase tracking-wider min-w-[120px]"
           >
             {isSimulating ? "Calculating..." : "Predict"}
@@ -192,19 +242,27 @@ export function MatchSimulator() {
               {/* Team 1 Stats */}
               <div>
                 <span className="text-2xl block mb-1">{homeFlag}</span>
-                <span className="font-bold text-sm font-sans block text-foreground truncate">{homeTeam}</span>
+                <span className="font-bold text-sm font-sans block text-foreground truncate">
+                  {homeTeam}
+                </span>
                 <div className="mt-4 space-y-2 text-left">
                   <div className="flex justify-between border-b border-border/30 pb-1">
                     <span className="text-muted-foreground">Elo Rating:</span>
-                    <span className="text-foreground font-bold">{Math.round(homeTeamInfo.elo)}</span>
+                    <span className="text-foreground font-bold">
+                      {Math.round(homeTeamInfo.elo)}
+                    </span>
                   </div>
                   <div className="flex justify-between border-b border-border/30 pb-1">
                     <span className="text-muted-foreground">Attack Mult:</span>
-                    <span className="text-foreground font-bold">{homeTeamInfo.attackStrength.toFixed(1)}x</span>
+                    <span className="text-foreground font-bold">
+                      {homeTeamInfo.attackStrength.toFixed(1)}x
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Defense Mult:</span>
-                    <span className="text-foreground font-bold">{homeTeamInfo.defenseStrength.toFixed(1)}x</span>
+                    <span className="text-foreground font-bold">
+                      {homeTeamInfo.defenseStrength.toFixed(1)}x
+                    </span>
                   </div>
                 </div>
               </div>
@@ -215,26 +273,35 @@ export function MatchSimulator() {
                   VS
                 </div>
                 <div className="text-[10px] text-muted-foreground leading-normal max-w-[120px]">
-                  Venue-adjusted Elo comparison with attack and defense adjustments.
+                  Venue-adjusted Elo comparison with attack and defense
+                  adjustments.
                 </div>
               </div>
 
               {/* Team 2 Stats */}
               <div>
                 <span className="text-2xl block mb-1">{awayFlag}</span>
-                <span className="font-bold text-sm font-sans block text-foreground truncate">{awayTeam}</span>
+                <span className="font-bold text-sm font-sans block text-foreground truncate">
+                  {awayTeam}
+                </span>
                 <div className="mt-4 space-y-2 text-left">
                   <div className="flex justify-between border-b border-border/30 pb-1">
                     <span className="text-muted-foreground">Elo Rating:</span>
-                    <span className="text-foreground font-bold">{Math.round(awayTeamInfo.elo)}</span>
+                    <span className="text-foreground font-bold">
+                      {Math.round(awayTeamInfo.elo)}
+                    </span>
                   </div>
                   <div className="flex justify-between border-b border-border/30 pb-1">
                     <span className="text-muted-foreground">Attack Mult:</span>
-                    <span className="text-foreground font-bold">{awayTeamInfo.attackStrength.toFixed(1)}x</span>
+                    <span className="text-foreground font-bold">
+                      {awayTeamInfo.attackStrength.toFixed(1)}x
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Defense Mult:</span>
-                    <span className="text-foreground font-bold">{awayTeamInfo.defenseStrength.toFixed(1)}x</span>
+                    <span className="text-foreground font-bold">
+                      {awayTeamInfo.defenseStrength.toFixed(1)}x
+                    </span>
                   </div>
                 </div>
               </div>
@@ -244,20 +311,29 @@ export function MatchSimulator() {
 
         {/* Loading animation */}
         {isSimulating && (
-          <div data-testid="predictor-loading" className="rounded-lg bg-background border border-border p-8 text-center">
+          <div
+            data-testid="predictor-loading"
+            className="rounded-lg bg-background border border-border p-8 text-center"
+          >
             <div className="flex flex-col items-center gap-6">
               {/* Pulsing badge */}
               <div className="flex items-center gap-3">
                 <span className="text-2xl">{homeFlag}</span>
-                <span className="text-muted-foreground font-mono text-sm">VS</span>
+                <span className="text-muted-foreground font-mono text-sm">
+                  VS
+                </span>
                 <span className="text-2xl">{awayFlag}</span>
               </div>
 
               <div className="font-mono text-sm text-muted-foreground uppercase tracking-widest">
                 Calculating matchup probabilities for{" "}
-                <span className="text-foreground font-sans font-bold">{homeTeam}</span>
+                <span className="text-foreground font-sans font-bold">
+                  {homeTeam}
+                </span>
                 {" vs "}
-                <span className="text-foreground font-sans font-bold">{awayTeam}</span>
+                <span className="text-foreground font-sans font-bold">
+                  {awayTeam}
+                </span>
                 {"..."}
               </div>
 
@@ -292,21 +368,31 @@ export function MatchSimulator() {
             <div className="grid grid-cols-3 gap-2 text-center mb-6 items-center">
               <div className="flex flex-col items-center">
                 <span className="text-3xl mb-1">{homeFlag}</span>
-                <span className="text-base font-bold font-sans text-foreground truncate max-w-[150px]">{result.homeTeam}</span>
+                <span className="text-base font-bold font-sans text-foreground truncate max-w-[150px]">
+                  {result.homeTeam}
+                </span>
               </div>
-              <div className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Prediction Results</div>
+              <div className="text-muted-foreground font-mono text-xs uppercase tracking-widest">
+                Prediction Results
+              </div>
               <div className="flex flex-col items-center">
                 <span className="text-3xl mb-1">{awayFlag}</span>
-                <span className="text-base font-bold font-sans text-foreground truncate max-w-[150px]">{result.awayTeam}</span>
+                <span className="text-base font-bold font-sans text-foreground truncate max-w-[150px]">
+                  {result.awayTeam}
+                </span>
               </div>
             </div>
 
             {/* Win/Draw/Win Probability breakdown bar */}
             <div className="mb-8">
               <div className="flex justify-between text-xs font-mono text-muted-foreground mb-2">
-                <span>{result.homeTeam} Win: {result.homeWinPct.toFixed(1)}%</span>
+                <span>
+                  {result.homeTeam} Win: {result.homeWinPct.toFixed(1)}%
+                </span>
                 <span>Draw: {result.drawPct.toFixed(1)}%</span>
-                <span>{result.awayTeam} Win: {result.awayWinPct.toFixed(1)}%</span>
+                <span>
+                  {result.awayTeam} Win: {result.awayWinPct.toFixed(1)}%
+                </span>
               </div>
               {/* Stacked bar */}
               <div className="w-full h-4 bg-muted rounded-full overflow-hidden flex border border-border">
@@ -331,28 +417,45 @@ export function MatchSimulator() {
             {/* Win/Draw/Win values */}
             <div className="grid grid-cols-3 gap-4 text-center mb-8">
               <div>
-                <div className="text-xs text-muted-foreground font-mono uppercase mb-1">Team 1 Win</div>
+                <div className="text-xs text-muted-foreground font-mono uppercase mb-1">
+                  Team 1 Win
+                </div>
                 <div className="text-4xl md:text-5xl font-bold font-mono text-primary">
-                  <AnimatedNumber value={result.homeWinPct} format={(v) => v.toFixed(1) + "%"} />
+                  <AnimatedNumber
+                    value={result.homeWinPct}
+                    format={(v) => v.toFixed(1) + "%"}
+                  />
                 </div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground font-mono uppercase mb-1">Draw</div>
+                <div className="text-xs text-muted-foreground font-mono uppercase mb-1">
+                  Draw
+                </div>
                 <div className="text-3xl md:text-4xl font-bold font-mono text-muted-foreground mt-2">
-                  <AnimatedNumber value={result.drawPct} format={(v) => v.toFixed(1) + "%"} />
+                  <AnimatedNumber
+                    value={result.drawPct}
+                    format={(v) => v.toFixed(1) + "%"}
+                  />
                 </div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground font-mono uppercase mb-1">Team 2 Win</div>
+                <div className="text-xs text-muted-foreground font-mono uppercase mb-1">
+                  Team 2 Win
+                </div>
                 <div className="text-4xl md:text-5xl font-bold font-mono text-indigo-500">
-                  <AnimatedNumber value={result.awayWinPct} format={(v) => v.toFixed(1) + "%"} />
+                  <AnimatedNumber
+                    value={result.awayWinPct}
+                    format={(v) => v.toFixed(1) + "%"}
+                  />
                 </div>
               </div>
             </div>
 
             {/* Most likely score */}
             <div className="text-center py-6 border-y border-border mb-6 bg-card/30 rounded-md">
-              <div className="text-xs text-muted-foreground font-mono uppercase mb-2">Most Likely Score</div>
+              <div className="text-xs text-muted-foreground font-mono uppercase mb-2">
+                Most Likely Score
+              </div>
               <div className="text-6xl md:text-7xl font-bold tracking-tighter text-foreground mb-1">
                 {result.mostLikelyScore}
               </div>
@@ -365,38 +468,54 @@ export function MatchSimulator() {
             <div className="grid grid-cols-2 gap-8 text-center text-xs font-mono">
               <div className="space-y-3">
                 <div className="border-b border-border/40 pb-2">
-                  <div className="text-muted-foreground mb-0.5">Expected Goals (xG)</div>
-                  <div className="text-xl text-foreground font-bold">{result.homeExpectedGoals.toFixed(2)}</div>
+                  <div className="text-muted-foreground mb-0.5">
+                    Expected Goals (xG)
+                  </div>
+                  <div className="text-xl text-foreground font-bold">
+                    {result.homeExpectedGoals.toFixed(2)}
+                  </div>
                 </div>
                 <div className="border-b border-border/40 pb-2">
                   <div className="text-muted-foreground mb-0.5">Elo Rating</div>
-                  <div className="text-foreground font-semibold">{Math.round(result.homeElo)}</div>
+                  <div className="text-foreground font-semibold">
+                    {Math.round(result.homeElo)}
+                  </div>
                 </div>
                 <div>
                   <div className="text-muted-foreground mb-1 flex items-center justify-center gap-1">
-                    <Zap className="w-3.5 h-3.5 text-yellow-500" /> Attack / Defense Mult.
+                    <Zap className="w-3.5 h-3.5 text-yellow-500" /> Attack /
+                    Defense Mult.
                   </div>
                   <div className="text-foreground">
-                    {result.homeAttackStrength.toFixed(1)}x / {result.homeDefenseStrength.toFixed(1)}x
+                    {result.homeAttackStrength.toFixed(1)}x /{" "}
+                    {result.homeDefenseStrength.toFixed(1)}x
                   </div>
                 </div>
               </div>
 
               <div className="space-y-3">
                 <div className="border-b border-border/40 pb-2">
-                  <div className="text-muted-foreground mb-0.5">Expected Goals (xG)</div>
-                  <div className="text-xl text-foreground font-bold">{result.awayExpectedGoals.toFixed(2)}</div>
+                  <div className="text-muted-foreground mb-0.5">
+                    Expected Goals (xG)
+                  </div>
+                  <div className="text-xl text-foreground font-bold">
+                    {result.awayExpectedGoals.toFixed(2)}
+                  </div>
                 </div>
                 <div className="border-b border-border/40 pb-2">
                   <div className="text-muted-foreground mb-0.5">Elo Rating</div>
-                  <div className="text-foreground font-semibold">{Math.round(result.awayElo)}</div>
+                  <div className="text-foreground font-semibold">
+                    {Math.round(result.awayElo)}
+                  </div>
                 </div>
                 <div>
                   <div className="text-muted-foreground mb-1 flex items-center justify-center gap-1">
-                    <Zap className="w-3.5 h-3.5 text-yellow-500" /> Attack / Defense Mult.
+                    <Zap className="w-3.5 h-3.5 text-yellow-500" /> Attack /
+                    Defense Mult.
                   </div>
                   <div className="text-foreground">
-                    {result.awayAttackStrength.toFixed(1)}x / {result.awayDefenseStrength.toFixed(1)}x
+                    {result.awayAttackStrength.toFixed(1)}x /{" "}
+                    {result.awayDefenseStrength.toFixed(1)}x
                   </div>
                 </div>
               </div>
@@ -419,7 +538,16 @@ interface TeamPickerProps {
   onChange: (teamName: string) => void;
 }
 
-function TeamPicker({ id, label, testId, teams, value, opponentValue, disabled, onChange }: TeamPickerProps) {
+function TeamPicker({
+  id,
+  label,
+  testId,
+  teams,
+  value,
+  opponentValue,
+  disabled,
+  onChange,
+}: TeamPickerProps) {
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const selectedTeam = teams.find((team) => team.name === value);
@@ -429,11 +557,17 @@ function TeamPicker({ id, label, testId, teams, value, opponentValue, disabled, 
     if (!normalizedQuery) return teams;
 
     return teams.filter((team) =>
-      `${team.name} ${team.code} group ${team.group}`.toLowerCase().includes(normalizedQuery)
+      `${team.name} ${team.code} group ${team.group}`
+        .toLowerCase()
+        .includes(normalizedQuery),
     );
   }, [query, teams]);
 
-  const inputValue = isOpen ? query : selectedTeam ? `${selectedTeam.flagEmoji} ${selectedTeam.name}` : "";
+  const inputValue = isOpen
+    ? query
+    : selectedTeam
+      ? `${selectedTeam.flagEmoji} ${selectedTeam.name}`
+      : "";
 
   const handleSelect = (teamName: string) => {
     if (teamName === opponentValue) return;
@@ -445,7 +579,10 @@ function TeamPicker({ id, label, testId, teams, value, opponentValue, disabled, 
   return (
     <div className="flex-1 w-full relative">
       <div className="flex items-center justify-between gap-3 mb-2">
-        <label htmlFor={id} className="text-xs text-muted-foreground uppercase font-mono block">
+        <label
+          htmlFor={id}
+          className="text-xs text-muted-foreground uppercase font-mono block"
+        >
           {label}
         </label>
         <span className="text-[10px] text-muted-foreground/70 font-mono uppercase">
@@ -498,7 +635,9 @@ function TeamPicker({ id, label, testId, teams, value, opponentValue, disabled, 
           className="absolute z-30 mt-2 max-h-72 w-full overflow-y-auto rounded-md border border-border bg-background shadow-xl"
         >
           {filteredTeams.length === 0 ? (
-            <div className="px-3 py-4 text-sm text-muted-foreground">No teams found.</div>
+            <div className="px-3 py-4 text-sm text-muted-foreground">
+              No teams found.
+            </div>
           ) : (
             filteredTeams.map((team) => {
               const isOpponent = team.name === opponentValue;
@@ -521,11 +660,15 @@ function TeamPicker({ id, label, testId, teams, value, opponentValue, disabled, 
                   } ${isOpponent ? "opacity-45 cursor-not-allowed hover:bg-transparent" : "cursor-pointer"}`}
                 >
                   <span className="min-w-0 flex items-center gap-2">
-                    <span className="text-lg leading-none">{team.flagEmoji}</span>
+                    <span className="text-lg leading-none">
+                      {team.flagEmoji}
+                    </span>
                     <span className="truncate font-sans">{team.name}</span>
                   </span>
                   <span className="shrink-0 text-[10px] uppercase tracking-wider text-muted-foreground font-mono">
-                    {isOpponent ? "Selected" : `Group ${team.group} · ${team.code}`}
+                    {isOpponent
+                      ? "Selected"
+                      : `Group ${team.group} · ${team.code}`}
                   </span>
                 </button>
               );

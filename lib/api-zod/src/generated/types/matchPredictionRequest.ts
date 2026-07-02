@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { LiveMatchRequest } from './liveMatchRequest';
 
 export interface MatchPredictionRequest {
   /** @minLength 1 */
@@ -17,4 +18,9 @@ export interface MatchPredictionRequest {
   isHomeA?: boolean;
   /** Whether Team 2 receives host/home context. Defaults to false when omitted. */
   isHomeB?: boolean;
+  /**
+     * Request-local manual match overrides used only for this prediction.
+     * @maxItems 104
+     */
+  customMatches?: LiveMatchRequest[];
 }

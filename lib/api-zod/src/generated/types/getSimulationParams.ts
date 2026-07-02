@@ -13,4 +13,8 @@ export type GetSimulationParams = {
  * @maxLength 128
  */
 seed?: string;
+/**
+ * JSON-encoded array of request-local manual match overrides. When provided, these overrides are used only for this simulation response.
+ */
+customMatches?: string;
 };

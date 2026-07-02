@@ -1,16 +1,40 @@
-import React from "react";
-import { useGetSimulation } from "@workspace/api-client-react";
+import React, { useMemo } from "react";
+import {
+  getGetSimulationQueryKey,
+  useGetSimulation,
+  type GetSimulationParams,
+} from "@workspace/api-client-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AnimatedNumber } from "@/components/ui/animated-number";
+import {
+  serializeCustomMatches,
+  useCustomMatches,
+} from "@/hooks/use-custom-matches";
 import { AlertTriangle } from "lucide-react";
 
 export function GroupStandings() {
-  const { data: simulationResponse, isLoading, isError } = useGetSimulation();
+  const { customMatches } = useCustomMatches();
+  const simulationParams = useMemo<GetSimulationParams | undefined>(() => {
+    const serialized = serializeCustomMatches(customMatches);
+    return serialized ? { customMatches: serialized } : undefined;
+  }, [customMatches]);
+  const {
+    data: simulationResponse,
+    isLoading,
+    isError,
+  } = useGetSimulation(simulationParams, {
+    query: {
+      queryKey: getGetSimulationQueryKey(simulationParams),
+    },
+  });
 
   if (isLoading) {
     return (
-      <div data-testid="group-standings-loading" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+      <div
+        data-testid="group-standings-loading"
+        className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6"
+      >
         {Array.from({ length: 12 }, (_, index) => (
           <Skeleton key={index} className="h-64 w-full bg-card-border/50" />
         ))}
@@ -48,7 +72,10 @@ export function GroupStandings() {
   const groups = [...new Set(results.map((team) => team.group))].sort();
 
   return (
-    <div data-testid="group-standings" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+    <div
+      data-testid="group-standings"
+      className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6"
+    >
       {groups.map((group) => {
         // Filter and sort teams in this group by advance percentage (simulated performance)
         const groupTeams = results
@@ -91,37 +118,47 @@ export function GroupStandings() {
                     const isWildcardZone = idx === 2;
 
                     return (
-                      <tr 
-                        key={team.code} 
+                      <tr
+                        key={team.code}
                         className={`hover:bg-background/30 transition-colors ${
-                          isQualifyingDirect 
-                            ? "bg-primary/5 hover:bg-primary/10" 
-                            : isWildcardZone 
-                            ? "bg-yellow-500/5 hover:bg-yellow-500/10" 
-                            : ""
+                          isQualifyingDirect
+                            ? "bg-primary/5 hover:bg-primary/10"
+                            : isWildcardZone
+                              ? "bg-yellow-500/5 hover:bg-yellow-500/10"
+                              : ""
                         }`}
                       >
                         <td className="py-2.5 px-3 text-center text-muted-foreground">
                           {idx + 1}
                         </td>
                         <td className="py-2.5 px-2 font-sans font-medium text-foreground flex items-center gap-1.5 min-w-[110px]">
-                          <span className="text-base leading-none">{team.flagEmoji}</span>
+                          <span className="text-base leading-none">
+                            {team.flagEmoji}
+                          </span>
                           <span className="truncate">{team.name}</span>
                         </td>
                         <td className="py-2.5 px-2 text-right text-muted-foreground">
                           {Math.round(team.elo)}
                         </td>
                         <td className="py-2.5 px-2 text-right text-muted-foreground">
-                          <AnimatedNumber value={team.groupWinPct} format={(v) => v.toFixed(1) + "%"} />
+                          <AnimatedNumber
+                            value={team.groupWinPct}
+                            format={(v) => v.toFixed(1) + "%"}
+                          />
                         </td>
-                        <td className={`py-2.5 px-3 text-right font-bold ${
-                          isQualifyingDirect 
-                            ? "text-primary" 
-                            : isWildcardZone 
-                            ? "text-yellow-500" 
-                            : "text-muted-foreground"
-                        }`}>
-                          <AnimatedNumber value={team.groupAdvancePct} format={(v) => v.toFixed(1) + "%"} />
+                        <td
+                          className={`py-2.5 px-3 text-right font-bold ${
+                            isQualifyingDirect
+                              ? "text-primary"
+                              : isWildcardZone
+                                ? "text-yellow-500"
+                                : "text-muted-foreground"
+                          }`}
+                        >
+                          <AnimatedNumber
+                            value={team.groupAdvancePct}
+                            format={(v) => v.toFixed(1) + "%"}
+                          />
                         </td>
                       </tr>
                     );

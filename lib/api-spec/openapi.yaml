@@ -84,6 +84,12 @@ paths:
             type: string
             minLength: 1
             maxLength: 128
+        - name: customMatches
+          in: query
+          required: false
+          description: JSON-encoded array of request-local manual match overrides. When provided, these overrides are used only for this simulation response.
+          schema:
+            type: string
       responses:
         "200":
           description: Simulation results
@@ -811,6 +817,12 @@ components:
         isHomeB:
           type: boolean
           description: Whether Team 2 receives host/home context. Defaults to false when omitted.
+        customMatches:
+          type: array
+          description: Request-local manual match overrides used only for this prediction.
+          maxItems: 104
+          items:
+            $ref: "#/components/schemas/LiveMatchRequest"
       required:
         - homeTeam
         - awayTeam
@@ -990,7 +1002,15 @@ components:
       properties:
         code:
           type: string
-          enum: [invalid_request, malformed_json, oracle_not_ready, match_locked, fixture_not_found, internal_error]
+          enum:
+            [
+              invalid_request,
+              malformed_json,
+              oracle_not_ready,
+              match_locked,
+              fixture_not_found,
+              internal_error,
+            ]
         message:
           type: string
         issues:
@@ -1228,7 +1248,13 @@ components:
 
     MatchWeatherUnavailableReason:
       type: string
-      enum: [outside_forecast_horizon, venue_unavailable, provider_error, forecast_missing]
+      enum:
+        [
+          outside_forecast_horizon,
+          venue_unavailable,
+          provider_error,
+          forecast_missing,
+        ]
 
     MatchWeatherForecast:
       type: object

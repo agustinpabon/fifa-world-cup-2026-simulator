@@ -4,9 +4,6 @@ import {
   useGetTeams,
   useGetLiveMatches,
   useGetOracleStatus,
-  useRecordLiveMatch,
-  useDeleteLiveMatch,
-  useClearLiveMatches,
   getGetSimulationQueryKey,
   getGetOracleStatusQueryKey,
   getGetLiveMatchesQueryKey,
@@ -18,7 +15,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { getApiErrorMessage } from "@/lib/api-errors";
 import { Activity, RotateCcw, AlertTriangle, Search } from "lucide-react";
 import { MatchContextPanel } from "@/components/match-context-panel";
 import {
@@ -26,6 +22,10 @@ import {
   getSquadsSourceStatus,
 } from "@/components/team-squad-context";
 import type { SourceStatus } from "@/components/source-status-badge";
+import {
+  mergeCustomMatches,
+  useCustomMatches,
+} from "@/hooks/use-custom-matches";
 
 interface PlayedMatch {
   matchNumber?: number;
@@ -52,12 +52,13 @@ export function LiveMatchCenter() {
   const { toast } = useToast();
 
   const { data: teamsResponse, isLoading: teamsLoading } = useGetTeams();
-  const { data: matchesResponse, isLoading: matchesLoading } = useGetLiveMatches({
-    query: {
-      queryKey: getGetLiveMatchesQueryKey(),
-      refetchInterval: 15_000,
-    },
-  });
+  const { data: matchesResponse, isLoading: matchesLoading } =
+    useGetLiveMatches({
+      query: {
+        queryKey: getGetLiveMatchesQueryKey(),
+        refetchInterval: 15_000,
+      },
+    });
   const { data: squadsResponse, isError: squadsError } = useGetSquads({
     query: {
       queryKey: getGetSquadsQueryKey(),
@@ -68,29 +69,46 @@ export function LiveMatchCenter() {
   const { data: oracleStatus } = useGetOracleStatus({
     query: {
       queryKey: getGetOracleStatusQueryKey(),
-      refetchInterval: (query) => (query.state.data?.data.recalculating ? 1000 : false),
+      refetchInterval: (query) =>
+        query.state.data?.data.recalculating ? 1000 : false,
     },
   });
 
-  const recordLiveMatch = useRecordLiveMatch();
-  const deleteLiveMatch = useDeleteLiveMatch();
-  const clearLiveMatches = useClearLiveMatches();
+  const {
+    customMatches,
+    upsertCustomMatch,
+    removeCustomMatch,
+    clearCustomMatches,
+  } = useCustomMatches();
 
   const [stageTab, setStageTab] = useState<MatchStageTab>("results");
   const [activeGroup, setActiveGroup] = useState<string>("A");
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const teams = teamsResponse?.data.teams ?? [];
-  const playedMatches = (matchesResponse?.data.playedMatches ?? []) as PlayedMatch[];
-  const groups = useMemo(() => [...new Set(teams.map((team) => team.group))].sort(), [teams]);
+  const playedMatches = useMemo(
+    () =>
+      mergeCustomMatches(
+        (matchesResponse?.data.playedMatches ?? []) as PlayedMatch[],
+        customMatches,
+      ) as PlayedMatch[],
+    [matchesResponse?.data.playedMatches, customMatches],
+  );
+  const groups = useMemo(
+    () => [...new Set(teams.map((team) => team.group))].sort(),
+    [teams],
+  );
   const squadsByTeam = useMemo(() => {
-    return new Map((squadsResponse?.data.squads ?? []).map((squad) => [squad.team, squad]));
+    return new Map(
+      (squadsResponse?.data.squads ?? []).map((squad) => [squad.team, squad]),
+    );
   }, [squadsResponse]);
   const squadsSourceStatus = getSquadsSourceStatus(squadsResponse, squadsError);
   const squadsProvider = getSquadsProviderLabel(squadsResponse);
   const squadsLastUpdated =
-    squadsResponse?.data.externalProvenance.loadedAt ?? squadsResponse?.data.provenance.accessedDate ?? null;
+    squadsResponse?.data.externalProvenance.loadedAt ??
+    squadsResponse?.data.provenance.accessedDate ??
+    null;
 
   useEffect(() => {
     if (groups.length > 0 && !groups.includes(activeGroup)) {
@@ -104,94 +122,41 @@ export function LiveMatchCenter() {
     queryClient.invalidateQueries({ queryKey: getGetLiveMatchesQueryKey() });
   };
 
-  const handleRecordMatch = async (mHome: string, mAway: string, hScore: number, aScore: number) => {
-    return new Promise<void>((resolve, reject) => {
-      recordLiveMatch.mutate(
-        {
-          data: {
-            homeTeam: mHome,
-            awayTeam: mAway,
-            homeScore: hScore,
-            awayScore: aScore,
-          },
-        },
-        {
-          onSuccess: (res) => {
-            toast({
-              title: "Manual Override Recorded",
-              description: res.data.message || `Recorded: ${mHome} ${hScore} - ${aScore} ${mAway}`,
-            });
-            handleInvalidate();
-            resolve();
-          },
-          onError: (err: unknown) => {
-            toast({
-              title: "Error Recording Match",
-              description: getApiErrorMessage(err),
-              variant: "destructive",
-            });
-            reject(err);
-          },
-        }
-      );
+  const handleRecordMatch = async (
+    mHome: string,
+    mAway: string,
+    hScore: number,
+    aScore: number,
+  ) => {
+    upsertCustomMatch({
+      homeTeam: mHome,
+      awayTeam: mAway,
+      homeScore: hScore,
+      awayScore: aScore,
     });
+    toast({
+      title: "Manual Override Recorded",
+      description: `Recorded locally: ${mHome} ${hScore} - ${aScore} ${mAway}`,
+    });
+    handleInvalidate();
   };
 
   const handleDeleteMatch = async (mHome: string, mAway: string) => {
-    return new Promise<void>((resolve, reject) => {
-      deleteLiveMatch.mutate(
-        {
-          data: {
-            homeTeam: mHome,
-            awayTeam: mAway,
-          },
-        },
-        {
-          onSuccess: () => {
-            toast({
-              title: "Override Removed",
-              description: `Removed manual override for ${mHome} vs ${mAway}`,
-            });
-            handleInvalidate();
-            resolve();
-          },
-          onError: (err: unknown) => {
-            toast({
-              title: "Error Removing Match",
-              description: getApiErrorMessage(err),
-              variant: "destructive",
-            });
-            reject(err);
-          },
-        }
-      );
+    removeCustomMatch(mHome, mAway);
+    toast({
+      title: "Override Removed",
+      description: `Removed local manual override for ${mHome} vs ${mAway}`,
     });
+    handleInvalidate();
   };
 
   const handleClearAll = () => {
-    setIsSubmitting(true);
-    clearLiveMatches.mutate(
-      undefined,
-      {
-        onSuccess: (res) => {
-          toast({
-            title: "Overrides Cleared",
-            description: res.data.message || "All manual scenario overrides have been cleared.",
-          });
-          handleInvalidate();
-        },
-        onError: (err: unknown) => {
-          toast({
-            title: "Error Clearing Overrides",
-            description: getApiErrorMessage(err),
-            variant: "destructive",
-          });
-        },
-        onSettled: () => {
-          setIsSubmitting(false);
-        },
-      }
-    );
+    clearCustomMatches();
+    toast({
+      title: "Overrides Cleared",
+      description: "All local manual scenario overrides have been cleared.",
+    });
+    handleInvalidate();
   };
 
   const getFlag = (teamName: string) => {
@@ -216,18 +181,25 @@ export function LiveMatchCenter() {
         group: match.group ?? getTeamGroup(match.homeTeam) ?? "",
         stage: "Group Stage" as const,
       }))
-      .sort((a, b) => (a.matchNumber ?? Number.MAX_SAFE_INTEGER) - (b.matchNumber ?? Number.MAX_SAFE_INTEGER));
+      .sort(
+        (a, b) =>
+          (a.matchNumber ?? Number.MAX_SAFE_INTEGER) -
+          (b.matchNumber ?? Number.MAX_SAFE_INTEGER),
+      );
   }, [playedMatches, teams]);
 
   const resultMatches = useMemo(() => {
     return playedMatches
       .filter((match) => {
         const hasScore = match.homeScore >= 0 && match.awayScore >= 0;
-        const isLiveOrFinal = match.status === "live" || match.status === "finished" || hasScore;
+        const isLiveOrFinal =
+          match.status === "live" || match.status === "finished" || hasScore;
         return isLiveOrFinal && match.source !== "fixture";
       })
       .map((match) => {
-        const isKnockout = match.stage === "Knockout" || isKnockoutMatch(match.homeTeam, match.awayTeam);
+        const isKnockout =
+          match.stage === "Knockout" ||
+          isKnockoutMatch(match.homeTeam, match.awayTeam);
         return {
           ...match,
           group: match.group ?? getTeamGroup(match.homeTeam) ?? "",
@@ -243,7 +215,9 @@ export function LiveMatchCenter() {
 
   // Extract knockout matches currently in the match list from manual scenario overrides.
   const knockoutMatches = useMemo(() => {
-    return playedMatches.filter((m) => m.stage === "Knockout" || isKnockoutMatch(m.homeTeam, m.awayTeam));
+    return playedMatches.filter(
+      (m) => m.stage === "Knockout" || isKnockoutMatch(m.homeTeam, m.awayTeam),
+    );
   }, [playedMatches, teams]);
 
   // Filter matches based on search query or active stage/group tab
@@ -254,20 +228,28 @@ export function LiveMatchCenter() {
       const resultsFiltered = resultMatches.filter(
         (m) =>
           m.homeTeam.toLowerCase().includes(query) ||
-          m.awayTeam.toLowerCase().includes(query)
+          m.awayTeam.toLowerCase().includes(query),
       );
 
-      const groupFiltered = scheduledGroupMatches.filter(
-        (m) =>
-          m.homeTeam.toLowerCase().includes(query) ||
-          m.awayTeam.toLowerCase().includes(query)
-      ).map(m => ({ ...m, stage: "Group Stage" as const }));
+      const groupFiltered = scheduledGroupMatches
+        .filter(
+          (m) =>
+            m.homeTeam.toLowerCase().includes(query) ||
+            m.awayTeam.toLowerCase().includes(query),
+        )
+        .map((m) => ({ ...m, stage: "Group Stage" as const }));
 
-      const knockoutFiltered = knockoutMatches.filter(
-        (m) =>
-          m.homeTeam.toLowerCase().includes(query) ||
-          m.awayTeam.toLowerCase().includes(query)
-      ).map(m => ({ ...m, group: getTeamGroup(m.homeTeam) || "", stage: "Knockout" as const }));
+      const knockoutFiltered = knockoutMatches
+        .filter(
+          (m) =>
+            m.homeTeam.toLowerCase().includes(query) ||
+            m.awayTeam.toLowerCase().includes(query),
+        )
+        .map((m) => ({
+          ...m,
+          group: getTeamGroup(m.homeTeam) || "",
+          stage: "Knockout" as const,
+        }));
 
       return [...resultsFiltered, ...knockoutFiltered, ...groupFiltered];
     }
@@ -277,20 +259,45 @@ export function LiveMatchCenter() {
     }
 
     if (stageTab === "knockout") {
-      return knockoutMatches.map(m => ({ ...m, group: getTeamGroup(m.homeTeam) || "", stage: "Knockout" as const }));
+      return knockoutMatches.map((m) => ({
+        ...m,
+        group: getTeamGroup(m.homeTeam) || "",
+        stage: "Knockout" as const,
+      }));
     } else {
-      return scheduledGroupMatches.filter((m) => m.group === activeGroup).map(m => ({ ...m, stage: "Group Stage" as const }));
+      return scheduledGroupMatches
+        .filter((m) => m.group === activeGroup)
+        .map((m) => ({ ...m, stage: "Group Stage" as const }));
     }
-  }, [resultMatches, scheduledGroupMatches, knockoutMatches, stageTab, activeGroup, searchQuery, teams]);
+  }, [
+    resultMatches,
+    scheduledGroupMatches,
+    knockoutMatches,
+    stageTab,
+    activeGroup,
+    searchQuery,
+    teams,
+  ]);
 
   // Statistics calculations
   const totalTournamentMatches = 104; // 72 group stage + 32 knockout matches
-  const finishedMatches = playedMatches.filter((m) => m.homeScore >= 0 && m.awayScore >= 0);
-  const importedFixtureCount = playedMatches.filter((m) => m.source === "fixture").length;
-  const externalFeedCount = playedMatches.filter((m) => m.source === "espn" || m.source === "official").length;
-  const customCount = finishedMatches.filter((m) => m.source === "custom").length;
+  const finishedMatches = playedMatches.filter(
+    (m) => m.homeScore >= 0 && m.awayScore >= 0,
+  );
+  const importedFixtureCount = playedMatches.filter(
+    (m) => m.source === "fixture",
+  ).length;
+  const externalFeedCount = playedMatches.filter(
+    (m) => m.source === "espn" || m.source === "official",
+  ).length;
+  const customCount = finishedMatches.filter(
+    (m) => m.source === "custom",
+  ).length;
   const resultCount = resultMatches.length;
-  const progressPct = Math.min(100, Math.max(0, (customCount / totalTournamentMatches) * 100));
+  const progressPct = Math.min(
+    100,
+    Math.max(0, (customCount / totalTournamentMatches) * 100),
+  );
   const isRecalculating = oracleStatus?.data.recalculating ?? false;
 
   const isLoading = teamsLoading || matchesLoading;
@@ -303,7 +310,9 @@ export function LiveMatchCenter() {
           <CardContent className="p-5 flex flex-col justify-between h-full gap-4">
             <div className="flex items-center justify-between text-xs font-mono font-bold text-muted-foreground uppercase tracking-wider">
               <span>Manual Scenario Overrides</span>
-              <span className="text-primary font-bold">{customCount} / {totalTournamentMatches} Overrides</span>
+              <span className="text-primary font-bold">
+                {customCount} / {totalTournamentMatches} Overrides
+              </span>
             </div>
             <div className="w-full bg-secondary/60 h-2.5 rounded-full overflow-hidden border border-border/20">
               <div
@@ -312,8 +321,11 @@ export function LiveMatchCenter() {
               />
             </div>
             <p className="text-[11px] text-muted-foreground font-sans">
-              {importedFixtureCount} local fixtures and {externalFeedCount} feed matches loaded.{" "}
-              {customCount > 0 ? "Manual overrides active." : "No manual overrides active."}
+              {importedFixtureCount} local fixtures and {externalFeedCount} feed
+              matches loaded.{" "}
+              {customCount > 0
+                ? "Manual overrides active."
+                : "No manual overrides active."}
             </p>
           </CardContent>
         </Card>
@@ -324,9 +336,11 @@ export function LiveMatchCenter() {
               <span className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest block mb-1">
                 Tournament Simulation
               </span>
-              <span className={`text-2xl font-bold font-mono leading-none ${
-                isRecalculating ? "text-primary" : "text-foreground"
-              }`}>
+              <span
+                className={`text-2xl font-bold font-mono leading-none ${
+                  isRecalculating ? "text-primary" : "text-foreground"
+                }`}
+              >
                 {isRecalculating ? "Updating" : "10,000 runs"}
               </span>
               {isRecalculating && (
@@ -342,7 +356,6 @@ export function LiveMatchCenter() {
                 variant="destructive"
                 size="sm"
                 className="w-full h-8 font-sans text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer font-bold"
-                disabled={isSubmitting}
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 Clear {customCount} Overrides
@@ -441,7 +454,8 @@ export function LiveMatchCenter() {
             <span className="font-mono font-bold uppercase tracking-wider text-primary">
               {resultCount} {resultCount === 1 ? "result" : "results"}
             </span>{" "}
-            loaded from live feed, official imports, and manual scenario overrides.
+            loaded from live feed, official imports, and manual scenario
+            overrides.
           </div>
         )}
 
@@ -468,8 +482,10 @@ export function LiveMatchCenter() {
               // Find if this match has a matching fixture or manual override record.
               const played = playedMatches.find(
                 (m) =>
-                  (m.homeTeam === match.homeTeam && m.awayTeam === match.awayTeam) ||
-                  (m.homeTeam === match.awayTeam && m.awayTeam === match.homeTeam)
+                  (m.homeTeam === match.homeTeam &&
+                    m.awayTeam === match.awayTeam) ||
+                  (m.homeTeam === match.awayTeam &&
+                    m.awayTeam === match.homeTeam),
               );
 
               return (
@@ -480,8 +496,17 @@ export function LiveMatchCenter() {
                   group={match.group}
                   stage={match.stage}
                   playedMatch={played}
-                  onRecord={(hScore, aScore) => handleRecordMatch(match.homeTeam, match.awayTeam, hScore, aScore)}
-                  onDelete={() => handleDeleteMatch(match.homeTeam, match.awayTeam)}
+                  onRecord={(hScore, aScore) =>
+                    handleRecordMatch(
+                      match.homeTeam,
+                      match.awayTeam,
+                      hScore,
+                      aScore,
+                    )
+                  }
+                  onDelete={() =>
+                    handleDeleteMatch(match.homeTeam, match.awayTeam)
+                  }
                   getFlag={getFlag}
                   homeSquad={squadsByTeam.get(match.homeTeam)}
                   awaySquad={squadsByTeam.get(match.awayTeam)}
@@ -538,7 +563,8 @@ function MatchCard({
   // Sync inputs when playedMatch changes
   useEffect(() => {
     if (playedMatch) {
-      const isUnplayed = playedMatch.homeScore === -1 && playedMatch.awayScore === -1;
+      const isUnplayed =
+        playedMatch.homeScore === -1 && playedMatch.awayScore === -1;
       if (isUnplayed) {
         setHomeInput("");
         setAwayInput("");
@@ -575,7 +601,8 @@ function MatchCard({
   };
 
   const hasRecorded = !!playedMatch;
-  const isUnplayed = playedMatch?.homeScore === -1 && playedMatch?.awayScore === -1;
+  const isUnplayed =
+    playedMatch?.homeScore === -1 && playedMatch?.awayScore === -1;
   const isImportedResult = playedMatch?.source === "official";
   const isEspnResult = playedMatch?.source === "espn";
   const isCustom = playedMatch?.source === "custom";
@@ -592,8 +619,8 @@ function MatchCard({
           isCustom
             ? "border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10 shadow-sm"
             : isImportedResult || isEspnResult
-            ? "border-emerald-500/20 bg-emerald-500/3 hover:bg-emerald-500/8"
-            : "border-emerald-500/20 bg-emerald-500/3 hover:bg-emerald-500/8"
+              ? "border-emerald-500/20 bg-emerald-500/3 hover:bg-emerald-500/8"
+              : "border-emerald-500/20 bg-emerald-500/3 hover:bg-emerald-500/8"
         }`}
       >
         <div className="flex items-center justify-between gap-4">
@@ -603,7 +630,10 @@ function MatchCard({
           <div className="flex items-center gap-1.5">
             {isLive && (
               <span className="text-[10px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full flex items-center gap-1">
-                Live {playedMatch?.statusDetail ? `· ${playedMatch.statusDetail}` : ""}
+                Live{" "}
+                {playedMatch?.statusDetail
+                  ? `· ${playedMatch.statusDetail}`
+                  : ""}
               </span>
             )}
             {isImportedResult && (
@@ -627,8 +657,12 @@ function MatchCard({
         <div className="grid grid-cols-7 items-center my-4 font-semibold">
           {/* Home team */}
           <div className="col-span-3 flex items-center justify-end gap-2.5 text-right">
-            <span className="font-sans text-sm sm:text-base text-foreground leading-tight">{homeTeam}</span>
-            <span className="text-2xl leading-none" title={homeTeam}>{getFlag(homeTeam)}</span>
+            <span className="font-sans text-sm sm:text-base text-foreground leading-tight">
+              {homeTeam}
+            </span>
+            <span className="text-2xl leading-none" title={homeTeam}>
+              {getFlag(homeTeam)}
+            </span>
           </div>
 
           {/* Score display */}
@@ -642,8 +676,12 @@ function MatchCard({
 
           {/* Away team */}
           <div className="col-span-3 flex items-center justify-start gap-2.5 text-left">
-            <span className="text-2xl leading-none" title={awayTeam}>{getFlag(awayTeam)}</span>
-            <span className="font-sans text-sm sm:text-base text-foreground leading-tight">{awayTeam}</span>
+            <span className="text-2xl leading-none" title={awayTeam}>
+              {getFlag(awayTeam)}
+            </span>
+            <span className="font-sans text-sm sm:text-base text-foreground leading-tight">
+              {awayTeam}
+            </span>
           </div>
         </div>
 
@@ -670,7 +708,10 @@ function MatchCard({
         )}
         {!isCustom && playedMatch?.winnerTeam && (
           <div className="text-[11px] text-muted-foreground mt-2 pt-2 border-t border-border/40 text-right font-sans">
-            Winner: <span className="text-foreground font-semibold">{playedMatch.winnerTeam}</span>
+            Winner:{" "}
+            <span className="text-foreground font-semibold">
+              {playedMatch.winnerTeam}
+            </span>
           </div>
         )}
         <MatchContextPanel
@@ -696,7 +737,9 @@ function MatchCard({
       data-away-team={awayTeam}
       onSubmit={handleSave}
       className={`p-4 rounded-xl border bg-card/25 hover:bg-card/45 transition-all ${
-        isEditing ? "border-primary/40 ring-1 ring-primary/20 shadow-md" : "border-border/60"
+        isEditing
+          ? "border-primary/40 ring-1 ring-primary/20 shadow-md"
+          : "border-border/60"
       }`}
     >
       <div className="flex items-center justify-between gap-4 mb-3">
@@ -717,7 +760,9 @@ function MatchCard({
       <div className="grid grid-cols-7 items-center my-3 font-semibold">
         {/* Home team */}
         <div className="col-span-3 flex items-center justify-end gap-2.5 text-right">
-          <span className="font-sans text-sm sm:text-base text-foreground/90 leading-tight">{homeTeam}</span>
+          <span className="font-sans text-sm sm:text-base text-foreground/90 leading-tight">
+            {homeTeam}
+          </span>
           <span className="text-2xl leading-none">{getFlag(homeTeam)}</span>
         </div>
 
@@ -753,7 +798,9 @@ function MatchCard({
         {/* Away team */}
         <div className="col-span-3 flex items-center justify-start gap-2.5 text-left">
           <span className="text-2xl leading-none">{getFlag(awayTeam)}</span>
-          <span className="font-sans text-sm sm:text-base text-foreground/90 leading-tight">{awayTeam}</span>
+          <span className="font-sans text-sm sm:text-base text-foreground/90 leading-tight">
+            {awayTeam}
+          </span>
         </div>
       </div>
 

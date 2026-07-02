@@ -3,7 +3,11 @@ import { readFile } from "node:fs/promises";
 import { Worker } from "node:worker_threads";
 import { Router, type Response } from "express";
 import { MODEL_VARIANTS } from "@workspace/oracle-model";
-import { DeleteLiveMatchBody, PredictMatchBody, RecordLiveMatchBody } from "@workspace/api-zod";
+import {
+  DeleteLiveMatchBody,
+  PredictMatchBody,
+  RecordLiveMatchBody,
+} from "@workspace/api-zod";
 import {
   DEFAULT_MODEL_CONFIG,
   computeEloRatings,
@@ -48,14 +52,19 @@ import {
   type CreateApiFootballSquadsProviderOptions,
 } from "../lib/api-football.js";
 import { getFixtureByTeams, WC2026_TEAMS } from "../lib/worldcup2026.js";
-import { sendApiError, sendApiSuccess, type ApiErrorIssue } from "../lib/api-response.js";
+import {
+  sendApiError,
+  sendApiSuccess,
+  type ApiErrorIssue,
+} from "../lib/api-response.js";
 import { rateLimiter } from "../middlewares/rate-limiter.js";
 
 const router = Router();
 const mutableRateLimiter = rateLimiter({
   windowMs: 60 * 1000, // 1 minute
   max: 30,
-  message: "Too many scenario mutation requests. Please wait before trying again.",
+  message:
+    "Too many scenario mutation requests. Please wait before trying again.",
 });
 const MAX_REASONABLE_SCORE = 30;
 const MAX_SEED_LENGTH = 128;
@@ -64,24 +73,36 @@ const DEFAULT_SIMULATION_WORKER_TIMEOUT_MS = 120_000;
 const DEFAULT_LIVE_DATA_REFRESH_INTERVAL_MS = 30_000;
 const TEAM_NAMES = new Set(WC2026_TEAMS.map((team) => team.name));
 const BEST_MODEL_CONFIG_FILENAME = "best-model-config.json";
-const SOURCE_BEST_MODEL_CONFIG_URL = new URL(`../data/${BEST_MODEL_CONFIG_FILENAME}`, import.meta.url);
+const SOURCE_BEST_MODEL_CONFIG_URL = new URL(
+  `../data/${BEST_MODEL_CONFIG_FILENAME}`,
+  import.meta.url,
+);
 const REPO_SOURCE_BEST_MODEL_CONFIG_URL = new URL(
   `../src/data/${BEST_MODEL_CONFIG_FILENAME}`,
-  import.meta.url
+  import.meta.url,
 );
-const BUNDLED_BEST_MODEL_CONFIG_URL = new URL(`./data/${BEST_MODEL_CONFIG_FILENAME}`, import.meta.url);
+const BUNDLED_BEST_MODEL_CONFIG_URL = new URL(
+  `./data/${BEST_MODEL_CONFIG_FILENAME}`,
+  import.meta.url,
+);
 
 type ValidationIssuePath = Array<string | number>;
 type UnknownRecord = Record<string, unknown>;
 type ValidationIssueContext = {
-  addIssue(issue: { code: "custom"; message: string; path?: ValidationIssuePath }): void;
+  addIssue(issue: {
+    code: "custom";
+    message: string;
+    path?: ValidationIssuePath;
+  }): void;
 };
 type ZodLikeIssue = {
   path: ValidationIssuePath;
   message: string;
 };
 type SafeParseSchema<T> = {
-  safeParse(input: unknown):
+  safeParse(
+    input: unknown,
+  ):
     | { success: true; data: T }
     | { success: false; error: { issues: ZodLikeIssue[] } };
 };
@@ -93,6 +114,7 @@ type MatchPredictionInput = MatchTeams & {
   neutral?: boolean;
   isHomeA?: boolean;
   isHomeB?: boolean;
+  customMatches?: LiveMatchInput[];
 };
 type LiveMatchInput = MatchTeams & {
   homeScore: number;
@@ -179,14 +201,24 @@ type LocalSquadsProvenance = {
 };
 type SquadsDataProvenance = ApiFootballSquadsProvenance | LocalSquadsProvenance;
 
-const matchTeamsSchema = PredictMatchBody.strict().superRefine((payload, ctx) => {
-  addTeamValidationIssues(payload, ctx);
-});
-const liveMatchSchema = RecordLiveMatchBody.strict().superRefine((payload, ctx) => {
-  addTeamValidationIssues(payload, ctx);
-  addScoreValidationIssues("homeScore", payload.homeScore, ctx);
-  addScoreValidationIssues("awayScore", payload.awayScore, ctx);
-});
+const customMatchSchema = RecordLiveMatchBody.strict().superRefine(
+  (payload, ctx) => {
+    addTeamValidationIssues(payload, ctx);
+    addScoreValidationIssues("homeScore", payload.homeScore, ctx);
+    addScoreValidationIssues("awayScore", payload.awayScore, ctx);
+  },
+);
+const matchTeamsSchema = PredictMatchBody.extend({
+  customMatches: customMatchSchema.array().max(MAX_CUSTOM_MATCHES).optional(),
+})
+  .strict()
+  .superRefine((payload, ctx) => {
+    addTeamValidationIssues(payload, ctx);
+  });
+const liveMatchSchema = customMatchSchema;
+const customMatchesArraySchema = customMatchSchema
+  .array()
+  .max(MAX_CUSTOM_MATCHES);
 const matchContextQuerySchema = PredictMatchBody.pick({
   homeTeam: true,
   awayTeam: true,
@@ -195,11 +227,16 @@ const matchContextQuerySchema = PredictMatchBody.pick({
   .superRefine((payload, ctx) => {
     addTeamValidationIssues(payload, ctx);
   });
-const deleteLiveMatchSchema = DeleteLiveMatchBody.strict().superRefine((payload, ctx) => {
-  addTeamValidationIssues(payload, ctx);
-});
+const deleteLiveMatchSchema = DeleteLiveMatchBody.strict().superRefine(
+  (payload, ctx) => {
+    addTeamValidationIssues(payload, ctx);
+  },
+);
 
-function addTeamValidationIssues(payload: MatchTeams, ctx: ValidationIssueContext): void {
+function addTeamValidationIssues(
+  payload: MatchTeams,
+  ctx: ValidationIssueContext,
+): void {
   if (!TEAM_NAMES.has(payload.homeTeam)) {
     ctx.addIssue({
       code: "custom",
@@ -228,7 +265,7 @@ function addTeamValidationIssues(payload: MatchTeams, ctx: ValidationIssueContex
 function addScoreValidationIssues(
   field: "homeScore" | "awayScore",
   score: number,
-  ctx: ValidationIssueContext
+  ctx: ValidationIssueContext,
 ): void {
   if (!Number.isInteger(score)) {
     ctx.addIssue({
@@ -255,7 +292,10 @@ function addScoreValidationIssues(
   }
 }
 
-function parseBody<T>(schema: SafeParseSchema<T>, body: unknown): BodyParseResult<T> {
+function parseBody<T>(
+  schema: SafeParseSchema<T>,
+  body: unknown,
+): BodyParseResult<T> {
   const parsed = schema.safeParse(body);
 
   if (parsed.success) {
@@ -295,34 +335,112 @@ function parseOptionalSeed(seed: unknown): BodyParseResult<string | undefined> {
   }
 
   if (typeof seed !== "string") {
-    return { success: false, issues: [{ path: "seed", message: "seed must be a single string" }] };
+    return {
+      success: false,
+      issues: [{ path: "seed", message: "seed must be a single string" }],
+    };
   }
 
   const trimmed = seed.trim();
   if (trimmed.length === 0) {
-    return { success: false, issues: [{ path: "seed", message: "seed must not be empty" }] };
+    return {
+      success: false,
+      issues: [{ path: "seed", message: "seed must not be empty" }],
+    };
   }
 
   if (trimmed.length > MAX_SEED_LENGTH) {
     return {
       success: false,
-      issues: [{ path: "seed", message: `seed must be ${MAX_SEED_LENGTH} characters or less` }],
+      issues: [
+        {
+          path: "seed",
+          message: `seed must be ${MAX_SEED_LENGTH} characters or less`,
+        },
+      ],
     };
   }
 
   return { success: true, data: trimmed };
 }
 
+function parseOptionalCustomMatchesQuery(
+  value: unknown,
+): BodyParseResult<LiveMatchInput[]> {
+  if (value === undefined) {
+    return { success: true, data: [] };
+  }
+
+  if (Array.isArray(value)) {
+    return {
+      success: false,
+      issues: [
+        {
+          path: "customMatches",
+          message: "customMatches must be a single JSON array string",
+        },
+      ],
+    };
+  }
+
+  if (typeof value !== "string") {
+    return {
+      success: false,
+      issues: [
+        {
+          path: "customMatches",
+          message: "customMatches must be a JSON array string",
+        },
+      ],
+    };
+  }
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return {
+      success: false,
+      issues: [
+        {
+          path: "customMatches",
+          message: "customMatches must be a valid JSON array",
+        },
+      ],
+    };
+  }
+
+  const customMatches = customMatchesArraySchema.safeParse(parsed);
+
+  if (customMatches.success) {
+    return { success: true, data: customMatches.data };
+  }
+
+  return {
+    success: false,
+    issues: customMatches.error.issues.map((issue) =>
+      formatValidationIssue({
+        ...issue,
+        path: ["customMatches", ...issue.path],
+      }),
+    ),
+  };
+}
+
 function parseOptionalBooleanQueryFlag(
   value: unknown,
-  field: string
+  field: string,
 ): BodyParseResult<boolean> {
   if (value === undefined) {
     return { success: true, data: false };
   }
 
   if (Array.isArray(value)) {
-    return { success: false, issues: [{ path: field, message: `${field} must be a single boolean` }] };
+    return {
+      success: false,
+      issues: [{ path: field, message: `${field} must be a single boolean` }],
+    };
   }
 
   if (value === true || value === "true") {
@@ -375,7 +493,9 @@ function createInitialCache(): OracleCache {
 }
 
 const cache: OracleCache = createInitialCache();
-let simulationRunner: SimulationRunner = runSimulationRecalculationInBatches;
+let simulationRunner: SimulationRunner = runSimulationRecalculationInWorker;
+let simulationWorkerOptions: SimulationWorkerOptions =
+  createDefaultSimulationWorkerOptions();
 let liveDataProvider: LiveTournamentFeedProvider | null = null;
 let matchContextService: MatchContextService = createMatchContextService();
 let apiFootballSquadsProvider: ApiFootballSquadsProvider | null = null;
@@ -408,7 +528,9 @@ function configureLiveData(options: LiveDataOptions | undefined): void {
   const provider = options?.provider ?? "espn";
   const cacheTtlMs = Math.max(
     1_000,
-    Math.trunc(options?.refreshIntervalMs ?? DEFAULT_LIVE_DATA_REFRESH_INTERVAL_MS)
+    Math.trunc(
+      options?.refreshIntervalMs ?? DEFAULT_LIVE_DATA_REFRESH_INTERVAL_MS,
+    ),
   );
 
   cache.liveData = {
@@ -432,15 +554,16 @@ function configureLiveData(options: LiveDataOptions | undefined): void {
   }
 }
 
-function configureApiFootballSquads(options: CreateApiFootballSquadsProviderOptions | undefined): void {
+function configureApiFootballSquads(
+  options: CreateApiFootballSquadsProviderOptions | undefined,
+): void {
   apiFootballSquadsProvider = createOptionalApiFootballSquadsProvider(options);
 }
 
 function createZeroedSimulationResult(): SimResult {
-  const emptyCounts = Object.fromEntries(WC2026_TEAMS.map((team) => [team.name, 0])) as Record<
-    string,
-    number
-  >;
+  const emptyCounts = Object.fromEntries(
+    WC2026_TEAMS.map((team) => [team.name, 0]),
+  ) as Record<string, number>;
 
   return {
     titles: { ...emptyCounts },
@@ -718,7 +841,7 @@ function createLiveDataSignature(
 function isSameMatchup(
   match: Pick<PlayedMatch, "homeTeam" | "awayTeam">,
   homeTeam: string,
-  awayTeam: string
+  awayTeam: string,
 ): boolean {
   return (
     (match.homeTeam === homeTeam && match.awayTeam === awayTeam) ||
@@ -727,12 +850,16 @@ function isSameMatchup(
 }
 
 async function refreshLiveDataIfNeeded(
-  options: { force?: boolean; scheduleRecalculation?: boolean } = {}
+  options: { force?: boolean; scheduleRecalculation?: boolean } = {},
 ): Promise<void> {
   const force = options.force ?? false;
   const scheduleRecalculation = options.scheduleRecalculation ?? true;
 
-  if (cache.liveData.provider === "disabled" || cache.liveData.running || !liveDataProvider) {
+  if (
+    cache.liveData.provider === "disabled" ||
+    cache.liveData.running ||
+    !liveDataProvider
+  ) {
     return;
   }
 
@@ -743,7 +870,10 @@ async function refreshLiveDataIfNeeded(
 
   try {
     const feed = await liveDataProvider.read({ force });
-    const signature = createLiveDataSignature(feed.matches, feed.eliminatedTeams);
+    const signature = createLiveDataSignature(
+      feed.matches,
+      feed.eliminatedTeams,
+    );
     const changed = signature !== cache.liveData.signature;
 
     cache.liveData = {
@@ -759,7 +889,10 @@ async function refreshLiveDataIfNeeded(
       scheduleCachedSimulationRecalculation();
     }
   } catch (err) {
-    logger.warn({ err }, "Live tournament data provider failed unexpectedly; using local fixtures");
+    logger.warn(
+      { err },
+      "Live tournament data provider failed unexpectedly; using local fixtures",
+    );
     cache.liveData = {
       ...cache.liveData,
       metadata: liveDataProvider.peek().metadata,
@@ -768,13 +901,44 @@ async function refreshLiveDataIfNeeded(
   }
 }
 
-function findMatch(matches: readonly PlayedMatch[], homeTeam: string, awayTeam: string): PlayedMatch | undefined {
+function findMatch(
+  matches: readonly PlayedMatch[],
+  homeTeam: string,
+  awayTeam: string,
+): PlayedMatch | undefined {
   return matches.find((match) => isSameMatchup(match, homeTeam, awayTeam));
+}
+
+function getCustomMatchPrediction(
+  match: PlayedMatch,
+  homeTeam: string,
+  awayTeam: string,
+): {
+  homeWinPct: number;
+  drawPct: number;
+  awayWinPct: number;
+  homeExpectedGoals: number;
+  awayExpectedGoals: number;
+  mostLikelyScore: string;
+} {
+  const homeScore =
+    match.homeTeam === homeTeam ? match.homeScore : match.awayScore;
+  const awayScore =
+    match.awayTeam === awayTeam ? match.awayScore : match.homeScore;
+
+  return {
+    homeWinPct: homeScore > awayScore ? 100 : 0,
+    drawPct: homeScore === awayScore ? 100 : 0,
+    awayWinPct: awayScore > homeScore ? 100 : 0,
+    homeExpectedGoals: homeScore,
+    awayExpectedGoals: awayScore,
+    mostLikelyScore: `${homeScore}-${awayScore}`,
+  };
 }
 
 function upsertMatch(matches: PlayedMatch[], match: PlayedMatch): void {
   const idx = matches.findIndex((existingMatch) =>
-    isSameMatchup(existingMatch, match.homeTeam, match.awayTeam)
+    isSameMatchup(existingMatch, match.homeTeam, match.awayTeam),
   );
 
   if (idx !== -1) {
@@ -785,7 +949,10 @@ function upsertMatch(matches: PlayedMatch[], match: PlayedMatch): void {
 }
 
 function isLockedExternalMatch(match: PlayedMatch): boolean {
-  return (match.source === "official" || match.source === "espn") && match.status !== "scheduled";
+  return (
+    (match.source === "official" || match.source === "espn") &&
+    match.status !== "scheduled"
+  );
 }
 
 function toMatchContextFixture(match: PlayedMatch): MatchContextFixture | null {
@@ -809,8 +976,13 @@ function toMatchContextFixture(match: PlayedMatch): MatchContextFixture | null {
   };
 }
 
-function findMatchContextFixture(homeTeam: string, awayTeam: string): MatchContextFixture | null {
-  const cachedFixture = cache.fixtureMatches.find((match) => isSameMatchup(match, homeTeam, awayTeam));
+function findMatchContextFixture(
+  homeTeam: string,
+  awayTeam: string,
+): MatchContextFixture | null {
+  const cachedFixture = cache.fixtureMatches.find((match) =>
+    isSameMatchup(match, homeTeam, awayTeam),
+  );
   const fromCache = cachedFixture ? toMatchContextFixture(cachedFixture) : null;
 
   if (fromCache) {
@@ -839,7 +1011,9 @@ function findMatchContextFixture(homeTeam: string, awayTeam: string): MatchConte
 }
 
 async function recalculateCachedSimulation(): Promise<void> {
-  const snapshot = createRecalculationSnapshot(cache.recalculation.requestedVersion);
+  const snapshot = createRecalculationSnapshot(
+    cache.recalculation.requestedVersion,
+  );
 
   cache.recalculation = {
     ...cache.recalculation,
@@ -961,13 +1135,19 @@ async function runNextSimulationRecalculation(): Promise<void> {
     }
   } catch (err) {
     const message = formatSimulationRecalculationError(err);
-    logger.error({ err, version: snapshot.version }, "Simulation recalculation failed");
+    logger.error(
+      { err, version: snapshot.version },
+      "Simulation recalculation failed",
+    );
 
     cache.recalculation = {
       ...cache.recalculation,
       runningVersion: null,
       running: false,
-      error: snapshot.version === cache.recalculation.requestedVersion ? message : cache.recalculation.error,
+      error:
+        snapshot.version === cache.recalculation.requestedVersion
+          ? message
+          : cache.recalculation.error,
     };
   }
 
@@ -996,7 +1176,10 @@ function formatOracleLoadError(_error: unknown): OracleLoadError {
   };
 }
 
-function getOracleStatusMessage(state: OracleState, recalculating: boolean): string {
+function getOracleStatusMessage(
+  state: OracleState,
+  recalculating: boolean,
+): string {
   if (state === "ready") {
     if (recalculating) {
       return "Oracle ready. Simulation recalculation running; last valid results remain available.";
@@ -1098,7 +1281,7 @@ function getLocalSquadsProvenance(): LocalSquadsProvenance {
 
 function formatSquadsData(
   squads: readonly TeamSquad[],
-  externalProvenance: SquadsDataProvenance
+  externalProvenance: SquadsDataProvenance,
 ) {
   return {
     schemaVersion: WC2026_SQUADS.schemaVersion,
@@ -1129,7 +1312,9 @@ function formatSquadsData(
       players: squad.players.map((player) => ({
         name: player.name,
         position: player.position,
-        ...(player.shirtNumber !== undefined ? { shirtNumber: player.shirtNumber } : {}),
+        ...(player.shirtNumber !== undefined
+          ? { shirtNumber: player.shirtNumber }
+          : {}),
         ...(player.club !== undefined ? { club: player.club } : {}),
         source: {
           ...player.source,
@@ -1154,7 +1339,7 @@ function sendOracleSuccess<TData>(res: Response, data: TData) {
 }
 
 export async function loadBestModelConfigOverrides(
-  configPath?: string | URL
+  configPath?: string | URL,
 ): Promise<Partial<ModelConfig>> {
   const raw = await readOptionalBestModelConfig(configPath);
 
@@ -1167,16 +1352,24 @@ export async function loadBestModelConfigOverrides(
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
-    throw new Error(`Best model config JSON is malformed: ${getErrorMessage(error)}`);
+    throw new Error(
+      `Best model config JSON is malformed: ${getErrorMessage(error)}`,
+    );
   }
 
   return parseBestModelConfigOverrides(parsed);
 }
 
-async function readOptionalBestModelConfig(configPath?: string | URL): Promise<string | null> {
+async function readOptionalBestModelConfig(
+  configPath?: string | URL,
+): Promise<string | null> {
   const candidates = configPath
     ? [configPath]
-    : [SOURCE_BEST_MODEL_CONFIG_URL, REPO_SOURCE_BEST_MODEL_CONFIG_URL, BUNDLED_BEST_MODEL_CONFIG_URL];
+    : [
+        SOURCE_BEST_MODEL_CONFIG_URL,
+        REPO_SOURCE_BEST_MODEL_CONFIG_URL,
+        BUNDLED_BEST_MODEL_CONFIG_URL,
+      ];
 
   for (const candidate of candidates) {
     try {
@@ -1187,7 +1380,7 @@ async function readOptionalBestModelConfig(configPath?: string | URL): Promise<s
       }
 
       throw new Error(
-        `Best model config could not be read from ${formatModelConfigPath(candidate)}: ${getErrorMessage(error)}`
+        `Best model config could not be read from ${formatModelConfigPath(candidate)}: ${getErrorMessage(error)}`,
       );
     }
   }
@@ -1218,7 +1411,10 @@ function parseBestModelConfigOverrides(input: unknown): Partial<ModelConfig> {
     const defaultValue = DEFAULT_MODEL_CONFIG[configKey];
 
     if (configKey === "variant") {
-      if (typeof value !== "string" || !(MODEL_VARIANTS as readonly string[]).includes(value)) {
+      if (
+        typeof value !== "string" ||
+        !(MODEL_VARIANTS as readonly string[]).includes(value)
+      ) {
         throw new Error(`variant must be one of: ${MODEL_VARIANTS.join(", ")}`);
       }
 
@@ -1326,12 +1522,14 @@ export function seedReadyOracleForTests(
     liveDataMatches?: PlayedMatch[];
     eliminatedTeams?: string[];
     playedMatches?: PlayedMatch[];
-  } = {}
+  } = {},
 ): void {
   const fallbackRating = DEFAULT_MODEL_CONFIG.fallbackRating;
   const ratings =
     overrides.ratings ??
-    (Object.fromEntries(WC2026_TEAMS.map((team) => [team.name, fallbackRating])) as Record<string, number>);
+    (Object.fromEntries(
+      WC2026_TEAMS.map((team) => [team.name, fallbackRating]),
+    ) as Record<string, number>);
   const simulationSeed = overrides.simulationSeed ?? createSimulationSeed();
 
   Object.assign(cache, {
@@ -1357,8 +1555,11 @@ export function seedReadyOracleForTests(
 }
 
 // ---- Initialize on startup ----
-export async function initOracle(options: OracleInitOptions = {}): Promise<void> {
-  const { apiFootball, bestModelConfigPath, liveData, ...datasetOptions } = options;
+export async function initOracle(
+  options: OracleInitOptions = {},
+): Promise<void> {
+  const { apiFootball, bestModelConfigPath, liveData, ...datasetOptions } =
+    options;
 
   cache.ready = false;
   cache.loadingError = null;
@@ -1366,7 +1567,8 @@ export async function initOracle(options: OracleInitOptions = {}): Promise<void>
   configureApiFootballSquads(apiFootball);
 
   try {
-    const modelConfigOverrides = await loadBestModelConfigOverrides(bestModelConfigPath);
+    const modelConfigOverrides =
+      await loadBestModelConfigOverrides(bestModelConfigPath);
     const {
       ratings: allRatings,
       teamMetrics,
@@ -1386,7 +1588,10 @@ export async function initOracle(options: OracleInitOptions = {}): Promise<void>
     cache.fixtureMatches = fixtureMatches;
     cache.dataset = dataset;
 
-    await refreshLiveDataIfNeeded({ force: true, scheduleRecalculation: false });
+    await refreshLiveDataIfNeeded({
+      force: true,
+      scheduleRecalculation: false,
+    });
     await recalculateCachedSimulation();
     cache.ready = true;
   } catch (err) {
@@ -1411,7 +1616,7 @@ router.get("/oracle/status", (req, res) => {
     teamsRated: Object.keys(cache.ratings).length,
     simulationsRun: cache.ready ? NUM_SIMULATIONS : 0,
     simulationSeed: cache.simulationSeed,
-    liveMatchesRecorded: cache.playedMatches.length,
+    liveMatchesRecorded: 0,
     liveDataProvider: liveData.provider,
     liveDataMatchesLoaded: cache.liveData.matches.length,
     liveDataLastSyncedAt: liveData.loadedAt,
@@ -1446,19 +1651,10 @@ router.post("/oracle/live-match", mutableRateLimiter, (req, res) => {
     });
   }
 
-  // Record manual scenario override.
-  cache.playedMatches = [
-    ...cache.playedMatches.filter((match) => !isSameMatchup(match, homeTeam, awayTeam)),
-    { homeTeam, awayTeam, homeScore, awayScore, source: "custom", status: "finished" },
-  ];
-
-  // Queue recalculation so the request can return while the last valid simulation stays available.
-  scheduleCachedSimulationRecalculation();
-
   return sendOracleSuccess(res, {
     success: true,
-    message: `Recorded manual scenario override: ${homeTeam} ${homeScore} - ${awayScore} ${awayTeam}`,
-    liveMatchesCount: cache.playedMatches.length,
+    message: `Accepted manual scenario override: ${homeTeam} ${homeScore} - ${awayScore} ${awayTeam}`,
+    liveMatchesCount: 0,
   });
 });
 
@@ -1471,14 +1667,9 @@ router.delete("/oracle/live-match", mutableRateLimiter, (req, res) => {
 
   const { homeTeam, awayTeam } = parsed.data;
 
-  cache.playedMatches = cache.playedMatches.filter((match) => !isSameMatchup(match, homeTeam, awayTeam));
-
-  // Queue recalculation so the request can return while the last valid simulation stays available.
-  scheduleCachedSimulationRecalculation();
-
   return sendOracleSuccess(res, {
     success: true,
-    liveMatchesCount: cache.playedMatches.length,
+    liveMatchesCount: 0,
   });
 });
 
@@ -1506,7 +1697,10 @@ router.get("/oracle/match-context", async (req, res) => {
     return sendValidationError(res, parsed.issues);
   }
 
-  const fixture = findMatchContextFixture(parsed.data.homeTeam, parsed.data.awayTeam);
+  const fixture = findMatchContextFixture(
+    parsed.data.homeTeam,
+    parsed.data.awayTeam,
+  );
 
   if (!fixture) {
     return sendApiError(res, 404, {
@@ -1521,12 +1715,9 @@ router.get("/oracle/match-context", async (req, res) => {
 });
 
 router.post("/oracle/live-matches/clear", mutableRateLimiter, (req, res) => {
-  cache.playedMatches = [];
-  scheduleCachedSimulationRecalculation();
-
   return sendOracleSuccess(res, {
     success: true,
-    message: "All manual scenario overrides cleared",
+    message: "Manual scenario overrides are request-scoped",
   });
 });
 
@@ -1550,12 +1741,21 @@ router.get("/oracle/squads", async (req, res) => {
 
 router.get("/oracle/simulation", async (req, res) => {
   const parsedSeed = parseOptionalSeed(req.query.seed);
+  const parsedCustomMatches = parseOptionalCustomMatchesQuery(
+    req.query.customMatches,
+  );
 
   if (!parsedSeed.success) {
     return sendValidationError(res, parsedSeed.issues);
   }
 
+  if (!parsedCustomMatches.success) {
+    return sendValidationError(res, parsedCustomMatches.issues);
+  }
+
   const requestedSeed = parsedSeed.data;
+  const hasRequestCustomMatches = req.query.customMatches !== undefined;
+  const customMatches = hasRequestCustomMatches ? parsedCustomMatches.data : [];
   const simulationSeed = requestedSeed ?? cache.simulationSeed;
   const uncertainty = getSimulationUncertaintyMetadata(NUM_SIMULATIONS);
 
@@ -1568,30 +1768,50 @@ router.get("/oracle/simulation", async (req, res) => {
       results: [],
       simulationsRun: 0,
       simulationSeed,
-      liveMatchesRecorded: 0,
+      liveMatchesRecorded: hasRequestCustomMatches
+        ? parsedCustomMatches.data.length
+        : 0,
       uncertainty: getSimulationUncertaintyMetadata(0),
     });
   }
 
-  const simResult = requestedSeed
-    ? runSimulations(cache.ratings, getSimulationMatches(), cache.teamMetrics, {
-        seed: requestedSeed,
-        modelConfig: cache.modelConfig,
-      })
-    : cache.simResult;
+  let simResult: SimResult;
+
+  try {
+    simResult =
+      requestedSeed || hasRequestCustomMatches
+        ? await simulationRunner(
+            createSimulationSnapshot(
+              cache.recalculation.publishedVersion,
+              simulationSeed,
+              customMatches,
+            ),
+          )
+        : cache.simResult;
+  } catch (err) {
+    logger.error({ err }, "Request-scoped simulation failed");
+    return sendApiError(res, 503, {
+      code: "simulation_unavailable",
+      message:
+        "Simulation could not be completed. Last valid cached results remain available.",
+    });
+  }
+
   const results = toPublishedSimulationResults(
     simResult,
     cache.ratings,
     NUM_SIMULATIONS,
     cache.liveData.eliminatedTeams,
-    cache.modelConfig
+    cache.modelConfig,
   );
 
   return sendOracleSuccess(res, {
     results,
     simulationsRun: NUM_SIMULATIONS,
     simulationSeed,
-    liveMatchesRecorded: cache.playedMatches.length,
+    liveMatchesRecorded: hasRequestCustomMatches
+      ? parsedCustomMatches.data.length
+      : 0,
     eliminatedTeams: [...cache.liveData.eliminatedTeams].sort(),
     uncertainty,
   });
@@ -1601,7 +1821,7 @@ router.post("/oracle/predict-match", (req, res) => {
   const parsed = parseBody<MatchPredictionInput>(matchTeamsSchema, req.body);
   const parsedExperimentalModifiers = parseOptionalBooleanQueryFlag(
     req.query.experimentalModifiers,
-    "experimentalModifiers"
+    "experimentalModifiers",
   );
 
   if (!parsed.success) {
@@ -1612,7 +1832,14 @@ router.post("/oracle/predict-match", (req, res) => {
     return sendValidationError(res, parsedExperimentalModifiers.issues);
   }
 
-  const { homeTeam, awayTeam, neutral = true, isHomeA = false, isHomeB = false } = parsed.data;
+  const {
+    homeTeam,
+    awayTeam,
+    neutral = true,
+    isHomeA = false,
+    isHomeB = false,
+    customMatches = [],
+  } = parsed.data;
   const modelConfig = parsedExperimentalModifiers.data
     ? { ...cache.modelConfig, experimentalModifiersEnabled: true }
     : cache.modelConfig;
@@ -1621,29 +1848,38 @@ router.post("/oracle/predict-match", (req, res) => {
   const eloAway = cache.ratings[awayTeam] ?? cache.modelConfig.fallbackRating;
   const metricsHome = cache.teamMetrics[homeTeam];
   const metricsAway = cache.teamMetrics[awayTeam];
-
-  const { pWinA, pDraw, pWinB, xgA, xgB, mostLikelyScore, modifiers } = matchProbabilities(
-    eloHome,
-    eloAway,
-    undefined,
-    metricsHome,
-    metricsAway,
-    isHomeA,
-    isHomeB,
-    neutral,
-    {},
-    modelConfig
+  const customMatch = findMatch(
+    customMatches.map(toFinishedCustomMatch),
+    homeTeam,
+    awayTeam,
   );
+
+  const { pWinA, pDraw, pWinB, xgA, xgB, mostLikelyScore, modifiers } =
+    matchProbabilities(
+      eloHome,
+      eloAway,
+      undefined,
+      metricsHome,
+      metricsAway,
+      isHomeA,
+      isHomeB,
+      neutral,
+      {},
+      modelConfig,
+    );
+  const customPrediction = customMatch
+    ? getCustomMatchPrediction(customMatch, homeTeam, awayTeam)
+    : null;
 
   return sendOracleSuccess(res, {
     homeTeam,
     awayTeam,
-    homeWinPct: Math.round(pWinA * 1000) / 10,
-    drawPct: Math.round(pDraw * 1000) / 10,
-    awayWinPct: Math.round(pWinB * 1000) / 10,
-    homeExpectedGoals: xgA,
-    awayExpectedGoals: xgB,
-    mostLikelyScore,
+    homeWinPct: customPrediction?.homeWinPct ?? Math.round(pWinA * 1000) / 10,
+    drawPct: customPrediction?.drawPct ?? Math.round(pDraw * 1000) / 10,
+    awayWinPct: customPrediction?.awayWinPct ?? Math.round(pWinB * 1000) / 10,
+    homeExpectedGoals: customPrediction?.homeExpectedGoals ?? xgA,
+    awayExpectedGoals: customPrediction?.awayExpectedGoals ?? xgB,
+    mostLikelyScore: customPrediction?.mostLikelyScore ?? mostLikelyScore,
     homeElo: eloHome,
     awayElo: eloAway,
     homeAttackStrength: metricsHome?.attackStrength ?? 1.0,

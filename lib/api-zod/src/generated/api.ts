@@ -184,7 +184,8 @@ export const getSimulationQuerySeedMax = 128;
 
 
 export const GetSimulationQueryParams = zod.object({
-  "seed": zod.coerce.string().min(1).max(getSimulationQuerySeedMax).optional().describe('Optional seed for an ad hoc reproducible simulation response. Omit it to use the cached seed.')
+  "seed": zod.coerce.string().min(1).max(getSimulationQuerySeedMax).optional().describe('Optional seed for an ad hoc reproducible simulation response. Omit it to use the cached seed.'),
+  "customMatches": zod.coerce.string().optional().describe('JSON-encoded array of request-local manual match overrides. When provided, these overrides are used only for this simulation response.')
 })
 
 export const GetSimulationResponse = zod.object({
@@ -281,12 +282,28 @@ export const PredictMatchQueryParams = zod.object({
 
 
 
+export const predictMatchBodyCustomMatchesItemHomeScoreMin = 0;
+export const predictMatchBodyCustomMatchesItemHomeScoreMax = 30;
+
+export const predictMatchBodyCustomMatchesItemAwayScoreMin = 0;
+export const predictMatchBodyCustomMatchesItemAwayScoreMax = 30;
+
+export const predictMatchBodyCustomMatchesMax = 104;
+
+
+
 export const PredictMatchBody = zod.object({
   "homeTeam": zod.string().min(1),
   "awayTeam": zod.string().min(1),
   "neutral": zod.boolean().optional().describe('Whether the match is played at a neutral venue. Defaults to true when omitted.'),
   "isHomeA": zod.boolean().optional().describe('Whether Team 1 receives host\/home context. Defaults to false when omitted.'),
-  "isHomeB": zod.boolean().optional().describe('Whether Team 2 receives host\/home context. Defaults to false when omitted.')
+  "isHomeB": zod.boolean().optional().describe('Whether Team 2 receives host\/home context. Defaults to false when omitted.'),
+  "customMatches": zod.array(zod.object({
+  "homeTeam": zod.string().min(1),
+  "awayTeam": zod.string().min(1),
+  "homeScore": zod.number().min(predictMatchBodyCustomMatchesItemHomeScoreMin).max(predictMatchBodyCustomMatchesItemHomeScoreMax),
+  "awayScore": zod.number().min(predictMatchBodyCustomMatchesItemAwayScoreMin).max(predictMatchBodyCustomMatchesItemAwayScoreMax)
+})).max(predictMatchBodyCustomMatchesMax).optional().describe('Request-local manual match overrides used only for this prediction.')
 })
 
 export const PredictMatchResponse = zod.object({

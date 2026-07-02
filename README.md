@@ -82,14 +82,12 @@ fifa-world-cup-2026-simulator/
 │   └── world-cup-oracle/  # React 19 + Vite 7 dashboard (Tailwind v4, Radix UI)
 ├── lib/
 │   ├── api-spec/          # OpenAPI spec (drives typed React Query hooks via Orval)
-│   ├── api-client-react/  # Generated React Query hooks
-│   └── db/                # Drizzle ORM schema scaffold (unused at runtime)
+│   └── api-client-react/  # Generated React Query hooks
 └── scripts/               # Workspace utilities
 ```
 
 - **Frontend**: React 19, Vite 7, Tailwind CSS v4, TanStack Query v5, Wouter routing.
 - **Backend**: Express 5 bundled with esbuild. Zero database is required for development or runtime execution. Ratings are computed from the historical match CSV loaded at startup, tournament fixtures come from the local versioned source, and manual scenario overrides live in memory.
-- **Database (Scaffold only)**: The `lib/db` workspace package contains a database schema scaffold using Drizzle ORM and `pg` for future persistence integrations. It is entirely isolated from the runtime application, and does not require an active database connection (`DATABASE_URL` is only verified lazily if database exports are explicitly utilized).
 - **Contract-Driven API**: OpenAPI spec in `lib/api-spec/openapi.yaml` automatically generates strictly typed React Query hooks and Zod schemas.
 
 ---
@@ -100,7 +98,6 @@ The World Cup Oracle API manages all scenario modifications using an **ephemeral
 
 1. **Local & Non-Persistent**: Manual match score overrides (recorded via `POST /api/oracle/live-match` or cleared via `POST /api/oracle/live-matches/clear`) are written directly to a local, in-memory cache variable in the running Express server process.
 2. **Restart Instability**: Because overrides are stored purely in-memory, any custom results and scenario predictions are temporary. They reset to the loaded fixture schedule and ratings recomputed from historical match data whenever the Express server process restarts or redeploys.
-3. **No Active Database**: Although the workspace contains a Drizzle ORM package structure (`lib/db`), the runtime server is database-free.
 
 ### Optional API-Football Squad Provider
 

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { Worker } from "node:worker_threads";
 import { Router, type Response } from "express";
 import { MODEL_VARIANTS } from "@workspace/oracle-model";
 import { DeleteLiveMatchBody, PredictMatchBody, RecordLiveMatchBody } from "@workspace/api-zod";
@@ -20,14 +21,18 @@ import {
 } from "../lib/match-context.js";
 import {
   NUM_SIMULATIONS,
-  createSeededRng,
-  runSimulations,
   matchProbabilities,
   getSimulationUncertaintyMetadata,
   toPublishedSimulationResults,
   type SimResult,
   type PlayedMatch,
 } from "../lib/simulation.js";
+import type {
+  SimulationWorkerErrorPayload,
+  SimulationWorkerRequest,
+  SimulationWorkerResponse,
+  SimulationWorkerSnapshot,
+} from "../lib/simulation.worker.js";
 import { WC2026_SQUADS, type TeamSquad } from "../lib/squads-data.js";
 import {
   createLiveTournamentFeedProvider,
@@ -54,7 +59,8 @@ const mutableRateLimiter = rateLimiter({
 });
 const MAX_REASONABLE_SCORE = 30;
 const MAX_SEED_LENGTH = 128;
-const RECALCULATION_BATCH_SIZE = 500;
+const MAX_CUSTOM_MATCHES = 104;
+const DEFAULT_SIMULATION_WORKER_TIMEOUT_MS = 120_000;
 const DEFAULT_LIVE_DATA_REFRESH_INTERVAL_MS = 30_000;
 const TEAM_NAMES = new Set(WC2026_TEAMS.map((team) => team.name));
 const BEST_MODEL_CONFIG_FILENAME = "best-model-config.json";
@@ -119,14 +125,16 @@ type SimulationRecalculationState = {
   error: string | null;
 };
 type SimulationRecalculationSnapshot = {
-  version: number;
-  seed: string;
-  ratings: Record<string, number>;
-  teamMetrics: Record<string, TeamMetrics>;
-  playedMatches: PlayedMatch[];
-  modelConfig: ModelConfig;
+  [K in keyof SimulationWorkerSnapshot]: SimulationWorkerSnapshot[K];
 };
-type SimulationRunner = (snapshot: SimulationRecalculationSnapshot) => Promise<SimResult>;
+type SimulationRunner = (
+  snapshot: SimulationRecalculationSnapshot,
+) => Promise<SimResult>;
+type SimulationWorkerOptions = {
+  workerUrl: URL;
+  timeoutMs: number;
+  simulationsRun: number;
+};
 type LiveDataProviderName = LiveDataProvider | "disabled";
 type LiveDataOptions = FetchLiveTournamentFeedOptions & {
   provider?: LiveDataProviderName;
@@ -325,7 +333,10 @@ function parseOptionalBooleanQueryFlag(
     return { success: true, data: false };
   }
 
-  return { success: false, issues: [{ path: field, message: `${field} must be true or false` }] };
+  return {
+    success: false,
+    issues: [{ path: field, message: `${field} must be true or false` }],
+  };
 }
 
 // ---- In-memory cache ----
@@ -442,68 +453,230 @@ function createZeroedSimulationResult(): SimResult {
   };
 }
 
-function mergeCountBuckets(
-  left: Record<string, number>,
-  right: Record<string, number>
-): Record<string, number> {
-  const names = new Set([...Object.keys(left), ...Object.keys(right)]);
-
-  return Object.fromEntries(
-    [...names].map((name) => [name, (left[name] ?? 0) + (right[name] ?? 0)])
-  );
-}
-
-function mergeSimulationResults(left: SimResult, right: SimResult): SimResult {
-  return {
-    titles: mergeCountBuckets(left.titles, right.titles),
-    finals: mergeCountBuckets(left.finals, right.finals),
-    semiFinals: mergeCountBuckets(left.semiFinals, right.semiFinals),
-    quarterFinals: mergeCountBuckets(left.quarterFinals, right.quarterFinals),
-    roundOf16: mergeCountBuckets(left.roundOf16, right.roundOf16),
-    groupWins: mergeCountBuckets(left.groupWins, right.groupWins),
-    groupAdvances: mergeCountBuckets(left.groupAdvances, right.groupAdvances),
-  };
-}
-
 function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-async function runSimulationRecalculationInBatches(
-  snapshot: SimulationRecalculationSnapshot
-): Promise<SimResult> {
-  let aggregate = createZeroedSimulationResult();
-  let remaining = NUM_SIMULATIONS;
-  const random = createSeededRng(snapshot.seed);
+class SimulationWorkerExecutionError extends Error {
+  readonly code = "simulation_worker_failed";
+  readonly status = 500;
+  readonly statusCode = 500;
 
-  while (remaining > 0) {
-    const simulationsRun = Math.min(RECALCULATION_BATCH_SIZE, remaining);
-    const partialResult = runSimulations(snapshot.ratings, snapshot.playedMatches, snapshot.teamMetrics, {
-      random,
-      simulationsRun,
-      modelConfig: snapshot.modelConfig,
-    });
-
-    aggregate = mergeSimulationResults(aggregate, partialResult);
-    remaining -= simulationsRun;
-
-    if (remaining > 0) {
-      await yieldToEventLoop();
-    }
+  constructor(message: string, options: { cause?: unknown } = {}) {
+    super(message, options);
+    this.name = "SimulationWorkerExecutionError";
   }
-
-  return aggregate;
 }
 
-function getMergedPlayedMatches(): PlayedMatch[] {
+class SimulationWorkerTimeoutError extends Error {
+  readonly code = "simulation_worker_timeout";
+  readonly status = 504;
+  readonly statusCode = 504;
+
+  constructor(timeoutMs: number) {
+    super(`Simulation worker timed out after ${timeoutMs}ms`);
+    this.name = "SimulationWorkerTimeoutError";
+  }
+}
+
+function createDefaultSimulationWorkerOptions(): SimulationWorkerOptions {
+  return {
+    workerUrl: getDefaultSimulationWorkerUrl(),
+    timeoutMs: DEFAULT_SIMULATION_WORKER_TIMEOUT_MS,
+    simulationsRun: NUM_SIMULATIONS,
+  };
+}
+
+function getDefaultSimulationWorkerUrl(): URL {
+  const moduleUrl = new URL(import.meta.url);
+
+  if (moduleUrl.pathname.endsWith("/src/routes/oracle.ts")) {
+    return new URL("../../dist/lib/simulation.worker.mjs", import.meta.url);
+  }
+
+  return new URL("./lib/simulation.worker.mjs", import.meta.url);
+}
+
+function cloneSimulationWorkerOptions(
+  options: SimulationWorkerOptions,
+): SimulationWorkerOptions {
+  return {
+    workerUrl: new URL(options.workerUrl.href),
+    timeoutMs: options.timeoutMs,
+    simulationsRun: options.simulationsRun,
+  };
+}
+
+function createWorkerResponseError(
+  error: SimulationWorkerErrorPayload,
+): SimulationWorkerExecutionError {
+  const workerError = new SimulationWorkerExecutionError(
+    `Simulation worker failed: ${error.message}`,
+  );
+
+  workerError.stack = error.stack;
+  return workerError;
+}
+
+function isSimulationWorkerResponse(
+  message: unknown,
+): message is SimulationWorkerResponse {
+  if (typeof message !== "object" || message === null) {
+    return false;
+  }
+
+  const candidate = message as Partial<SimulationWorkerResponse>;
+  return (
+    (candidate.type === "simulation-complete" ||
+      candidate.type === "simulation-error") &&
+    typeof candidate.requestId === "string"
+  );
+}
+
+function runSimulationRecalculationInWorker(
+  snapshot: SimulationRecalculationSnapshot,
+): Promise<SimResult> {
+  const options = cloneSimulationWorkerOptions(simulationWorkerOptions);
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const requestId = randomUUID();
+    const worker = new Worker(options.workerUrl, {
+      name: `oracle-simulation-${snapshot.version}`,
+    });
+
+    const timeout = setTimeout(() => {
+      settleReject(new SimulationWorkerTimeoutError(options.timeoutMs));
+      void worker.terminate().catch((err) => {
+        logger.warn({ err }, "Failed to terminate timed-out simulation worker");
+      });
+    }, options.timeoutMs);
+
+    function cleanup(): void {
+      clearTimeout(timeout);
+      worker.off("message", handleMessage);
+      worker.off("error", handleError);
+      worker.off("exit", handleExit);
+    }
+
+    function settleResolve(result: SimResult): void {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      cleanup();
+      resolve(result);
+    }
+
+    function settleReject(error: Error): void {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      cleanup();
+      reject(error);
+    }
+
+    function handleMessage(message: unknown): void {
+      if (!isSimulationWorkerResponse(message)) {
+        settleReject(
+          new SimulationWorkerExecutionError(
+            "Simulation worker posted an invalid response",
+          ),
+        );
+        void worker.terminate();
+        return;
+      }
+
+      if (message.requestId !== requestId) {
+        settleReject(
+          new SimulationWorkerExecutionError(
+            "Simulation worker posted a response for an unknown request",
+          ),
+        );
+        void worker.terminate();
+        return;
+      }
+
+      if (message.type === "simulation-error") {
+        settleReject(createWorkerResponseError(message.error));
+        return;
+      }
+
+      settleResolve(message.result);
+    }
+
+    function handleError(error: Error): void {
+      settleReject(
+        new SimulationWorkerExecutionError(
+          `Simulation worker crashed: ${error.message}`,
+          { cause: error },
+        ),
+      );
+    }
+
+    function handleExit(code: number): void {
+      if (settled) {
+        return;
+      }
+
+      settleReject(
+        new SimulationWorkerExecutionError(
+          code === 0
+            ? "Simulation worker exited before posting a result"
+            : `Simulation worker exited with code ${code}`,
+        ),
+      );
+    }
+
+    worker.once("message", handleMessage);
+    worker.once("error", handleError);
+    worker.once("exit", handleExit);
+
+    try {
+      const request: SimulationWorkerRequest = {
+        type: "run-simulations",
+        requestId,
+        snapshot,
+        simulationsRun: options.simulationsRun,
+      };
+      worker.postMessage(request);
+    } catch (error) {
+      settleReject(
+        new SimulationWorkerExecutionError(
+          `Simulation worker request could not be posted: ${getErrorMessage(error)}`,
+          { cause: error },
+        ),
+      );
+      void worker.terminate();
+    }
+  });
+}
+
+function toFinishedCustomMatch(custom: LiveMatchInput): PlayedMatch {
+  return {
+    homeTeam: custom.homeTeam,
+    awayTeam: custom.awayTeam,
+    homeScore: custom.homeScore,
+    awayScore: custom.awayScore,
+    source: "custom",
+    status: "finished",
+  };
+}
+
+function getMergedPlayedMatches(
+  customMatches: readonly LiveMatchInput[] = [],
+): PlayedMatch[] {
   const merged: PlayedMatch[] = cache.fixtureMatches.map((m) => ({ ...m }));
 
   for (const liveMatch of cache.liveData.matches) {
     upsertMatch(merged, { ...liveMatch });
   }
 
-  for (const custom of cache.playedMatches) {
-    const customMatch = { ...custom, source: "custom" as const, status: "finished" as const };
+  for (const custom of customMatches) {
+    const customMatch = toFinishedCustomMatch(custom);
     const existing = findMatch(merged, custom.homeTeam, custom.awayTeam);
     if (existing && isLockedExternalMatch(existing)) continue;
     upsertMatch(merged, customMatch);
@@ -512,13 +685,21 @@ function getMergedPlayedMatches(): PlayedMatch[] {
   return merged;
 }
 
-function getSimulationMatches(): PlayedMatch[] {
-  return getMergedPlayedMatches().filter(
-    (m) => m.homeScore >= 0 && m.awayScore >= 0 && (m.status ?? "finished") === "finished"
+function getSimulationMatches(
+  customMatches: readonly LiveMatchInput[] = [],
+): PlayedMatch[] {
+  return getMergedPlayedMatches(customMatches).filter(
+    (m) =>
+      m.homeScore >= 0 &&
+      m.awayScore >= 0 &&
+      (m.status ?? "finished") === "finished",
   );
 }
 
-function createLiveDataSignature(matches: readonly PlayedMatch[], eliminatedTeams: ReadonlySet<string>): string {
+function createLiveDataSignature(
+  matches: readonly PlayedMatch[],
+  eliminatedTeams: ReadonlySet<string>,
+): string {
   return JSON.stringify({
     matches: matches.map((match) => ({
       sourceId: match.sourceId,
@@ -700,13 +881,25 @@ function formatSimulationRecalculationError(_error: unknown): string {
   return "Simulation recalculation failed. Last valid simulation results remain available.";
 }
 
-function createRecalculationSnapshot(version: number): SimulationRecalculationSnapshot {
+function createRecalculationSnapshot(
+  version: number,
+): SimulationRecalculationSnapshot {
+  return createSimulationSnapshot(version, createSimulationSeed(), []);
+}
+
+function createSimulationSnapshot(
+  version: number,
+  seed: string,
+  customMatches: readonly LiveMatchInput[],
+): SimulationRecalculationSnapshot {
   return {
     version,
-    seed: createSimulationSeed(),
+    seed,
     ratings: { ...cache.ratings },
     teamMetrics: { ...cache.teamMetrics },
-    playedMatches: getSimulationMatches().map((match) => ({ ...match })),
+    playedMatches: getSimulationMatches(customMatches).map((match) => ({
+      ...match,
+    })),
     modelConfig: { ...cache.modelConfig },
   };
 }
@@ -1085,7 +1278,9 @@ export function resetOracleForTests(): void {
   matchContextService = createMatchContextService();
 }
 
-export function setSimulationRunnerForTests(runner: SimulationRunner): () => void {
+export function setSimulationRunnerForTests(
+  runner: SimulationRunner,
+): () => void {
   const previousRunner = simulationRunner;
   simulationRunner = runner;
 
@@ -1094,7 +1289,23 @@ export function setSimulationRunnerForTests(runner: SimulationRunner): () => voi
   };
 }
 
-export function setMatchContextServiceForTests(service: MatchContextService): () => void {
+export function setSimulationWorkerOptionsForTests(
+  overrides: Partial<SimulationWorkerOptions>,
+): () => void {
+  const previousOptions = cloneSimulationWorkerOptions(simulationWorkerOptions);
+  simulationWorkerOptions = {
+    ...simulationWorkerOptions,
+    ...overrides,
+  };
+
+  return () => {
+    simulationWorkerOptions = previousOptions;
+  };
+}
+
+export function setMatchContextServiceForTests(
+  service: MatchContextService,
+): () => void {
   const previousService = matchContextService;
   matchContextService = service;
 

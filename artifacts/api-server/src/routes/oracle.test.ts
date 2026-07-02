@@ -5,6 +5,8 @@ import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { build as esbuild } from "esbuild";
 
 import app from "../app.js";
 import { createMatchContextService } from "../lib/match-context.js";
@@ -17,13 +19,34 @@ import {
   seedReadyOracleForTests,
   setMatchContextServiceForTests,
   setSimulationRunnerForTests,
+  setSimulationWorkerOptionsForTests,
 } from "./oracle.js";
 
 let server: Server;
 let baseUrl: string;
+let bundledWorkerDir: string | null = null;
+let restoreBundledWorkerOptions: (() => void) | null = null;
 const TEST_API_FOOTBALL_KEY = ["api", "football", "test", "token"].join("-");
 
 before(async () => {
+  bundledWorkerDir = await createTempDir("oracle-worker-bundle-");
+  const bundledWorkerPath = join(bundledWorkerDir, "simulation.worker.mjs");
+
+  await esbuild({
+    entryPoints: [
+      fileURLToPath(new URL("../lib/simulation.worker.ts", import.meta.url)),
+    ],
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    outfile: bundledWorkerPath,
+    logLevel: "silent",
+  });
+
+  restoreBundledWorkerOptions = setSimulationWorkerOptionsForTests({
+    workerUrl: pathToFileURL(bundledWorkerPath),
+  });
+
   server = app.listen(0);
   await new Promise<void>((resolve) => {
     server.once("listening", resolve);
@@ -44,6 +67,14 @@ after(async () => {
       resolve();
     });
   });
+
+  restoreBundledWorkerOptions?.();
+  restoreBundledWorkerOptions = null;
+
+  if (bundledWorkerDir) {
+    await rm(bundledWorkerDir, { recursive: true, force: true });
+    bundledWorkerDir = null;
+  }
 });
 
 async function requestJson(method: string, path: string, payload: unknown): Promise<Response> {

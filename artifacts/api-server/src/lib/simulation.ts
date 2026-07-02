@@ -33,11 +33,13 @@ import {
 
 export const NUM_SIMULATIONS = 10_000;
 export const DEFAULT_SIMULATION_SEED = "world-cup-oracle-simulation-v1";
-export const HIGH_ALTITUDE_THRESHOLD_METERS = 1200;
+export const HIGH_ALTITUDE_THRESHOLD_METERS = 1000;
 export const ALTITUDE_ELO_PENALTY = -50;
+export const ALTITUDE_REFERENCE_EXCESS_METERS = 1240;
 export const ACCLIMATIZATION_REST_DAYS = 5;
-export const TRAVEL_FATIGUE_DISTANCE_THRESHOLD_KM = 2500;
-export const TRAVEL_FATIGUE_REST_DAYS = 5;
+export const TRAVEL_FATIGUE_DISTANCE_REFERENCE_KM = 2500;
+export const TRAVEL_FATIGUE_DISTANCE_CAP_KM = 5000;
+export const TRAVEL_FATIGUE_REST_DECAY_RATE = 0.2;
 export const TRAVEL_FATIGUE_ELO_PENALTY = -30;
 const EARTH_RADIUS_KM = 6371;
 
@@ -169,11 +171,15 @@ export function calculateTravelFatigueAdjustment(
 
   const distanceKm = calculateTravelDistanceKm(previousVenue, venue);
 
-  if (distanceKm > TRAVEL_FATIGUE_DISTANCE_THRESHOLD_KM && restDays < TRAVEL_FATIGUE_REST_DAYS) {
-    return TRAVEL_FATIGUE_ELO_PENALTY;
+  if (distanceKm <= 0) {
+    return 0;
   }
 
-  return 0;
+  const cappedDistanceKm = Math.min(distanceKm, TRAVEL_FATIGUE_DISTANCE_CAP_KM);
+  const distanceFactor = cappedDistanceKm / TRAVEL_FATIGUE_DISTANCE_REFERENCE_KM;
+  const restDaysFactor = Math.exp(-TRAVEL_FATIGUE_REST_DECAY_RATE * restDays);
+
+  return TRAVEL_FATIGUE_ELO_PENALTY * distanceFactor * restDaysFactor;
 }
 
 function isHighAltitudeVenue(venue: WCHostVenue): boolean {
@@ -184,28 +190,40 @@ function isHighAltitudeHomeNation(teamName: string | undefined, venue: WCHostVen
   return teamName === "Mexico" && venue.country === "Mexico" && isHighAltitudeVenue(venue);
 }
 
-function hasSufficientAltitudeAcclimatization(
+function toNonNegativeFiniteDays(days: number | undefined): number {
+  if (days === undefined || !Number.isFinite(days)) {
+    return 0;
+  }
+
+  return Math.max(0, days);
+}
+
+function calculateAltitudeAcclimatizationDays(
   venue: WCHostVenue,
   matchDate: string | undefined,
   travelState: TeamTravelState | undefined,
   acclimatizationDays: number | undefined
-): boolean {
+): number {
   if (!isHighAltitudeVenue(venue)) {
-    return true;
+    return ACCLIMATIZATION_REST_DAYS;
   }
 
   if (acclimatizationDays !== undefined) {
-    return acclimatizationDays >= ACCLIMATIZATION_REST_DAYS;
+    return toNonNegativeFiniteDays(acclimatizationDays);
   }
 
   if (!matchDate || !travelState) {
-    return false;
+    return 0;
   }
 
   const lastVenue = getHostVenueByName(travelState.lastVenue);
   const restDays = calculateRestDaysSinceLastMatch(travelState.lastMatchDate, matchDate);
 
-  return Boolean(lastVenue && isHighAltitudeVenue(lastVenue) && restDays !== null && restDays >= ACCLIMATIZATION_REST_DAYS);
+  if (!lastVenue || !isHighAltitudeVenue(lastVenue) || restDays === null) {
+    return 0;
+  }
+
+  return restDays;
 }
 
 export function calculateAltitudeEloAdjustment(
@@ -225,18 +243,25 @@ export function calculateAltitudeEloAdjustment(
     return 0;
   }
 
-  if (
-    hasSufficientAltitudeAcclimatization(
-      venue,
-      options.matchDate,
-      options.travelState,
-      options.acclimatizationDays
-    )
-  ) {
+  const altitudeExcessMeters = Math.max(0, venue.altitudeMeters - HIGH_ALTITUDE_THRESHOLD_METERS);
+
+  if (altitudeExcessMeters === 0) {
     return 0;
   }
 
-  return ALTITUDE_ELO_PENALTY;
+  const acclimatizationDays = calculateAltitudeAcclimatizationDays(
+    venue,
+    options.matchDate,
+    options.travelState,
+    options.acclimatizationDays
+  );
+  const acclimatizationFactor = Math.max(0, 1 - acclimatizationDays / ACCLIMATIZATION_REST_DAYS);
+
+  return (
+    ALTITUDE_ELO_PENALTY *
+    (altitudeExcessMeters / ALTITUDE_REFERENCE_EXCESS_METERS) *
+    acclimatizationFactor
+  );
 }
 
 export function applyMatchContextRatingAdjustments(input: MatchContextRatingInput): MatchContextRatingResult {

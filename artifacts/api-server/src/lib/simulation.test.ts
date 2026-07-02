@@ -3,11 +3,16 @@ import test from "node:test";
 import { predictMatch } from "@workspace/oracle-model";
 
 import {
+  ACCLIMATIZATION_REST_DAYS,
   ALTITUDE_ELO_PENALTY,
+  ALTITUDE_REFERENCE_EXCESS_METERS,
   HIGH_ALTITUDE_THRESHOLD_METERS,
-  TRAVEL_FATIGUE_DISTANCE_THRESHOLD_KM,
+  TRAVEL_FATIGUE_DISTANCE_CAP_KM,
+  TRAVEL_FATIGUE_DISTANCE_REFERENCE_KM,
   TRAVEL_FATIGUE_ELO_PENALTY,
+  TRAVEL_FATIGUE_REST_DECAY_RATE,
   applyMatchContextRatingAdjustments,
+  calculateAltitudeEloAdjustment,
   calculateProbabilityUncertainty,
   calculateTravelDistanceKm,
   calculateTravelFatigueAdjustment,
@@ -66,6 +71,21 @@ function assertAlmostEqual(actual: number, expected: number, tolerance = 1e-12):
 
 function assertNormalized(probabilities: { pWinA: number; pDraw: number; pWinB: number }): void {
   assertAlmostEqual(probabilities.pWinA + probabilities.pDraw + probabilities.pWinB, 1);
+}
+
+function expectedTravelFatiguePenalty(distanceKm: number, restDays: number): number {
+  return (
+    TRAVEL_FATIGUE_ELO_PENALTY *
+    (Math.min(distanceKm, TRAVEL_FATIGUE_DISTANCE_CAP_KM) / TRAVEL_FATIGUE_DISTANCE_REFERENCE_KM) *
+    Math.exp(-TRAVEL_FATIGUE_REST_DECAY_RATE * restDays)
+  );
+}
+
+function expectedAltitudePenalty(altitudeMeters: number, acclimatizationDays: number): number {
+  const altitudeExcessMeters = Math.max(0, altitudeMeters - HIGH_ALTITUDE_THRESHOLD_METERS);
+  const acclimatizationFactor = Math.max(0, 1 - acclimatizationDays / ACCLIMATIZATION_REST_DAYS);
+
+  return ALTITUDE_ELO_PENALTY * (altitudeExcessMeters / ALTITUDE_REFERENCE_EXCESS_METERS) * acclimatizationFactor;
 }
 
 test("match probabilities are deterministic and symmetric for evenly matched neutral teams", () => {
@@ -205,6 +225,7 @@ test("altitude adjustment exempts high-altitude home nations and acclimatized te
   const mexicoCity = getHostVenueByName("Mexico City");
   assert.ok(mexicoCity);
 
+  const mexicoCityFreshArrivalPenalty = expectedAltitudePenalty(mexicoCity.altitudeMeters, 0);
   const freshArrival = applyMatchContextRatingAdjustments({
     ratingA: 1500,
     ratingB: 1500,
@@ -220,42 +241,88 @@ test("altitude adjustment exempts high-altitude home nations and acclimatized te
     teamNameB: "South Africa",
     venue: mexicoCity.name,
     matchDate: "2026-06-18",
-    travelStateB: {
-      lastVenue: "Guadalajara",
-      lastMatchDate: "2026-06-11",
-    },
+    acclimatizationDaysB: ACCLIMATIZATION_REST_DAYS,
   });
 
   assert.equal(freshArrival.ratingA, 1500);
-  assert.equal(freshArrival.ratingB, 1450);
+  assertAlmostEqual(freshArrival.ratingB, 1500 + mexicoCityFreshArrivalPenalty);
   assert.equal(acclimatized.ratingB, 1500);
 });
 
-test("travel fatigue applies after long travel with less than five rest days", () => {
+test("altitude adjustment scales with altitude excess and partial acclimatization", () => {
+  const guadalajara = getHostVenueByName("Guadalajara");
+  const mexicoCity = getHostVenueByName("Mexico City");
+  assert.ok(guadalajara);
+  assert.ok(mexicoCity);
+
+  assert.equal(HIGH_ALTITUDE_THRESHOLD_METERS, 1000);
+  assert.equal(ALTITUDE_REFERENCE_EXCESS_METERS, 1240);
+  assertAlmostEqual(
+    calculateAltitudeEloAdjustment("South Africa", guadalajara, { acclimatizationDays: 0 }),
+    expectedAltitudePenalty(guadalajara.altitudeMeters, 0)
+  );
+  assertAlmostEqual(
+    calculateAltitudeEloAdjustment("South Africa", mexicoCity, { acclimatizationDays: 2 }),
+    expectedAltitudePenalty(mexicoCity.altitudeMeters, 2)
+  );
+  assertAlmostEqual(
+    calculateAltitudeEloAdjustment("South Africa", mexicoCity, { acclimatizationDays: 8 }),
+    0
+  );
+});
+
+test("travel fatigue scales with distance and decays with rest days", () => {
   const vancouver = getHostVenueByName("Vancouver");
   const miami = getHostVenueByName("Miami");
   assert.ok(vancouver);
   assert.ok(miami);
 
   const distanceKm = calculateTravelDistanceKm(vancouver, miami);
+  const distantVenue = {
+    ...miami,
+    name: "Distant Test Venue",
+    latitude: -vancouver.latitude,
+    longitude: vancouver.longitude + 180,
+  };
+  const cappedDistanceKm = calculateTravelDistanceKm(vancouver, distantVenue);
+  const threeRestDaysPenalty = expectedTravelFatiguePenalty(distanceKm, 3);
+  const sixRestDaysPenalty = expectedTravelFatiguePenalty(distanceKm, 6);
+  const cappedDistancePenalty = expectedTravelFatiguePenalty(cappedDistanceKm, 0);
 
-  assert.ok(distanceKm > TRAVEL_FATIGUE_DISTANCE_THRESHOLD_KM);
+  assert.ok(distanceKm < TRAVEL_FATIGUE_DISTANCE_CAP_KM);
+  assert.ok(cappedDistanceKm > TRAVEL_FATIGUE_DISTANCE_CAP_KM);
+  assert.equal(TRAVEL_FATIGUE_DISTANCE_REFERENCE_KM, 2500);
+  assert.equal(TRAVEL_FATIGUE_DISTANCE_CAP_KM, 5000);
+  assert.equal(TRAVEL_FATIGUE_REST_DECAY_RATE, 0.2);
   assert.equal(TRAVEL_FATIGUE_ELO_PENALTY, -30);
-  assert.equal(
+  assertAlmostEqual(
     calculateTravelFatigueAdjustment(
       { lastVenue: "Vancouver", lastMatchDate: "2026-06-27" },
       miami,
       "2026-07-01"
     ),
-    TRAVEL_FATIGUE_ELO_PENALTY
+    threeRestDaysPenalty
   );
-  assert.equal(
+  assertAlmostEqual(
     calculateTravelFatigueAdjustment(
       { lastVenue: "Vancouver", lastMatchDate: "2026-06-27" },
       miami,
       "2026-07-04"
     ),
-    0
+    sixRestDaysPenalty
+  );
+  assert.ok(Math.abs(sixRestDaysPenalty) < Math.abs(threeRestDaysPenalty));
+  assertAlmostEqual(
+    calculateTravelFatigueAdjustment(
+      { lastVenue: "Vancouver", lastMatchDate: "2026-06-27" },
+      distantVenue,
+      "2026-06-28"
+    ),
+    cappedDistancePenalty
+  );
+  assertAlmostEqual(
+    cappedDistancePenalty,
+    TRAVEL_FATIGUE_ELO_PENALTY * (TRAVEL_FATIGUE_DISTANCE_CAP_KM / TRAVEL_FATIGUE_DISTANCE_REFERENCE_KM)
   );
 });
 

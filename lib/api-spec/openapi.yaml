@@ -142,8 +142,8 @@ paths:
     post:
       operationId: recordLiveMatch
       tags: [oracle]
-      summary: Record a manual scenario override
-      description: Records a manual match score override in-memory and queues simulation recalculation
+      summary: Validate a manual scenario override
+      description: Legacy compatibility endpoint. Validates a manual match score override but does not store server-side state or queue recalculation; active dashboard scenarios are sent as request-local customMatches.
       requestBody:
         required: true
         content:
@@ -152,7 +152,7 @@ paths:
               $ref: "#/components/schemas/LiveMatchRequest"
       responses:
         "200":
-          description: Manual override recorded successfully
+          description: Manual override accepted for compatibility
           content:
             application/json:
               schema:
@@ -166,8 +166,8 @@ paths:
     delete:
       operationId: deleteLiveMatch
       tags: [oracle]
-      summary: Remove a manual scenario override
-      description: Removes a manual match score override in-memory and queues simulation recalculation
+      summary: Validate removing a manual scenario override
+      description: Legacy compatibility endpoint. Validates a manual override delete request but does not mutate server-side state; active dashboard scenarios are browser-local/request-local.
       requestBody:
         required: true
         content:
@@ -176,7 +176,7 @@ paths:
               $ref: "#/components/schemas/DeleteLiveMatchRequest"
       responses:
         "200":
-          description: Manual override deleted successfully
+          description: Manual override delete accepted for compatibility
           content:
             application/json:
               schema:
@@ -192,11 +192,11 @@ paths:
     get:
       operationId: getLiveMatches
       tags: [oracle]
-      summary: List imported fixtures and manual scenario overrides
-      description: Returns the imported fixture list plus any in-memory manual scenario overrides
+      summary: List imported fixtures and live results
+      description: Returns imported fixtures plus external live/final results. Manual scenario overrides are not persisted on the server and must be supplied through request-local customMatches.
       responses:
         "200":
-          description: Imported fixtures and manual overrides
+          description: Imported fixtures and external live/final results
           content:
             application/json:
               schema:
@@ -247,11 +247,11 @@ paths:
     post:
       operationId: clearLiveMatches
       tags: [oracle]
-      summary: Clear all manual scenario overrides
-      description: Clears all in-memory manual score overrides and queues simulation recalculation
+      summary: Validate clearing manual scenario overrides
+      description: Legacy compatibility endpoint. Returns success without mutating server state because manual scenario overrides are browser-local/request-local.
       responses:
         "200":
-          description: All manual scenario overrides cleared
+          description: Manual scenario clear accepted for compatibility
           content:
             application/json:
               schema:

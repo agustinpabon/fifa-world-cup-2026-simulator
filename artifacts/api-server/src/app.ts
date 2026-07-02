@@ -16,7 +16,7 @@ if (trustProxyVal === "true") {
   const num = Number(trustProxyVal);
   app.set("trust proxy", Number.isNaN(num) ? trustProxyVal : num);
 } else {
-  app.set("trust proxy", 1); // default to trusting first proxy
+  app.set("trust proxy", false);
 }
 
 app.use(
@@ -41,7 +41,9 @@ app.use(
 
 const isProduction = process.env.NODE_ENV === "production";
 const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
+  ? process.env.ALLOWED_ORIGINS.split(",")
+      .map((o) => o.trim())
+      .filter(Boolean)
   : [];
 
 app.use(
@@ -68,22 +70,32 @@ app.use(
         ) {
           callback(null, true);
         } else {
-          logger.warn({ origin }, "CORS blocked request in development (non-localhost)");
+          logger.warn(
+            { origin },
+            "CORS blocked request in development (non-localhost)",
+          );
           callback(new Error("Not allowed by CORS"));
         }
       }
     },
     credentials: true,
-  })
+  }),
 );
 
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ limit: "10kb", extended: true }));
 
 const malformedJsonHandler: ErrorRequestHandler = (error, req, res, next) => {
-  const bodyParserError = error as { type?: unknown; status?: number; statusCode?: number };
+  const bodyParserError = error as {
+    type?: unknown;
+    status?: number;
+    statusCode?: number;
+  };
 
-  if (error instanceof SyntaxError && bodyParserError.type === "entity.parse.failed") {
+  if (
+    error instanceof SyntaxError &&
+    bodyParserError.type === "entity.parse.failed"
+  ) {
     sendApiError(res, 400, {
       code: "malformed_json",
       message: "Malformed JSON payload",
@@ -127,7 +139,10 @@ const errorHandler: ErrorRequestHandler = (error, req, res, next) => {
 
   sendApiError(res, status, {
     code,
-    message: isProd && code === "internal_server_error" ? "An unexpected error occurred" : message,
+    message:
+      isProd && code === "internal_server_error"
+        ? "An unexpected error occurred"
+        : message,
     ...(isProd ? {} : { issues: [{ message: error.stack || "" }] }),
   });
 };

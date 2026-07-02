@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Worker } from "node:worker_threads";
-import { Router, type Response } from "express";
+import {
+  Router,
+  type NextFunction,
+  type Request,
+  type Response,
+} from "express";
 import { MODEL_VARIANTS } from "@workspace/oracle-model";
 import {
   DeleteLiveMatchBody,
@@ -66,10 +71,18 @@ const mutableRateLimiter = rateLimiter({
   message:
     "Too many scenario mutation requests. Please wait before trying again.",
 });
+const adHocSimulationRateLimiter = rateLimiter({
+  windowMs: 60 * 1000,
+  max: 12,
+  message:
+    "Too many seeded or custom simulation requests. Please wait before trying again.",
+});
 const MAX_REASONABLE_SCORE = 30;
 const MAX_SEED_LENGTH = 128;
 const MAX_CUSTOM_MATCHES = 104;
 const DEFAULT_SIMULATION_WORKER_TIMEOUT_MS = 120_000;
+const DEFAULT_AD_HOC_SIMULATION_CONCURRENCY = 2;
+const DEFAULT_AD_HOC_SIMULATION_QUEUE_LIMIT = 4;
 const DEFAULT_LIVE_DATA_REFRESH_INTERVAL_MS = 30_000;
 const TEAM_NAMES = new Set(WC2026_TEAMS.map((team) => team.name));
 const BEST_MODEL_CONFIG_FILENAME = "best-model-config.json";
@@ -156,6 +169,17 @@ type SimulationWorkerOptions = {
   workerUrl: URL;
   timeoutMs: number;
   simulationsRun: number;
+  adHocConcurrency: number;
+  adHocQueueLimit: number;
+};
+type QueuedSimulationRun = {
+  run: () => Promise<SimResult>;
+  resolve: (result: SimResult) => void;
+  reject: (error: Error) => void;
+};
+type AdHocSimulationLimiter = {
+  run(task: () => Promise<SimResult>): Promise<SimResult>;
+  cancelPending(error: Error): void;
 };
 type LiveDataProviderName = LiveDataProvider | "disabled";
 type LiveDataOptions = FetchLiveTournamentFeedOptions & {
@@ -323,6 +347,19 @@ function sendValidationError(res: Response, issues: ApiErrorIssue[]) {
     message: "Invalid request body",
     issues,
   });
+}
+
+function limitAdHocSimulationRequests(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
+  if (req.query.seed === undefined && req.query.customMatches === undefined) {
+    next();
+    return;
+  }
+
+  adHocSimulationRateLimiter(req, res, next);
 }
 
 function createSimulationSeed(): string {
@@ -496,6 +533,9 @@ const cache: OracleCache = createInitialCache();
 let simulationRunner: SimulationRunner = runSimulationRecalculationInWorker;
 let simulationWorkerOptions: SimulationWorkerOptions =
   createDefaultSimulationWorkerOptions();
+let adHocSimulationLimiter = createAdHocSimulationLimiter(
+  simulationWorkerOptions,
+);
 let liveDataProvider: LiveTournamentFeedProvider | null = null;
 let matchContextService: MatchContextService = createMatchContextService();
 let apiFootballSquadsProvider: ApiFootballSquadsProvider | null = null;
@@ -602,12 +642,92 @@ class SimulationWorkerTimeoutError extends Error {
   }
 }
 
+class SimulationCapacityError extends Error {
+  readonly code = "simulation_capacity_exceeded";
+  readonly status = 429;
+  readonly statusCode = 429;
+
+  constructor(message = "Too many simulation requests are already running.") {
+    super(message);
+    this.name = "SimulationCapacityError";
+  }
+}
+
 function createDefaultSimulationWorkerOptions(): SimulationWorkerOptions {
   return {
     workerUrl: getDefaultSimulationWorkerUrl(),
     timeoutMs: DEFAULT_SIMULATION_WORKER_TIMEOUT_MS,
     simulationsRun: NUM_SIMULATIONS,
+    adHocConcurrency: DEFAULT_AD_HOC_SIMULATION_CONCURRENCY,
+    adHocQueueLimit: DEFAULT_AD_HOC_SIMULATION_QUEUE_LIMIT,
   };
+}
+
+function createAdHocSimulationLimiter(
+  options: Pick<
+    SimulationWorkerOptions,
+    "adHocConcurrency" | "adHocQueueLimit"
+  >,
+): AdHocSimulationLimiter {
+  const concurrency = Number.isFinite(options.adHocConcurrency)
+    ? Math.max(1, Math.trunc(options.adHocConcurrency))
+    : DEFAULT_AD_HOC_SIMULATION_CONCURRENCY;
+  const queueLimit = Number.isFinite(options.adHocQueueLimit)
+    ? Math.max(0, Math.trunc(options.adHocQueueLimit))
+    : DEFAULT_AD_HOC_SIMULATION_QUEUE_LIMIT;
+  let activeRuns = 0;
+  let queue: QueuedSimulationRun[] = [];
+
+  function startRun(task: () => Promise<SimResult>): Promise<SimResult> {
+    activeRuns += 1;
+
+    return task().finally(() => {
+      activeRuns = Math.max(0, activeRuns - 1);
+      drainQueue();
+    });
+  }
+
+  function drainQueue(): void {
+    while (activeRuns < concurrency && queue.length > 0) {
+      const next = queue.shift();
+      if (!next) {
+        return;
+      }
+
+      void startRun(next.run).then(next.resolve, next.reject);
+    }
+  }
+
+  return {
+    run(task) {
+      if (activeRuns < concurrency) {
+        return startRun(task);
+      }
+
+      if (queue.length >= queueLimit) {
+        return Promise.reject(
+          new SimulationCapacityError(
+            "Simulation capacity is currently full. Please retry shortly.",
+          ),
+        );
+      }
+
+      return new Promise((resolve, reject) => {
+        queue = [...queue, { run: task, resolve, reject }];
+      });
+    },
+    cancelPending(error) {
+      const pending = queue;
+      queue = [];
+      pending.forEach((run) => run.reject(error));
+    },
+  };
+}
+
+function runAdHocSimulation(
+  snapshot: SimulationRecalculationSnapshot,
+): Promise<SimResult> {
+  return adHocSimulationLimiter.run(() => simulationRunner(snapshot));
 }
 
 function getDefaultSimulationWorkerUrl(): URL {
@@ -627,6 +747,8 @@ function cloneSimulationWorkerOptions(
     workerUrl: new URL(options.workerUrl.href),
     timeoutMs: options.timeoutMs,
     simulationsRun: options.simulationsRun,
+    adHocConcurrency: options.adHocConcurrency,
+    adHocQueueLimit: options.adHocQueueLimit,
   };
 }
 
@@ -817,6 +939,29 @@ function getSimulationMatches(
       m.awayScore >= 0 &&
       (m.status ?? "finished") === "finished",
   );
+}
+
+function getFinishedPredictionMatch(
+  homeTeam: string,
+  awayTeam: string,
+  customMatches: readonly LiveMatchInput[] = [],
+): PlayedMatch | null {
+  const match = findMatch(
+    getMergedPlayedMatches(customMatches),
+    homeTeam,
+    awayTeam,
+  );
+
+  if (
+    !match ||
+    match.homeScore < 0 ||
+    match.awayScore < 0 ||
+    (match.status ?? "finished") === "scheduled"
+  ) {
+    return null;
+  }
+
+  return { ...match };
 }
 
 function createLiveDataSignature(
@@ -1443,7 +1588,114 @@ function parseBestModelConfigOverrides(input: unknown): Partial<ModelConfig> {
     throw new Error(`Unsupported model config key: ${key}`);
   }
 
-  return overrides;
+  validateModelConfigOverrides(overrides);
+
+  return { ...overrides };
+}
+
+type NumericModelConfigKey = {
+  [K in keyof ModelConfig]: ModelConfig[K] extends number ? K : never;
+}[keyof ModelConfig];
+
+function validateModelConfigOverrides(overrides: Partial<ModelConfig>): void {
+  const config: ModelConfig = { ...DEFAULT_MODEL_CONFIG, ...overrides };
+
+  assertFiniteNumericConfig(config, "initialRating");
+  assertFiniteNumericConfig(config, "fallbackRating");
+  assertFiniteNumericConfig(config, "ratingCenter");
+  assertFiniteNumericConfig(config, "homeAdvantageElo");
+  assertFiniteNumericConfig(config, "hostBoost");
+  assertPositiveNumericConfig(config, "marginOfVictoryEloScalingConstant");
+  assertPositiveNumericConfig(config, "baseXg");
+  assertPositiveNumericConfig(config, "eloScale");
+  assertPositiveNumericConfig(config, "goalsPerTeamBaseline");
+  assertPositiveNumericConfig(config, "recentMetricHalfLifeYears");
+  assertPositiveNumericConfig(config, "metricEloScale");
+  assertNonNegativeNumericConfig(config, "recentMetricWindowYears");
+  assertNonNegativeNumericConfig(config, "recentMetricPriorWeight");
+  assertProbabilityConfig(config, "drawRate");
+  assertProbabilityConfig(config, "maxRecentGoalBlend");
+  assertPositiveNumericConfig(config, "strengthMin");
+  assertPositiveNumericConfig(config, "strengthMax");
+  assertNonNegativeNumericConfig(config, "modifierEloDeltaLimit");
+  assertNonNegativeNumericConfig(config, "modifierXgDeltaLimit");
+  assertPositiveNumericConfig(config, "modifierXgMultiplierMin");
+  assertPositiveNumericConfig(config, "modifierXgMultiplierMax");
+
+  if (!Number.isInteger(config.maxGoals) || config.maxGoals <= 0) {
+    throw new Error("maxGoals must be a positive integer");
+  }
+
+  if (config.maxGoals > MAX_REASONABLE_SCORE) {
+    throw new Error(`maxGoals must be ${MAX_REASONABLE_SCORE} or less`);
+  }
+
+  if (config.dixonColesRho < -1 || config.dixonColesRho > 1) {
+    throw new Error("dixonColesRho must be between -1 and 1");
+  }
+
+  if (config.strengthMin > config.strengthMax) {
+    throw new Error("strengthMin must be less than or equal to strengthMax");
+  }
+
+  if (config.modifierXgMultiplierMin > config.modifierXgMultiplierMax) {
+    throw new Error(
+      "modifierXgMultiplierMin must be less than or equal to modifierXgMultiplierMax",
+    );
+  }
+}
+
+function numericConfigValue(
+  config: ModelConfig,
+  key: NumericModelConfigKey,
+): number {
+  const value = config[key];
+
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`${key} must be a finite number`);
+  }
+
+  return value;
+}
+
+function assertFiniteNumericConfig(
+  config: ModelConfig,
+  key: NumericModelConfigKey,
+): void {
+  numericConfigValue(config, key);
+}
+
+function assertPositiveNumericConfig(
+  config: ModelConfig,
+  key: NumericModelConfigKey,
+): void {
+  const value = numericConfigValue(config, key);
+
+  if (value <= 0) {
+    throw new Error(`${key} must be a positive number`);
+  }
+}
+
+function assertNonNegativeNumericConfig(
+  config: ModelConfig,
+  key: NumericModelConfigKey,
+): void {
+  const value = numericConfigValue(config, key);
+
+  if (value < 0) {
+    throw new Error(`${key} must be non-negative`);
+  }
+}
+
+function assertProbabilityConfig(
+  config: ModelConfig,
+  key: NumericModelConfigKey,
+): void {
+  const value = numericConfigValue(config, key);
+
+  if (value < 0 || value > 1) {
+    throw new Error(`${key} must be between 0 and 1`);
+  }
 }
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -1489,13 +1741,25 @@ export function setSimulationWorkerOptionsForTests(
   overrides: Partial<SimulationWorkerOptions>,
 ): () => void {
   const previousOptions = cloneSimulationWorkerOptions(simulationWorkerOptions);
+  adHocSimulationLimiter.cancelPending(
+    new SimulationCapacityError("Simulation worker options were reset."),
+  );
   simulationWorkerOptions = {
     ...simulationWorkerOptions,
     ...overrides,
   };
+  adHocSimulationLimiter = createAdHocSimulationLimiter(
+    simulationWorkerOptions,
+  );
 
   return () => {
+    adHocSimulationLimiter.cancelPending(
+      new SimulationCapacityError("Simulation worker options were restored."),
+    );
     simulationWorkerOptions = previousOptions;
+    adHocSimulationLimiter = createAdHocSimulationLimiter(
+      simulationWorkerOptions,
+    );
   };
 }
 
@@ -1739,83 +2003,97 @@ router.get("/oracle/squads", async (req, res) => {
   return sendOracleSuccess(res, await getSquadsData());
 });
 
-router.get("/oracle/simulation", async (req, res) => {
-  const parsedSeed = parseOptionalSeed(req.query.seed);
-  const parsedCustomMatches = parseOptionalCustomMatchesQuery(
-    req.query.customMatches,
-  );
+router.get(
+  "/oracle/simulation",
+  limitAdHocSimulationRequests,
+  async (req, res) => {
+    const parsedSeed = parseOptionalSeed(req.query.seed);
+    const parsedCustomMatches = parseOptionalCustomMatchesQuery(
+      req.query.customMatches,
+    );
 
-  if (!parsedSeed.success) {
-    return sendValidationError(res, parsedSeed.issues);
-  }
+    if (!parsedSeed.success) {
+      return sendValidationError(res, parsedSeed.issues);
+    }
 
-  if (!parsedCustomMatches.success) {
-    return sendValidationError(res, parsedCustomMatches.issues);
-  }
+    if (!parsedCustomMatches.success) {
+      return sendValidationError(res, parsedCustomMatches.issues);
+    }
 
-  const requestedSeed = parsedSeed.data;
-  const hasRequestCustomMatches = req.query.customMatches !== undefined;
-  const customMatches = hasRequestCustomMatches ? parsedCustomMatches.data : [];
-  const simulationSeed = requestedSeed ?? cache.simulationSeed;
-  const uncertainty = getSimulationUncertaintyMetadata(NUM_SIMULATIONS);
+    const requestedSeed = parsedSeed.data;
+    const hasRequestCustomMatches = req.query.customMatches !== undefined;
+    const customMatches = hasRequestCustomMatches
+      ? parsedCustomMatches.data
+      : [];
+    const simulationSeed = requestedSeed ?? cache.simulationSeed;
+    const uncertainty = getSimulationUncertaintyMetadata(NUM_SIMULATIONS);
 
-  if (cache.ready) {
-    await refreshLiveDataIfNeeded();
-  }
+    if (cache.ready) {
+      await refreshLiveDataIfNeeded();
+    }
 
-  if (!cache.ready || !cache.simResult) {
+    if (!cache.ready || !cache.simResult) {
+      return sendOracleSuccess(res, {
+        results: [],
+        simulationsRun: 0,
+        simulationSeed,
+        liveMatchesRecorded: hasRequestCustomMatches
+          ? parsedCustomMatches.data.length
+          : 0,
+        uncertainty: getSimulationUncertaintyMetadata(0),
+      });
+    }
+
+    let simResult: SimResult;
+
+    try {
+      simResult =
+        requestedSeed || hasRequestCustomMatches
+          ? await runAdHocSimulation(
+              createSimulationSnapshot(
+                cache.recalculation.publishedVersion,
+                simulationSeed,
+                customMatches,
+              ),
+            )
+          : cache.simResult;
+    } catch (err) {
+      if (err instanceof SimulationCapacityError) {
+        logger.warn({ err }, "Request-scoped simulation capacity exceeded");
+        return sendApiError(res, 429, {
+          code: err.code,
+          message: err.message,
+        });
+      }
+
+      logger.error({ err }, "Request-scoped simulation failed");
+      return sendApiError(res, 503, {
+        code: "simulation_unavailable",
+        message:
+          "Simulation could not be completed. Last valid cached results remain available.",
+      });
+    }
+
+    const results = toPublishedSimulationResults(
+      simResult,
+      cache.ratings,
+      NUM_SIMULATIONS,
+      cache.liveData.eliminatedTeams,
+      cache.modelConfig,
+    );
+
     return sendOracleSuccess(res, {
-      results: [],
-      simulationsRun: 0,
+      results,
+      simulationsRun: NUM_SIMULATIONS,
       simulationSeed,
       liveMatchesRecorded: hasRequestCustomMatches
         ? parsedCustomMatches.data.length
         : 0,
-      uncertainty: getSimulationUncertaintyMetadata(0),
+      eliminatedTeams: [...cache.liveData.eliminatedTeams].sort(),
+      uncertainty,
     });
-  }
-
-  let simResult: SimResult;
-
-  try {
-    simResult =
-      requestedSeed || hasRequestCustomMatches
-        ? await simulationRunner(
-            createSimulationSnapshot(
-              cache.recalculation.publishedVersion,
-              simulationSeed,
-              customMatches,
-            ),
-          )
-        : cache.simResult;
-  } catch (err) {
-    logger.error({ err }, "Request-scoped simulation failed");
-    return sendApiError(res, 503, {
-      code: "simulation_unavailable",
-      message:
-        "Simulation could not be completed. Last valid cached results remain available.",
-    });
-  }
-
-  const results = toPublishedSimulationResults(
-    simResult,
-    cache.ratings,
-    NUM_SIMULATIONS,
-    cache.liveData.eliminatedTeams,
-    cache.modelConfig,
-  );
-
-  return sendOracleSuccess(res, {
-    results,
-    simulationsRun: NUM_SIMULATIONS,
-    simulationSeed,
-    liveMatchesRecorded: hasRequestCustomMatches
-      ? parsedCustomMatches.data.length
-      : 0,
-    eliminatedTeams: [...cache.liveData.eliminatedTeams].sort(),
-    uncertainty,
-  });
-});
+  },
+);
 
 router.post("/oracle/predict-match", (req, res) => {
   const parsed = parseBody<MatchPredictionInput>(matchTeamsSchema, req.body);
@@ -1848,10 +2126,10 @@ router.post("/oracle/predict-match", (req, res) => {
   const eloAway = cache.ratings[awayTeam] ?? cache.modelConfig.fallbackRating;
   const metricsHome = cache.teamMetrics[homeTeam];
   const metricsAway = cache.teamMetrics[awayTeam];
-  const customMatch = findMatch(
-    customMatches.map(toFinishedCustomMatch),
+  const predictionMatch = getFinishedPredictionMatch(
     homeTeam,
     awayTeam,
+    customMatches,
   );
 
   const { pWinA, pDraw, pWinB, xgA, xgB, mostLikelyScore, modifiers } =
@@ -1867,8 +2145,8 @@ router.post("/oracle/predict-match", (req, res) => {
       {},
       modelConfig,
     );
-  const customPrediction = customMatch
-    ? getCustomMatchPrediction(customMatch, homeTeam, awayTeam)
+  const customPrediction = predictionMatch
+    ? getCustomMatchPrediction(predictionMatch, homeTeam, awayTeam)
     : null;
 
   return sendOracleSuccess(res, {

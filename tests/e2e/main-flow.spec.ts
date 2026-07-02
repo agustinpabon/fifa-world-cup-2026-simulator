@@ -1,4 +1,9 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type Page,
+} from "@playwright/test";
 
 type OracleStatusBody = {
   data?: {
@@ -23,7 +28,11 @@ async function getOracleStatus(request: APIRequestContext): Promise<{
 }> {
   const response = await request.get("/api/oracle/status");
   if (!response.ok()) {
-    return { state: `http-${response.status()}`, ready: false, recalculating: true };
+    return {
+      state: `http-${response.status()}`,
+      ready: false,
+      recalculating: true,
+    };
   }
 
   const body = (await response.json()) as OracleStatusBody;
@@ -41,18 +50,22 @@ async function waitForOracleReady(request: APIRequestContext): Promise<void> {
     .poll(
       async () => {
         const status = await getOracleStatus(request);
-        return status.ready && status.state === "ready" ? "ready" : status.state;
+        return status.ready && status.state === "ready"
+          ? "ready"
+          : status.state;
       },
       {
         message: "oracle API should finish loading ratings and simulation",
         timeout: READY_TIMEOUT_MS,
         intervals: [500, 1_000, 2_000],
-      }
+      },
     )
     .toBe("ready");
 }
 
-async function waitForOracleReadyAndIdle(request: APIRequestContext): Promise<void> {
+async function waitForOracleReadyAndIdle(
+  request: APIRequestContext,
+): Promise<void> {
   await expect
     .poll(
       async () => {
@@ -65,7 +78,7 @@ async function waitForOracleReadyAndIdle(request: APIRequestContext): Promise<vo
         message: "oracle API should be ready with no recalculation in progress",
         timeout: READY_TIMEOUT_MS,
         intervals: [500, 1_000, 2_000],
-      }
+      },
     )
     .toBe("ready-idle");
 }
@@ -77,18 +90,9 @@ async function clearManualOverrides(request: APIRequestContext): Promise<void> {
 
 async function gotoDashboard(page: Page): Promise<void> {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: /World Cup Oracle/i })).toBeVisible();
-}
-
-function liveMatchResponse(page: Page, method: "POST" | "DELETE") {
-  return page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return (
-      url.pathname === "/api/oracle/live-match" &&
-      response.request().method() === method &&
-      response.status() === 200
-    );
-  });
+  await expect(
+    page.getByRole("heading", { name: /World Cup Oracle/i }),
+  ).toBeVisible();
 }
 
 test.describe("World Cup Oracle smoke", () => {
@@ -109,7 +113,9 @@ test.describe("World Cup Oracle smoke", () => {
 
     await gotoDashboard(page);
     await expect(page.getByTestId("leaderboard-loading")).toBeVisible();
-    await expect(page.getByTestId("leaderboard-table")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("leaderboard-table")).toBeVisible({
+      timeout: 30_000,
+    });
 
     await page.unroute("**/api/oracle/simulation**");
     await page.route("**/api/oracle/simulation**", async (route) => {
@@ -128,7 +134,7 @@ test.describe("World Cup Oracle smoke", () => {
     await page.reload();
     await expect(page.getByTestId("leaderboard-error")).toContainText(
       "Unable to load tournament predictions.",
-      { timeout: 20_000 }
+      { timeout: 20_000 },
     );
   });
 
@@ -139,37 +145,62 @@ test.describe("World Cup Oracle smoke", () => {
     await waitForOracleReadyAndIdle(request);
     await gotoDashboard(page);
 
-    await expect(page.getByTestId("oracle-status")).toContainText("Oracle Active");
+    await expect(page.getByTestId("oracle-status")).toContainText(
+      "Oracle Active",
+    );
     await expect(page.getByTestId("leaderboard-table")).toBeVisible();
     await expect(page.getByTestId("leaderboard-row")).toHaveCount(48);
 
     await page.getByTestId("leaderboard-search").fill("Argentina");
     await expect(page.getByTestId("leaderboard-row")).toHaveCount(1);
-    await expect(page.getByTestId("leaderboard-row").first()).toContainText("Argentina");
+    await expect(page.getByTestId("leaderboard-row").first()).toContainText(
+      "Argentina",
+    );
     await page.getByTestId("leaderboard-row").first().click();
-    await expect(page.getByTestId("leaderboard-details")).toContainText("Goal Multipliers");
-    await expect(page.getByTestId("leaderboard-squad-context")).toContainText("Squads");
-    await expect(page.getByTestId("leaderboard-squad-context")).toContainText("Fuente");
-    await expect(page.getByTestId("leaderboard-squad-context")).toContainText("No incluido en el modelo");
+    await expect(page.getByTestId("leaderboard-details")).toContainText(
+      "Goal Multipliers",
+    );
+    await expect(page.getByTestId("leaderboard-squad-context")).toContainText(
+      "Squads",
+    );
+    await expect(page.getByTestId("leaderboard-squad-context")).toContainText(
+      "Fuente",
+    );
+    await expect(page.getByTestId("leaderboard-squad-context")).toContainText(
+      "No incluido en el modelo",
+    );
 
     await page.getByRole("tab", { name: "Groups" }).click();
     await expect(page.getByTestId("group-standings")).toBeVisible();
     await expect(page.getByTestId("group-card")).toHaveCount(12);
 
     await page.getByRole("tab", { name: "Predictor" }).click();
-    await expect(page.getByTestId("predictor-team-count")).toContainText("48 teams available");
+    await expect(page.getByTestId("predictor-team-count")).toContainText(
+      "48 teams available",
+    );
     await page.getByTestId("predictor-home-team").fill("France");
-    await page.getByTestId("predictor-home-team-option").filter({ hasText: "France" }).click();
+    await page
+      .getByTestId("predictor-home-team-option")
+      .filter({ hasText: "France" })
+      .click();
     await page.getByTestId("predictor-away-team").fill("Argentina");
-    await page.getByTestId("predictor-away-team-option").filter({ hasText: "Argentina" }).click();
+    await page
+      .getByTestId("predictor-away-team-option")
+      .filter({ hasText: "Argentina" })
+      .click();
     await page.getByTestId("predictor-venue-team-1-home").click();
-    await expect(page.getByTestId("predictor-venue-team-1-home")).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      page.getByTestId("predictor-venue-team-1-home"),
+    ).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("predict-match-button")).toBeEnabled();
     await page.getByTestId("predict-match-button").click();
     await expect(page.getByTestId("predictor-loading")).toBeVisible();
-    await expect(page.getByTestId("prediction-results")).toContainText("Most Likely Score", {
-      timeout: 15_000,
-    });
+    await expect(page.getByTestId("prediction-results")).toContainText(
+      "Most Likely Score",
+      {
+        timeout: 15_000,
+      },
+    );
 
     await page.getByRole("tab", { name: "Match Center" }).click();
     await expect(page.getByTestId("match-center")).toBeVisible();
@@ -182,21 +213,35 @@ test.describe("World Cup Oracle smoke", () => {
       .first();
 
     await expect(mexicoSouthAfrica).toBeVisible();
-    await expect(mexicoSouthAfrica.getByTestId("match-context-panel")).toContainText("Contexto", {
+    await expect(
+      mexicoSouthAfrica.getByTestId("match-context-panel"),
+    ).toContainText("Contexto", {
       timeout: 20_000,
     });
-    await expect(mexicoSouthAfrica.getByTestId("match-context-panel")).toContainText("Venue");
-    await expect(mexicoSouthAfrica.getByTestId("match-context-panel")).toContainText("Clima");
-    await expect(mexicoSouthAfrica.getByTestId("match-context-panel")).toContainText("Altitud");
-    await expect(mexicoSouthAfrica.getByTestId("match-context-panel")).toContainText("Fuente");
-    await expect(mexicoSouthAfrica.getByTestId("match-context-panel")).toContainText("No incluido en el modelo");
+    await expect(
+      mexicoSouthAfrica.getByTestId("match-context-panel"),
+    ).toContainText("Venue");
+    await expect(
+      mexicoSouthAfrica.getByTestId("match-context-panel"),
+    ).toContainText("Clima");
+    await expect(
+      mexicoSouthAfrica.getByTestId("match-context-panel"),
+    ).toContainText("Altitud");
+    await expect(
+      mexicoSouthAfrica.getByTestId("match-context-panel"),
+    ).toContainText("Fuente");
+    await expect(
+      mexicoSouthAfrica.getByTestId("match-context-panel"),
+    ).toContainText("No incluido en el modelo");
     await mexicoSouthAfrica.getByTestId("home-score-input").fill("2");
     await mexicoSouthAfrica.getByTestId("away-score-input").fill("1");
 
-    await Promise.all([
-      liveMatchResponse(page, "POST"),
-      mexicoSouthAfrica.getByRole("button", { name: "Save" }).click(),
-    ]);
+    await mexicoSouthAfrica.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("Manual overrides active")).toBeVisible();
+    await page.getByTestId("match-stage-results").click();
+    await expect(page.getByTestId("match-results-summary")).toContainText(
+      "1 result",
+    );
 
     const savedMatch = page
       .getByTestId("match-card")
@@ -205,17 +250,12 @@ test.describe("World Cup Oracle smoke", () => {
       .first();
 
     await expect(savedMatch).toContainText("Manual Override");
-    await expect(page.getByText("Manual overrides active")).toBeVisible();
-    await page.getByTestId("match-stage-results").click();
-    await expect(page.getByTestId("match-results-summary")).toContainText("1 result");
-    await expect(page.getByTestId("match-card").filter({ hasText: "Mexico" }).filter({ hasText: "South Africa" })).toContainText("Manual Override");
 
-    await Promise.all([
-      liveMatchResponse(page, "DELETE"),
-      savedMatch.getByRole("button", { name: "Restore" }).click(),
-    ]);
+    await savedMatch.getByRole("button", { name: "Restore" }).click();
 
-    await expect(page.getByTestId("match-results-summary")).toContainText("0 results");
+    await expect(page.getByTestId("match-results-summary")).toContainText(
+      "0 results",
+    );
     await page.getByTestId("match-stage-group").click();
 
     const restoredMatch = page

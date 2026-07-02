@@ -1,10 +1,10 @@
 ```text
-██╗    ██╗ ██████╗ ██████╗ ██╗     ██████╗      ██████╗██╗   ██╗██████╗ 
+██╗    ██╗ ██████╗ ██████╗ ██╗     ██████╗      ██████╗██╗   ██╗██████╗
 ██║    ██║██╔═══██╗██╔══██╗██║     ██╔══██╗    ██╔════╝██║   ██║██╔══██╗
 ██║ █╗ ██║██║   ██║██████╔╝██║     ██║  ██║    ██║     ██║   ██║██████╔╝
-██║███╗██║██║   ██║██╔══██╗██║     ██║  ██║    ██║     ██║   ██║██╔═══╝ 
-╚███╔███╔╝╚██████╔╝██║  ██║███████╗██████╔╝    ╚██████╗╚██████╔╝██║     
- ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═════╝      ╚═════╝ ╚══════╝╚═╝     
+██║███╗██║██║   ██║██╔══██╗██║     ██║  ██║    ██║     ██║   ██║██╔═══╝
+╚███╔███╔╝╚██████╔╝██║  ██║███████╗██████╔╝    ╚██████╗╚██████╔╝██║
+ ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═════╝      ╚═════╝ ╚══════╝╚═╝
 
                 Monte Carlo Tournament Simulator & Elo Engine
 
@@ -43,12 +43,14 @@ Rather than relying on static bookmaker odds or manual guesses, the engine proce
 For the current mathematical notes, core equations, parameter options, and validation approach, read the **[Model Methodology & Assumptions Documentation](docs/model-methodology.md)**.
 
 #### Core Model Components
+
 1. **Time-Decay Elo Ratings**: Evaluates overall team strength using exponential recency weighting. Modern matches heavily outweigh results from past decades based on an exponential decay function. Applies host-advantage boosts ($+50$ Elo) for 2026 hosts (USA, Mexico, Canada).
 2. **Attack/Defense Strength**: Recent goals scored and conceded are adjusted by opponent Elo at match time and competition weight. To handle small sample sizes, these are shrunk toward Elo-only factors before affecting expected goals (xG).
 3. **Validated Poisson Score Model**: Translates rating disparities into Expected Goals (xG), applies conservative attack/defense multipliers, and samples from the same normalized score matrix used for match probabilities. Dixon-Coles remains implemented as an experimental variant but is not active because it did not improve validation metrics.
 4. **2026 Tournament Structure & Simulation**: Simulates all group stage and knockout bracket matches. Evaluates group standings using FIFA tiebreakers and best third-place team rankings across 10,000 Monte Carlo iterations.
 
 #### Model Assumptions & Key Parameters
+
 - **K-Factor Weights**: Ranges from 60 (World Cup finals) down to 20 (Friendlies).
 - **Time-Decay Half-Life**: Set to ~12.6 years (decay parameter $= 0.055$) to balance historical depth with modern relevance.
 - **Home/Host Advantage**: Baseline $+75$ Elo for standard home matches, and $+50$ Elo host boost for USA, Mexico, and Canada playing in their home countries (with Quarter-Finals onwards restricted to USA).
@@ -59,6 +61,7 @@ For the current mathematical notes, core equations, parameter options, and valid
 > The model's predictions represent statistical probabilities based purely on historical results and current rating parameters. They are **not official betting odds** and do not promise unmeasured accuracy. The default published model does not account for rosters, injuries, weather, tactical modifications, resting players, or other real-world factors.
 
 #### Model Verification & Backtesting
+
 Run `pnpm backtest` to produce a rolling historical report with Brier score, log loss, accuracy, and calibration buckets. The report compares Elo-only, Elo + Poisson, Elo + Poisson + Dixon-Coles, Elo + attack/defense Poisson, and a uniform baseline.
 
 Experimental context modifiers for `weather`, `availability`, `suspension`, and `manual` adjustments are implemented only behind explicit flags. They require traceable `explanation` and `provenance` fields, are off by default, and should not be promoted unless backtests improve both Brier score and log loss.
@@ -87,23 +90,25 @@ fifa-world-cup-2026-simulator/
 ```
 
 - **Frontend**: React 19, Vite 7, Tailwind CSS v4, TanStack Query v5, Wouter routing.
-- **Backend**: Express 5 bundled with esbuild. Zero database is required for development or runtime execution. Ratings are computed from the historical match CSV loaded at startup, tournament fixtures come from the local versioned source, and manual scenario overrides live in memory.
+- **Backend**: Express 5 bundled with esbuild. Zero database is required for development or runtime execution. Ratings are computed from the historical match CSV loaded at startup, tournament fixtures come from the local versioned source, and manual scenario overrides are request-local/browser-local rather than server-persistent.
 - **Contract-Driven API**: OpenAPI spec in `lib/api-spec/openapi.yaml` automatically generates strictly typed React Query hooks and Zod schemas.
 
 ---
 
 ### In-Memory State Model & Ephemeral Scenario Overrides
 
-The World Cup Oracle API manages all scenario modifications using an **ephemeral in-memory state model**:
+The World Cup Oracle manages scenario modifications using a **request-local state model**:
 
-1. **Local & Non-Persistent**: Manual match score overrides (recorded via `POST /api/oracle/live-match` or cleared via `POST /api/oracle/live-matches/clear`) are written directly to a local, in-memory cache variable in the running Express server process.
-2. **Restart Instability**: Because overrides are stored purely in-memory, any custom results and scenario predictions are temporary. They reset to the loaded fixture schedule and ratings recomputed from historical match data whenever the Express server process restarts or redeploys.
+1. **Local & Non-Persistent**: The dashboard stores manual match score overrides in browser local storage and sends them to simulation/prediction requests as request-scoped `customMatches`.
+2. **Server Statelessness**: `POST /api/oracle/live-match`, `DELETE /api/oracle/live-match`, and `POST /api/oracle/live-matches/clear` remain as legacy compatibility endpoints, but they validate input only and do not mutate server memory or queue recalculations.
+3. **Restart Stability**: Because overrides are not stored in server memory, one browser session's scenario cannot leak into another request or survive as global API state.
 
 ### Optional API-Football Squad Provider
 
 Squad data is served from the local versioned snapshot by default. To optionally hydrate squads from API-Football on the backend, set `API_FOOTBALL_KEY` for the API server process. The key is sent only from Express using the `x-apisports-key` header; React never calls API-Football directly.
 
 Optional backend env vars:
+
 - `API_FOOTBALL_CACHE_TTL_MS` — cache TTL for API-Football squad reads, default `43200000` (12h), minimum 1 minute.
 - `API_FOOTBALL_TIMEOUT_MS` — upstream request timeout in milliseconds, default 3000.
 - `API_FOOTBALL_LEAGUE_ID` / `API_FOOTBALL_SEASON` — team ID discovery parameters, default World Cup league `1` and season `2026`.
@@ -115,24 +120,24 @@ If `API_FOOTBALL_KEY` is unset or API-Football returns a rate/error response, `/
 
 ### API Reference
 
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| GET | `/api/oracle/status` | Readiness check for ratings and simulation cache |
-| GET | `/api/oracle/teams` | Qualified 2026 teams with computed Elo ratings |
-| GET | `/api/oracle/live-matches` | Imported fixture list and any manual scenario overrides |
-| GET | `/api/oracle/squads` | Versioned local squad snapshot, optionally hydrated server-side from API-Football |
-| GET | `/api/oracle/simulation` | Per-team probabilities (Group win, R16, QF, SF, Final, Champion) |
-| POST | `/api/oracle/live-match` | Record a manual scenario override (`{ homeTeam, awayTeam, homeScore, awayScore }`) |
-| DELETE | `/api/oracle/live-match` | Remove a manual scenario override (`{ homeTeam, awayTeam }`) |
-| POST | `/api/oracle/live-matches/clear` | Clear all manual scenario overrides |
-| POST | `/api/oracle/predict-match` | Exact head-to-head probability matrix (`{ homeTeam, awayTeam }`) |
-| POST | `/api/oracle/predict-match?experimentalModifiers=true` | Opt-in experimental modifier evaluation path for a single prediction; default model remains unchanged |
+| Method | Endpoint                                               | Description                                                                                           |
+| :----- | :----------------------------------------------------- | :---------------------------------------------------------------------------------------------------- |
+| GET    | `/api/oracle/status`                                   | Readiness check for ratings and simulation cache                                                      |
+| GET    | `/api/oracle/teams`                                    | Qualified 2026 teams with computed Elo ratings                                                        |
+| GET    | `/api/oracle/live-matches`                             | Imported fixture list and live/final feed results                                                     |
+| GET    | `/api/oracle/squads`                                   | Versioned local squad snapshot, optionally hydrated server-side from API-Football                     |
+| GET    | `/api/oracle/simulation`                               | Per-team probabilities (Group win, R16, QF, SF, Final, Champion)                                      |
+| POST   | `/api/oracle/live-match`                               | Legacy validation-only compatibility endpoint for a manual scenario override                          |
+| DELETE | `/api/oracle/live-match`                               | Legacy validation-only compatibility endpoint for removing an override                                |
+| POST   | `/api/oracle/live-matches/clear`                       | Legacy validation-only compatibility endpoint for clearing overrides                                  |
+| POST   | `/api/oracle/predict-match`                            | Exact head-to-head probability matrix (`{ homeTeam, awayTeam }`)                                      |
+| POST   | `/api/oracle/predict-match?experimentalModifiers=true` | Opt-in experimental modifier evaluation path for a single prediction; default model remains unchanged |
 
 ### Simulation Reproducibility
 
-`GET /api/oracle/status` and `GET /api/oracle/simulation` include `simulationSeed`, the seed used for the cached Monte Carlo run. To reproduce a run for debugging or model comparisons, call `GET /api/oracle/simulation?seed=<seed>` with the same ratings data, fixture data, manual overrides, simulator code, and simulation count.
+`GET /api/oracle/status` and `GET /api/oracle/simulation` include `simulationSeed`, the seed used for the cached Monte Carlo run. To reproduce a run for debugging or model comparisons, call `GET /api/oracle/simulation?seed=<seed>` with the same ratings data, fixture data, request-local overrides, simulator code, and simulation count.
 
-Seeds make the random draw sequence reproducible. They do not make probabilities exact, and results can still change after model logic, tournament data, Elo inputs, host-advantage rules, or manual scenario overrides change.
+Seeds make the random draw sequence reproducible. They do not make probabilities exact, and results can still change after model logic, tournament data, Elo inputs, host-advantage rules, or request-local manual scenario overrides change.
 
 ---
 
@@ -152,6 +157,7 @@ sets `HISTORICAL_DATA_MAX_ATTEMPTS=0`, so tests use the bundled historical CSV
 snapshot instead of requiring external network access.
 
 To update API types after modifying `openapi.yaml`:
+
 ```bash
 pnpm --filter @workspace/api-spec run codegen
 ```

@@ -686,3 +686,118 @@ Add E2E smoke tests that verify a user can load the dashboard, view the leaderbo
 
 After creating the issue, implement small and reliable smoke tests. Prioritize stability over exhaustive coverage.
 ```
+
+## Recommended Upgrades
+
+### Prompt 23 - Standardize default Elo fallbacks and fix inverted teams in manual live overrides
+
+```text
+Act as a senior software engineer in the World Cup Oracle repository.
+
+First create a GitHub issue:
+- Search for duplicates before creating it.
+- Title: Standardize default Elo fallbacks and fix inverted teams in manual live overrides
+- Milestone: M1 - Trust & Correctness
+- Labels: priority:urgent, type:bug, area:api, area:model, area:testing, slice:afk
+- Assignee: <assignee>
+
+Issue body:
+## What to build
+The simulator and API endpoints must use standard model configuration fallback ratings instead of hardcoded 1000 Elo fallbacks. In addition, manual overrides for live matches should match and clear correctly regardless of the order in which the home and away teams are provided.
+
+## Acceptance criteria
+- [ ] Replace hardcoded `1000` Elo fallback ratings in simulation.ts and oracle.ts with `cache.modelConfig.fallbackRating` or `DEFAULT_MODEL_CONFIG.fallbackRating`.
+- [ ] Update POST /oracle/live-match and DELETE /oracle/live-match to filter and match teams in both directions (home/away and away/home).
+- [ ] Add integration tests in oracle.test.ts verifying that POST and DELETE overrides work for inverted team combinations.
+- [ ] Ensure all tests pass with pnpm test.
+
+## Blocked by
+None - can start immediately
+
+After creating the issue, implement the changes. Use separate commits for fallback refactoring, live-match bug fixes, and integration tests.
+```
+
+### Prompt 24 - Support venue context (home advantage / neutral site) in match predictor API and UI
+
+```text
+Act as a senior software engineer in the World Cup Oracle repository.
+
+First create a GitHub issue:
+- Search for duplicates before creating it.
+- Title: Support venue context (home advantage / neutral site) in match predictor API and UI
+- Milestone: M3 - Operability & Product UX
+- Labels: priority:important, type:enhancement, area:api, area:frontend, slice:afk
+- Assignee: <assignee>
+
+Issue body:
+## What to build
+The match predictor endpoint and frontend UI currently assume all matches are played on a neutral site. Extend the prediction request schema and MatchSimulator component to support venue context options (neutral venue, Team 1 plays at home, Team 2 plays at home).
+
+## Acceptance criteria
+- [ ] Update openapi.yaml to include optional neutral, isHomeA, and isHomeB fields in MatchPredictionRequest.
+- [ ] Regenerate the API client hooks and schemas with codegen.
+- [ ] Update matchProbabilities in simulation.ts to use the neutral flag instead of hardcoding neutral: true.
+- [ ] Update predictMatch route handler in oracle.ts to pass neutral, isHomeA, and isHomeB from req.body.
+- [ ] Update match-simulator.tsx UI to include venue selector controls (Neutral, Team 1 Home, Team 2 Home) and send them to the API.
+
+## Blocked by
+- Standardize default Elo fallbacks and fix inverted teams in manual live overrides
+
+After creating the issue, implement the API changes, run code generation, and update the UI. Make separate commits for the API contract, implementation, and UI changes.
+```
+
+### Prompt 25 - Implement hyperparameter tuning optimizer script for Elo/XG prediction model
+
+```text
+Act as a senior ML/model engineer in the World Cup Oracle repository.
+
+First create a GitHub issue:
+- Search for duplicates before creating it.
+- Title: Implement hyperparameter tuning optimizer script for Elo/XG prediction model
+- Milestone: M2 - Model Quality
+- Labels: priority:important, type:enhancement, area:model, area:testing, slice:afk
+- Assignee: <assignee>
+
+Issue body:
+## What to build
+Create an automated optimization script that performs grid/random search over model configuration hyperparameters (maxRecentGoalBlend, recentMetricPriorWeight, metricEloScale, homeAdvantageElo, and baseXg) to minimize Brier score and logLoss in rolling backtests.
+
+## Acceptance criteria
+- [ ] Extend BacktestOptions in backtest.ts to support overrides for maxRecentGoalBlend, recentMetricPriorWeight, metricEloScale, and baseXg.
+- [ ] Create a new scripts/src/optimize.ts script that runs rolling backtests over parameter ranges and prints the best combination.
+- [ ] Expose the optimize script in package.json under a pnpm command.
+- [ ] Ensure backtest.ts correctly applies these overrides during historical match evaluations.
+
+## Blocked by
+None - can start immediately
+
+After creating the issue, build the optimizer script and verify it runs successfully. Commit the changes and model parameter extensions cleanly.
+```
+
+### Prompt 26 - Add active model CI guard and regenerate latest backtest report
+
+```text
+Act as a senior engineer and CI maintainer in the World Cup Oracle repository.
+
+First create a GitHub issue:
+- Search for duplicates before creating it.
+- Title: Add active model CI guard and regenerate latest backtest report
+- Milestone: M1 - Trust & Correctness
+- Labels: priority:important, type:test, area:testing, area:infra, slice:afk
+- Assignee: <assignee>
+
+Issue body:
+## What to build
+Ensure that the promoted model variant defined in the code configuration matches the performance-selected active model variant in the generated backtest reports by introducing a CI guard test, and update the latest.json report.
+
+## Acceptance criteria
+- [ ] Add a test in backtest.test.ts that reads reports/backtests/latest.json and asserts report.activeModel === ACTIVE_MODEL_VARIANT.
+- [ ] Run the backtest script to regenerate reports/backtests/latest.json with latest model parameters.
+- [ ] Verify that all workspace tests and typechecks pass cleanly in CI.
+
+## Blocked by
+- Implement hyperparameter tuning optimizer script for Elo/XG prediction model
+
+After creating the issue, add the test guard, run the backtest, and commit the regenerated latest.json report.
+```
+

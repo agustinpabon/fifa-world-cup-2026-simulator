@@ -1,11 +1,21 @@
 import { getFixtureByTeams, WC2026_TEAMS } from "./worldcup2026.js";
 import { type PlayedMatch } from "./simulation.js";
+import {
+  createExternalDataProvider,
+  fetchJsonWithTimeout,
+  type ExternalDataProvider,
+  type ExternalDataProvenance,
+  type ExternalDataSnapshot,
+  type FetchLike,
+  type ReadExternalDataOptions,
+} from "./external-data.js";
 
 const ESPN_SCOREBOARD_URL =
   "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=20260611-20260719&limit=200";
 const ESPN_STANDINGS_URL =
   "https://site.web.api.espn.com/apis/v2/sports/soccer/fifa.world/standings?season=2026";
 const DEFAULT_TIMEOUT_MS = 3_000;
+const DEFAULT_CACHE_TTL_MS = 30_000;
 const EASTERN_TIME_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   timeZone: "America/New_York",
   year: "numeric",
@@ -16,16 +26,12 @@ const EASTERN_TIME_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   hour12: false,
 });
 
-type FetchLike = (input: string, init?: { signal?: AbortSignal }) => Promise<Response>;
 type UnknownRecord = Record<string, unknown>;
 
 export type LiveDataProvider = "espn";
 
-export interface LiveDataProviderMetadata {
-  provider: LiveDataProvider;
-  sourceUrl: string;
+export interface LiveDataProviderMetadata extends ExternalDataProvenance<LiveDataProvider> {
   standingsUrl: string;
-  loadedAt: string;
   matchCount: number;
   eliminatedTeamCount: number;
 }
@@ -41,6 +47,22 @@ export interface FetchLiveTournamentFeedOptions {
   scoreboardUrl?: string;
   standingsUrl?: string;
   timeoutMs?: number;
+}
+
+export interface CreateLiveTournamentFeedProviderOptions extends FetchLiveTournamentFeedOptions {
+  cacheTtlMs?: number;
+}
+
+export interface LiveTournamentFeedProvider {
+  read(options?: ReadExternalDataOptions): Promise<LiveTournamentFeed>;
+  peek(): LiveTournamentFeed;
+  clear(): void;
+}
+
+interface LiveTournamentFeedPayload {
+  matches: PlayedMatch[];
+  eliminatedTeams: Set<string>;
+  standingsUrl: string;
 }
 
 const TEAM_NAME_BY_CODE = new Map(WC2026_TEAMS.map((team) => [team.code.toUpperCase(), team.name]));
@@ -297,6 +319,10 @@ function addKnockoutLosers(matches: readonly PlayedMatch[], eliminatedTeams: Set
   return next;
 }
 
+function cloneMatches(matches: readonly PlayedMatch[]): PlayedMatch[] {
+  return matches.map((match) => ({ ...match }));
+}
+
 export function parseEspnTournamentFeed(scoreboardPayload: unknown, standingsPayload: unknown): LiveTournamentFeed {
   const matches = isRecord(scoreboardPayload)
     ? readArray(scoreboardPayload, "events").flatMap((event) => {
@@ -314,28 +340,15 @@ export function parseEspnTournamentFeed(scoreboardPayload: unknown, standingsPay
       sourceUrl: ESPN_SCOREBOARD_URL,
       standingsUrl: ESPN_STANDINGS_URL,
       loadedAt: new Date().toISOString(),
+      cacheTtlMs: 0,
+      stale: false,
+      error: null,
+      state: "fresh",
+      fallback: "none",
       matchCount: matches.length,
       eliminatedTeamCount: eliminatedTeams.size,
     },
   };
-}
-
-async function fetchJsonWithTimeout(fetchImpl: FetchLike, url: string, timeoutMs: number): Promise<unknown> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => {
-    controller.abort();
-  }, timeoutMs);
-
-  try {
-    const response = await fetchImpl(url, { signal: controller.signal });
-    if (!response.ok) {
-      throw new Error(`Live data source responded with HTTP ${response.status}`);
-    }
-
-    return await response.json();
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 export async function fetchEspnTournamentFeed(
@@ -357,6 +370,72 @@ export async function fetchEspnTournamentFeed(
       ...parsed.metadata,
       sourceUrl: scoreboardUrl,
       standingsUrl,
+    },
+  };
+}
+
+function buildLiveTournamentFeed(
+  snapshot: ExternalDataSnapshot<LiveTournamentFeedPayload, LiveDataProvider>
+): LiveTournamentFeed {
+  return {
+    matches: cloneMatches(snapshot.data.matches),
+    eliminatedTeams: new Set(snapshot.data.eliminatedTeams),
+    metadata: {
+      ...snapshot.provenance,
+      standingsUrl: snapshot.data.standingsUrl,
+      matchCount: snapshot.data.matches.length,
+      eliminatedTeamCount: snapshot.data.eliminatedTeams.size,
+    },
+  };
+}
+
+export function createLiveTournamentFeedProvider(
+  options: CreateLiveTournamentFeedProviderOptions = {}
+): LiveTournamentFeedProvider {
+  const scoreboardUrl = options.scoreboardUrl ?? ESPN_SCOREBOARD_URL;
+  const standingsUrl = options.standingsUrl ?? ESPN_STANDINGS_URL;
+  const timeoutMs = Math.max(1, Math.trunc(options.timeoutMs ?? DEFAULT_TIMEOUT_MS));
+  const cacheTtlMs = Math.max(1_000, Math.trunc(options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS));
+  const provider: ExternalDataProvider<LiveTournamentFeedPayload, LiveDataProvider> = createExternalDataProvider({
+    provider: "espn",
+    sourceUrl: scoreboardUrl,
+    cacheTtlMs,
+    fetchImpl: options.fetchImpl,
+    timeoutMs,
+    fallbackData: {
+      matches: [],
+      eliminatedTeams: new Set<string>(),
+      standingsUrl,
+    },
+    load: async ({ fetchImpl, sourceUrl, timeoutMs }) => {
+      const parsed = await fetchEspnTournamentFeed({
+        fetchImpl,
+        scoreboardUrl: sourceUrl,
+        standingsUrl,
+        timeoutMs,
+      });
+
+      return {
+        data: {
+          matches: cloneMatches(parsed.matches),
+          eliminatedTeams: new Set(parsed.eliminatedTeams),
+          standingsUrl,
+        },
+        loadedAt: parsed.metadata.loadedAt ?? new Date().toISOString(),
+        sourceUrl,
+      };
+    },
+  });
+
+  return {
+    async read(readOptions = {}) {
+      return buildLiveTournamentFeed(await provider.read(readOptions));
+    },
+    peek() {
+      return buildLiveTournamentFeed(provider.peek());
+    },
+    clear() {
+      provider.clear();
     },
   };
 }

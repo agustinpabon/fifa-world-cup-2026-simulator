@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { buildFixtureMatches } from "./elo.js";
 import { TOURNAMENT_2026, TournamentDataValidationError, validateTournamentData } from "./tournament-data.js";
+import { WC2026_HOST_VENUES, getHostVenueByName } from "./worldcup2026.js";
 
 test("validated 2026 data has 48 unique teams in 12 groups of 4", () => {
   assert.equal(TOURNAMENT_2026.teams.length, 48);
@@ -37,6 +38,30 @@ test("validated 2026 data has complete group fixture coverage", () => {
     );
 
     assert.deepEqual(actualPairs, expectedPairs);
+  }
+});
+
+test("host venue metadata covers every 2026 host city with altitude and coordinates", () => {
+  assert.equal(WC2026_HOST_VENUES.length, 16);
+
+  const venueNames = new Set(WC2026_HOST_VENUES.map((venue) => venue.name));
+  const fixtureVenueNames = new Set(TOURNAMENT_2026.fixtures.map((fixture) => fixture.venue));
+
+  assert.deepEqual(venueNames, fixtureVenueNames);
+
+  const mexicoCity = getHostVenueByName("Mexico City");
+  const guadalajara = getHostVenueByName("Guadalajara");
+
+  assert.ok(mexicoCity);
+  assert.equal(mexicoCity.altitudeMeters, 2240);
+  assert.equal(mexicoCity.country, "Mexico");
+  assert.ok(guadalajara);
+  assert.equal(guadalajara.altitudeMeters, 1566);
+
+  for (const venue of WC2026_HOST_VENUES) {
+    assert.ok(Number.isFinite(venue.latitude), `${venue.name} latitude should be finite`);
+    assert.ok(Number.isFinite(venue.longitude), `${venue.name} longitude should be finite`);
+    assert.ok(Number.isFinite(venue.altitudeMeters), `${venue.name} altitude should be finite`);
   }
 });
 

@@ -50,6 +50,7 @@ Thumbs.db
 
 # generated model-quality reports
 /reports/backtests/*.json
+!/reports/backtests/latest.json
 
 # e2e test artifacts
 /playwright-report/

@@ -14,5 +14,6 @@ export const ApiErrorCode = {
   malformed_json: 'malformed_json',
   oracle_not_ready: 'oracle_not_ready',
   match_locked: 'match_locked',
+  fixture_not_found: 'fixture_not_found',
   internal_error: 'internal_error',
 } as const;

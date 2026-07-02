@@ -3,9 +3,12 @@ export const MODEL_VARIANTS = [
   "elo-poisson",
   "elo-poisson-dixon-coles",
   "elo-poisson-strength",
+  "elo-poisson-strength-dixon-coles",
 ] as const;
 
 export type ModelVariant = (typeof MODEL_VARIANTS)[number];
+
+export const DEFAULT_MARGIN_OF_VICTORY_ELO_SCALING_CONSTANT = 2200;
 
 export interface ModelConfig {
   variant: ModelVariant;
@@ -13,6 +16,8 @@ export interface ModelConfig {
   fallbackRating: number;
   ratingCenter: number;
   homeAdvantageElo: number;
+  useMarginOfVictoryElo: boolean;
+  marginOfVictoryEloScalingConstant: number;
   hostBoost: number;
   baseXg: number;
   eloScale: number;
@@ -20,15 +25,21 @@ export interface ModelConfig {
   dixonColesRho: number;
   drawRate: number;
   recentMetricWindowYears: number;
+  recentMetricHalfLifeYears: number;
   goalsPerTeamBaseline: number;
   maxRecentGoalBlend: number;
   recentMetricPriorWeight: number;
   metricEloScale: number;
   strengthMin: number;
   strengthMax: number;
+  experimentalModifiersEnabled: boolean;
+  modifierEloDeltaLimit: number;
+  modifierXgDeltaLimit: number;
+  modifierXgMultiplierMin: number;
+  modifierXgMultiplierMax: number;
 }
 
-export const ACTIVE_MODEL_VARIANT: ModelVariant = "elo-poisson-strength";
+export const ACTIVE_MODEL_VARIANT: ModelVariant = "elo-poisson-strength-dixon-coles";
 
 export const DEFAULT_MODEL_CONFIG: ModelConfig = {
   variant: ACTIVE_MODEL_VARIANT,
@@ -36,6 +47,8 @@ export const DEFAULT_MODEL_CONFIG: ModelConfig = {
   fallbackRating: 1500,
   ratingCenter: 1500,
   homeAdvantageElo: 75,
+  useMarginOfVictoryElo: true,
+  marginOfVictoryEloScalingConstant: DEFAULT_MARGIN_OF_VICTORY_ELO_SCALING_CONSTANT,
   hostBoost: 50,
   baseXg: 1.25,
   eloScale: 400,
@@ -43,12 +56,18 @@ export const DEFAULT_MODEL_CONFIG: ModelConfig = {
   dixonColesRho: -0.06,
   drawRate: 0.27,
   recentMetricWindowYears: 8,
+  recentMetricHalfLifeYears: 2.0,
   goalsPerTeamBaseline: 1.35,
   maxRecentGoalBlend: 0.1,
   recentMetricPriorWeight: 60,
   metricEloScale: 5000,
   strengthMin: 0.6,
   strengthMax: 1.5,
+  experimentalModifiersEnabled: false,
+  modifierEloDeltaLimit: 150,
+  modifierXgDeltaLimit: 0.75,
+  modifierXgMultiplierMin: 0.6,
+  modifierXgMultiplierMax: 1.4,
 };
 
 export function createModelConfig(overrides: Partial<ModelConfig> = {}): ModelConfig {
@@ -60,11 +79,11 @@ export function createModelConfig(overrides: Partial<ModelConfig> = {}): ModelCo
 }
 
 export function usesDixonColes(variant: ModelVariant): boolean {
-  return variant === "elo-poisson-dixon-coles";
+  return variant === "elo-poisson-dixon-coles" || variant === "elo-poisson-strength-dixon-coles";
 }
 
 export function usesStrengthMetrics(variant: ModelVariant): boolean {
-  return variant === "elo-poisson-strength";
+  return variant === "elo-poisson-strength" || variant === "elo-poisson-strength-dixon-coles";
 }
 
 export function describeModelVariant(variant: ModelVariant): string {
@@ -77,5 +96,7 @@ export function describeModelVariant(variant: ModelVariant): string {
       return "Elo-Poisson score probabilities with Dixon-Coles low-score adjustment.";
     case "elo-poisson-strength":
       return "Elo-Poisson probabilities with recent attack/defense multipliers.";
+    case "elo-poisson-strength-dixon-coles":
+      return "Elo-Poisson probabilities with recent attack/defense multipliers and Dixon-Coles low-score adjustment.";
   }
 }

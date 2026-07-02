@@ -31,6 +31,13 @@ interface NormalizedRatingOptions {
   referenceYear: number;
 }
 
+interface IsoDateParts {
+  year: number;
+  month: number;
+  day: number;
+  timestamp: number;
+}
+
 export function createEmptyRatingState(): RatingState {
   return {
     ratings: new Map<string, number>(),
@@ -104,15 +111,18 @@ export function summarizeStrengthMetrics(
   configInput: Partial<ModelConfig> = {}
 ): TeamStrengthMetrics {
   const config = createModelConfig(configInput);
-  const recentSamples = (samples.get(team) ?? []).filter((sample) =>
-    isWithinMetricWindow(sample.date, referenceDate, config)
-  );
-  const totals = recentSamples.reduce(
-    (sum, sample) => ({
-      scored: sum.scored + sample.adjustedScored,
-      conceded: sum.conceded + sample.adjustedConceded,
-      weight: sum.weight + sample.adjustedWeight,
-    }),
+  assertValidRecentMetricHalfLife(config);
+
+  const totals = (samples.get(team) ?? []).reduce(
+    (sum, sample) => {
+      const decayWeight = recentMetricDecayWeight(sample.date, referenceDate, config);
+
+      return {
+        scored: sum.scored + sample.adjustedScored * decayWeight,
+        conceded: sum.conceded + sample.adjustedConceded * decayWeight,
+        weight: sum.weight + sample.adjustedWeight * decayWeight,
+      };
+    },
     { scored: 0, conceded: 0, weight: 0 }
   );
   const eloFactor = teamStrengthFactor(rating, config);
@@ -203,7 +213,7 @@ function applyEloUpdate(
   const effectiveHomeRating = homeRating + (match.neutral ? 0 : options.config.homeAdvantageElo);
   const expectedHome = expectedEloScore(effectiveHomeRating, awayRating);
   const actualHome = actualHomeScore(match);
-  const multiplier = goalDifferenceMultiplier(Math.abs(match.homeScore - match.awayScore));
+  const multiplier = marginOfVictoryEloMultiplier(match, effectiveHomeRating, awayRating, options.config);
   const delta =
     kFactor(match.tournament) *
     recencyWeight(match.date, options.referenceYear) *
@@ -251,14 +261,72 @@ function addStrengthSamples(
   return next;
 }
 
-function isWithinMetricWindow(sampleDate: string, referenceDate: string, config: ModelConfig): boolean {
-  const sampleYear = Number.parseInt(sampleDate.slice(0, 4), 10);
-  const referenceYear = Number.parseInt(referenceDate.slice(0, 4), 10);
-  const yearsAgo = referenceYear - sampleYear;
+function assertValidRecentMetricHalfLife(config: ModelConfig): void {
+  if (!Number.isFinite(config.recentMetricHalfLifeYears) || config.recentMetricHalfLifeYears <= 0) {
+    throw new Error("recentMetricHalfLifeYears must be positive");
+  }
+}
 
-  return Number.isFinite(sampleYear) && Number.isFinite(referenceYear)
-    ? yearsAgo >= 0 && yearsAgo <= config.recentMetricWindowYears
-    : false;
+function recentMetricDecayWeight(sampleDate: string, referenceDate: string, config: ModelConfig): number {
+  const yearsAgo = elapsedYearsBetweenIsoDates(sampleDate, referenceDate);
+
+  if (yearsAgo === null || yearsAgo < 0 || yearsAgo > config.recentMetricWindowYears) {
+    return 0;
+  }
+
+  return Math.exp((-Math.LN2 * yearsAgo) / config.recentMetricHalfLifeYears);
+}
+
+function elapsedYearsBetweenIsoDates(startDate: string, endDate: string): number | null {
+  const start = parseIsoDateParts(startDate);
+  const end = parseIsoDateParts(endDate);
+
+  if (!start || !end) {
+    return null;
+  }
+
+  if (end.timestamp < start.timestamp) {
+    return -calendarElapsedYears(end, start);
+  }
+
+  return calendarElapsedYears(start, end);
+}
+
+function calendarElapsedYears(start: IsoDateParts, end: IsoDateParts): number {
+  let wholeYears = end.year - start.year;
+  const anniversaryInEndYear = Date.UTC(end.year, start.month - 1, start.day);
+
+  if (end.timestamp < anniversaryInEndYear) {
+    wholeYears -= 1;
+  }
+
+  const lastAnniversary = Date.UTC(start.year + wholeYears, start.month - 1, start.day);
+  const nextAnniversary = Date.UTC(start.year + wholeYears + 1, start.month - 1, start.day);
+
+  return wholeYears + (end.timestamp - lastAnniversary) / (nextAnniversary - lastAnniversary);
+}
+
+function parseIsoDateParts(value: string): IsoDateParts | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) {
+    return null;
+  }
+
+  const year = Number.parseInt(match[1] ?? "", 10);
+  const month = Number.parseInt(match[2] ?? "", 10);
+  const day = Number.parseInt(match[3] ?? "", 10);
+  const timestamp = Date.UTC(year, month - 1, day);
+  const date = new Date(timestamp);
+
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return { year, month, day, timestamp };
 }
 
 function recencyWeight(date: string, referenceYear: number): number {
@@ -274,10 +342,29 @@ function actualHomeScore(match: HistoricalMatch): number {
   return 0.5;
 }
 
-function goalDifferenceMultiplier(goalDifference: number): number {
-  if (goalDifference <= 1) return 1;
-  if (goalDifference === 2) return 1.5;
-  return (3 + (goalDifference - 2) / 2) / 4;
+function marginOfVictoryEloMultiplier(
+  match: HistoricalMatch,
+  effectiveHomeRating: number,
+  awayRating: number,
+  config: ModelConfig
+): number {
+  if (!config.useMarginOfVictoryElo) return 1;
+
+  const goalDifference = Math.abs(match.homeScore - match.awayScore);
+  if (goalDifference === 0) return 1;
+
+  if (
+    !Number.isFinite(config.marginOfVictoryEloScalingConstant) ||
+    config.marginOfVictoryEloScalingConstant <= 0
+  ) {
+    throw new Error("marginOfVictoryEloScalingConstant must be positive");
+  }
+
+  const winnerEloDiff =
+    match.homeScore > match.awayScore ? effectiveHomeRating - awayRating : awayRating - effectiveHomeRating;
+  const denominator = Math.max(1, config.marginOfVictoryEloScalingConstant + winnerEloDiff);
+
+  return Math.log(goalDifference + 1) * (config.marginOfVictoryEloScalingConstant / denominator);
 }
 
 function normalizeRatingOptions(options: RatingComputationOptions = {}): NormalizedRatingOptions {

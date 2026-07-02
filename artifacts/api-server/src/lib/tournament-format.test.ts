@@ -145,6 +145,9 @@ test("round of 32 bracket uses official fixed matches and third-place assignment
   assert.equal(getMatch(matches, 87).away.name, "3L");
   assert.equal(getMatch(matches, 80).home.name, "1L");
   assert.equal(getMatch(matches, 80).away.name, "3K");
+  assert.equal(getMatch(matches, 73).venue, "Los Angeles");
+  assert.equal(getMatch(matches, 79).venue, "Mexico City");
+  assert.equal(getMatch(matches, 85).venue, "Vancouver");
 });
 
 test("knockout templates produce official round sizes from exactly 32 teams", () => {
@@ -179,4 +182,6 @@ test("knockout templates produce official round sizes from exactly 32 teams", ()
   );
   assert.ok(finalMatch);
   assert.equal(new Set([finalMatch.home.name, finalMatch.away.name]).size, 2);
+  assert.equal(finalMatch.date, "2026-07-19");
+  assert.equal(finalMatch.venue, "New York New Jersey");
 });

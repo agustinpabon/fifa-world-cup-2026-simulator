@@ -24,15 +24,19 @@ import type {
   DeleteLiveMatchRequest,
   DeleteLiveMatchResult,
   ErrorResponse,
+  GetMatchContextParams,
   GetSimulationParams,
   HealthStatus,
   LiveMatchRequest,
   LiveMatchResponse,
   LiveMatchesResponse,
+  MatchContextResponse,
   MatchPredictionRequest,
   MatchPredictionResponse,
   OracleStatus,
+  PredictMatchParams,
   SimulationResponse,
+  SquadsResponse,
   TeamsResponse
 } from './api.schemas';
 
@@ -282,6 +286,84 @@ export function useGetTeams<TData = Awaited<ReturnType<typeof getTeams>>, TError
 
 
 
+export const getGetSquadsUrl = () => {
+
+
+
+
+  return `/api/oracle/squads`
+}
+
+/**
+ * Returns the local squad snapshot with per-team completeness and provenance metadata.
+ * @summary Get versioned local World Cup squad snapshots
+ */
+export const getSquads = async ( options?: RequestInit): Promise<SquadsResponse> => {
+
+  return customFetch<SquadsResponse>(getGetSquadsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSquadsQueryKey = () => {
+    return [
+    `/api/oracle/squads`
+    ] as const;
+    }
+
+
+export const getGetSquadsQueryOptions = <TData = Awaited<ReturnType<typeof getSquads>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSquads>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSquadsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSquads>>> = ({ signal }) => getSquads({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSquads>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSquadsQueryResult = NonNullable<Awaited<ReturnType<typeof getSquads>>>
+export type GetSquadsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get versioned local World Cup squad snapshots
+ */
+
+export function useGetSquads<TData = Awaited<ReturnType<typeof getSquads>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSquads>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSquadsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
 export const getGetSimulationUrl = (params?: GetSimulationParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -367,21 +449,29 @@ export function useGetSimulation<TData = Awaited<ReturnType<typeof getSimulation
 
 
 
-export const getPredictMatchUrl = () => {
+export const getPredictMatchUrl = (params?: PredictMatchParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/oracle/predict-match`
+  return stringifiedParams.length > 0 ? `/api/oracle/predict-match?${stringifiedParams}` : `/api/oracle/predict-match`
 }
 
 /**
  * Given two team names, returns win/draw/loss probabilities, expected goals, and most likely scoreline
  * @summary Predict a head-to-head match
  */
-export const predictMatch = async (matchPredictionRequest: MatchPredictionRequest, options?: RequestInit): Promise<MatchPredictionResponse> => {
+export const predictMatch = async (matchPredictionRequest: MatchPredictionRequest,
+    params?: PredictMatchParams, options?: RequestInit): Promise<MatchPredictionResponse> => {
 
-  return customFetch<MatchPredictionResponse>(getPredictMatchUrl(),
+  return customFetch<MatchPredictionResponse>(getPredictMatchUrl(params),
   {
     ...options,
     method: 'POST',
@@ -395,8 +485,8 @@ export const predictMatch = async (matchPredictionRequest: MatchPredictionReques
 
 
 export const getPredictMatchMutationOptions = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof predictMatch>>, TError,{data: BodyType<MatchPredictionRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof predictMatch>>, TError,{data: BodyType<MatchPredictionRequest>}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof predictMatch>>, TError,{data: BodyType<MatchPredictionRequest>;params?: PredictMatchParams}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof predictMatch>>, TError,{data: BodyType<MatchPredictionRequest>;params?: PredictMatchParams}, TContext> => {
 
 const mutationKey = ['predictMatch'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -408,10 +498,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof predictMatch>>, {data: BodyType<MatchPredictionRequest>}> = (props) => {
-          const {data} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof predictMatch>>, {data: BodyType<MatchPredictionRequest>;params?: PredictMatchParams}> = (props) => {
+          const {data,params} = props ?? {};
 
-          return  predictMatch(data,requestOptions)
+          return  predictMatch(data,params,requestOptions)
         }
 
 
@@ -429,11 +519,11 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
  * @summary Predict a head-to-head match
  */
 export const usePredictMatch = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof predictMatch>>, TError,{data: BodyType<MatchPredictionRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof predictMatch>>, TError,{data: BodyType<MatchPredictionRequest>;params?: PredictMatchParams}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof predictMatch>>,
         TError,
-        {data: BodyType<MatchPredictionRequest>},
+        {data: BodyType<MatchPredictionRequest>;params?: PredictMatchParams},
         TContext
       > => {
       return useMutation(getPredictMatchMutationOptions(options));
@@ -649,6 +739,91 @@ export function useGetLiveMatches<TData = Awaited<ReturnType<typeof getLiveMatch
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetLiveMatchesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetMatchContextUrl = (params: GetMatchContextParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/oracle/match-context?${stringifiedParams}` : `/api/oracle/match-context`
+}
+
+/**
+ * Returns fixture metadata, resolved venue coordinates, and weather context when the kickoff is inside the forecast horizon.
+ * @summary Get fixture context with optional Open-Meteo weather
+ */
+export const getMatchContext = async (params: GetMatchContextParams, options?: RequestInit): Promise<MatchContextResponse> => {
+
+  return customFetch<MatchContextResponse>(getGetMatchContextUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMatchContextQueryKey = (params?: GetMatchContextParams,) => {
+    return [
+    `/api/oracle/match-context`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetMatchContextQueryOptions = <TData = Awaited<ReturnType<typeof getMatchContext>>, TError = ErrorType<ErrorResponse>>(params: GetMatchContextParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMatchContext>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMatchContextQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMatchContext>>> = ({ signal }) => getMatchContext(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMatchContext>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMatchContextQueryResult = NonNullable<Awaited<ReturnType<typeof getMatchContext>>>
+export type GetMatchContextQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get fixture context with optional Open-Meteo weather
+ */
+
+export function useGetMatchContext<TData = Awaited<ReturnType<typeof getMatchContext>>, TError = ErrorType<ErrorResponse>>(
+ params: GetMatchContextParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMatchContext>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMatchContextQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

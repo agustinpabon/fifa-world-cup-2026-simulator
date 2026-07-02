@@ -1,21 +1,35 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { predictMatch } from "@workspace/oracle-model";
+import { buildScoreProbabilityMatrix, predictMatch } from "@workspace/oracle-model";
 
 import {
+  ACCLIMATIZATION_REST_DAYS,
+  ALTITUDE_ELO_PENALTY,
+  ALTITUDE_REFERENCE_EXCESS_METERS,
+  HIGH_ALTITUDE_THRESHOLD_METERS,
+  TRAVEL_FATIGUE_DISTANCE_CAP_KM,
+  TRAVEL_FATIGUE_DISTANCE_REFERENCE_KM,
+  TRAVEL_FATIGUE_ELO_PENALTY,
+  TRAVEL_FATIGUE_REST_DECAY_RATE,
+  applyMatchContextRatingAdjustments,
+  calculateAltitudeEloAdjustment,
   calculateProbabilityUncertainty,
+  calculateTravelDistanceKm,
+  calculateTravelFatigueAdjustment,
   createSeededRng,
   getPlayedKnockoutWinner,
   matchProbabilities,
   rankGroupStandingsByFifaCriteria,
   rankThirdPlacedTeamsByFifaCriteria,
   runSimulations,
+  simulateKnockout,
   toPublishedSimulationResults,
+  type PlayedMatch,
   type GroupMatchScore,
   type GroupStanding,
   type SimResult,
 } from "./simulation.js";
-import { WC2026_TEAMS, type WCTeam } from "./worldcup2026.js";
+import { WC2026_GROUPS, WC2026_TEAMS, getHostVenueByName, type WCTeam } from "./worldcup2026.js";
 
 function team(name: string): WCTeam {
   return {
@@ -46,8 +60,131 @@ function rankedNames(standings: readonly GroupStanding[]): string[] {
   return standings.map((entry) => entry.team.name);
 }
 
+function sequenceRng(values: readonly number[]): () => number {
+  let index = 0;
+
+  return () => {
+    const value = values[index];
+    if (value === undefined) {
+      throw new Error(`RNG sequence exhausted after ${index} draws`);
+    }
+    index += 1;
+    return value;
+  };
+}
+
+function scriptedRng(values: readonly number[], fallback = 0.9): () => number {
+  let index = 0;
+
+  return () => {
+    const value = values[index] ?? fallback;
+    index += 1;
+    return value;
+  };
+}
+
+function randomValueForScore(
+  matrix: readonly { goalsA: number; goalsB: number; probability: number }[],
+  goalsA: number,
+  goalsB: number
+): number {
+  let cumulative = 0;
+
+  for (const cell of matrix) {
+    const start = cumulative;
+    cumulative += cell.probability;
+
+    if (cell.goalsA === goalsA && cell.goalsB === goalsB) {
+      return start + cell.probability / 2;
+    }
+  }
+
+  throw new Error(`No ${goalsA}-${goalsB} score cell found`);
+}
+
 function buildRatings(): Record<string, number> {
   return Object.fromEntries(WC2026_TEAMS.map((entry) => [entry.name, 1500]));
+}
+
+function playedKnockoutMatch(homeTeam: string, awayTeam: string, winnerTeam = homeTeam): PlayedMatch {
+  return {
+    homeTeam,
+    awayTeam,
+    homeScore: winnerTeam === homeTeam ? 1 : 0,
+    awayScore: winnerTeam === awayTeam ? 1 : 0,
+    winnerTeam,
+    stage: "knockout",
+    status: "finished",
+  };
+}
+
+function buildDynamicEloScenarioPlayedMatches(): PlayedMatch[] {
+  const groupMatches = WC2026_GROUPS.flatMap((group, groupIndex) => {
+    const teamOrder = new Map(group.teams.map((entry, index) => [entry.name, index]));
+
+    return group.fixtures.map((fixture): PlayedMatch => {
+      const homeRank = teamOrder.get(fixture.homeTeam);
+      const awayRank = teamOrder.get(fixture.awayTeam);
+
+      if (homeRank === undefined || awayRank === undefined) {
+        throw new Error(`Fixture ${fixture.matchNumber} references a team outside Group ${group.id}`);
+      }
+
+      const strongerHome = homeRank < awayRank;
+      const isThirdVsFourth = Math.min(homeRank, awayRank) === 2 && Math.max(homeRank, awayRank) === 3;
+      const margin = isThirdVsFourth ? WC2026_GROUPS.length - groupIndex : 1;
+
+      return {
+        homeTeam: fixture.homeTeam,
+        awayTeam: fixture.awayTeam,
+        homeScore: strongerHome ? margin : 0,
+        awayScore: strongerHome ? 0 : margin,
+        stage: "group",
+        date: fixture.date,
+        venue: fixture.venue,
+        group: group.id,
+        status: "finished",
+      };
+    });
+  });
+  const nonTargetKnockoutMatches = [
+    playedKnockoutMatch("South Africa", "Bosnia & Herzegovina"),
+    playedKnockoutMatch("Germany", "Haiti"),
+    playedKnockoutMatch("Netherlands", "Morocco"),
+    playedKnockoutMatch("Brazil", "Japan"),
+    playedKnockoutMatch("France", "Sweden"),
+    playedKnockoutMatch("Curaçao", "Senegal"),
+    playedKnockoutMatch("England", "Côte d'Ivoire"),
+    playedKnockoutMatch("USA", "Qatar"),
+    playedKnockoutMatch("Belgium", "Korea Republic"),
+    playedKnockoutMatch("Congo DR", "Croatia"),
+    playedKnockoutMatch("Spain", "Algeria"),
+    playedKnockoutMatch("Canada", "IR Iran"),
+    playedKnockoutMatch("Argentina", "Cabo Verde"),
+    playedKnockoutMatch("Portugal", "Australia"),
+    playedKnockoutMatch("Paraguay", "Egypt"),
+    playedKnockoutMatch("Germany", "France"),
+    playedKnockoutMatch("South Africa", "Netherlands", "Netherlands"),
+    playedKnockoutMatch("Brazil", "Curaçao"),
+    playedKnockoutMatch("Mexico", "England"),
+    playedKnockoutMatch("Saudi Arabia", "England"),
+    playedKnockoutMatch("Congo DR", "Spain", "Spain"),
+    playedKnockoutMatch("USA", "Belgium", "Belgium"),
+    playedKnockoutMatch("Argentina", "Paraguay"),
+    playedKnockoutMatch("Canada", "Portugal", "Portugal"),
+    playedKnockoutMatch("Germany", "Netherlands"),
+    playedKnockoutMatch("Spain", "Belgium"),
+    playedKnockoutMatch("Brazil", "Mexico", "Mexico"),
+    playedKnockoutMatch("Brazil", "Saudi Arabia", "Saudi Arabia"),
+    playedKnockoutMatch("Argentina", "Portugal"),
+    playedKnockoutMatch("Germany", "Spain"),
+    playedKnockoutMatch("Mexico", "Argentina"),
+    playedKnockoutMatch("Saudi Arabia", "Argentina", "Saudi Arabia"),
+    playedKnockoutMatch("Germany", "Mexico", "Mexico"),
+    playedKnockoutMatch("Germany", "Saudi Arabia", "Saudi Arabia"),
+  ];
+
+  return [...groupMatches, ...nonTargetKnockoutMatches];
 }
 
 function assertAlmostEqual(actual: number, expected: number, tolerance = 1e-12): void {
@@ -61,9 +198,24 @@ function assertNormalized(probabilities: { pWinA: number; pDraw: number; pWinB: 
   assertAlmostEqual(probabilities.pWinA + probabilities.pDraw + probabilities.pWinB, 1);
 }
 
+function expectedTravelFatiguePenalty(distanceKm: number, restDays: number): number {
+  return (
+    TRAVEL_FATIGUE_ELO_PENALTY *
+    (Math.min(distanceKm, TRAVEL_FATIGUE_DISTANCE_CAP_KM) / TRAVEL_FATIGUE_DISTANCE_REFERENCE_KM) *
+    Math.exp(-TRAVEL_FATIGUE_REST_DECAY_RATE * restDays)
+  );
+}
+
+function expectedAltitudePenalty(altitudeMeters: number, acclimatizationDays: number): number {
+  const altitudeExcessMeters = Math.max(0, altitudeMeters - HIGH_ALTITUDE_THRESHOLD_METERS);
+  const acclimatizationFactor = Math.max(0, 1 - acclimatizationDays / ACCLIMATIZATION_REST_DAYS);
+
+  return ALTITUDE_ELO_PENALTY * (altitudeExcessMeters / ALTITUDE_REFERENCE_EXCESS_METERS) * acclimatizationFactor;
+}
+
 test("match probabilities are deterministic and symmetric for evenly matched neutral teams", () => {
-  const first = matchProbabilities(1500, 1500, 1, undefined, undefined, false, false, { random: () => 0 });
-  const second = matchProbabilities(1500, 1500, 100_000, undefined, undefined, false, false, {
+  const first = matchProbabilities(1500, 1500, 1, undefined, undefined, false, false, true, { random: () => 0 });
+  const second = matchProbabilities(1500, 1500, 100_000, undefined, undefined, false, false, true, {
     random: () => 0.99,
   });
 
@@ -117,6 +269,7 @@ test("production match probabilities use the shared oracle-model predictor", () 
     metricsB,
     true,
     false,
+    false,
     {},
     { variant: "elo-poisson-strength", drawRate: 0.25 }
   );
@@ -125,7 +278,7 @@ test("production match probabilities use the shared oracle-model predictor", () 
     ratingB: 1580,
     metricsA,
     metricsB,
-    neutral: true,
+    neutral: false,
     isHomeA: true,
     isHomeB: false,
     modelConfig: { variant: "elo-poisson-strength", drawRate: 0.25 },
@@ -135,6 +288,167 @@ test("production match probabilities use the shared oracle-model predictor", () 
   assertAlmostEqual(production.pDraw, shared.probabilities.pDraw);
   assertAlmostEqual(production.pWinB, shared.probabilities.pWinB);
   assert.equal(production.mostLikelyScore, shared.mostLikelyScore);
+});
+
+test("match probabilities mirror non-neutral home advantage for team two", () => {
+  const teamOneHome = matchProbabilities(
+    1500,
+    1500,
+    undefined,
+    undefined,
+    undefined,
+    true,
+    false,
+    false
+  );
+  const teamTwoHome = matchProbabilities(
+    1500,
+    1500,
+    undefined,
+    undefined,
+    undefined,
+    false,
+    true,
+    false
+  );
+
+  assertAlmostEqual(teamOneHome.pWinA, teamTwoHome.pWinB);
+  assertAlmostEqual(teamOneHome.pWinB, teamTwoHome.pWinA);
+  assertAlmostEqual(teamOneHome.pDraw, teamTwoHome.pDraw);
+  assertAlmostEqual(teamOneHome.xgA, teamTwoHome.xgB);
+  assertAlmostEqual(teamOneHome.xgB, teamTwoHome.xgA);
+});
+
+test("match probabilities apply high-altitude venue penalties to non-acclimatized teams", () => {
+  const neutral = matchProbabilities(1500, 1500, undefined, undefined, undefined, false, false, true);
+  const mexicoCity = matchProbabilities(
+    1500,
+    1500,
+    undefined,
+    undefined,
+    undefined,
+    false,
+    false,
+    true,
+    {},
+    undefined,
+    {
+      teamNameA: "Mexico",
+      teamNameB: "South Africa",
+      venue: "Mexico City",
+      matchDate: "2026-06-11",
+    }
+  );
+
+  assert.ok(HIGH_ALTITUDE_THRESHOLD_METERS < 2240);
+  assert.equal(ALTITUDE_ELO_PENALTY, -50);
+  assert.ok(mexicoCity.pWinA > neutral.pWinA);
+  assert.ok(mexicoCity.pWinB < neutral.pWinB);
+});
+
+test("altitude adjustment exempts high-altitude home nations and acclimatized teams", () => {
+  const mexicoCity = getHostVenueByName("Mexico City");
+  assert.ok(mexicoCity);
+
+  const mexicoCityFreshArrivalPenalty = expectedAltitudePenalty(mexicoCity.altitudeMeters, 0);
+  const freshArrival = applyMatchContextRatingAdjustments({
+    ratingA: 1500,
+    ratingB: 1500,
+    teamNameA: "Mexico",
+    teamNameB: "South Africa",
+    venue: mexicoCity.name,
+    matchDate: "2026-06-11",
+  });
+  const acclimatized = applyMatchContextRatingAdjustments({
+    ratingA: 1500,
+    ratingB: 1500,
+    teamNameA: "Mexico",
+    teamNameB: "South Africa",
+    venue: mexicoCity.name,
+    matchDate: "2026-06-18",
+    acclimatizationDaysB: ACCLIMATIZATION_REST_DAYS,
+  });
+
+  assert.equal(freshArrival.ratingA, 1500);
+  assertAlmostEqual(freshArrival.ratingB, 1500 + mexicoCityFreshArrivalPenalty);
+  assert.equal(acclimatized.ratingB, 1500);
+});
+
+test("altitude adjustment scales with altitude excess and partial acclimatization", () => {
+  const guadalajara = getHostVenueByName("Guadalajara");
+  const mexicoCity = getHostVenueByName("Mexico City");
+  assert.ok(guadalajara);
+  assert.ok(mexicoCity);
+
+  assert.equal(HIGH_ALTITUDE_THRESHOLD_METERS, 1000);
+  assert.equal(ALTITUDE_REFERENCE_EXCESS_METERS, 1240);
+  assertAlmostEqual(
+    calculateAltitudeEloAdjustment("South Africa", guadalajara, { acclimatizationDays: 0 }),
+    expectedAltitudePenalty(guadalajara.altitudeMeters, 0)
+  );
+  assertAlmostEqual(
+    calculateAltitudeEloAdjustment("South Africa", mexicoCity, { acclimatizationDays: 2 }),
+    expectedAltitudePenalty(mexicoCity.altitudeMeters, 2)
+  );
+  assertAlmostEqual(
+    calculateAltitudeEloAdjustment("South Africa", mexicoCity, { acclimatizationDays: 8 }),
+    0
+  );
+});
+
+test("travel fatigue scales with distance and decays with rest days", () => {
+  const vancouver = getHostVenueByName("Vancouver");
+  const miami = getHostVenueByName("Miami");
+  assert.ok(vancouver);
+  assert.ok(miami);
+
+  const distanceKm = calculateTravelDistanceKm(vancouver, miami);
+  const distantVenue = {
+    ...miami,
+    name: "Distant Test Venue",
+    latitude: -vancouver.latitude,
+    longitude: vancouver.longitude + 180,
+  };
+  const cappedDistanceKm = calculateTravelDistanceKm(vancouver, distantVenue);
+  const threeRestDaysPenalty = expectedTravelFatiguePenalty(distanceKm, 3);
+  const sixRestDaysPenalty = expectedTravelFatiguePenalty(distanceKm, 6);
+  const cappedDistancePenalty = expectedTravelFatiguePenalty(cappedDistanceKm, 0);
+
+  assert.ok(distanceKm < TRAVEL_FATIGUE_DISTANCE_CAP_KM);
+  assert.ok(cappedDistanceKm > TRAVEL_FATIGUE_DISTANCE_CAP_KM);
+  assert.equal(TRAVEL_FATIGUE_DISTANCE_REFERENCE_KM, 2500);
+  assert.equal(TRAVEL_FATIGUE_DISTANCE_CAP_KM, 5000);
+  assert.equal(TRAVEL_FATIGUE_REST_DECAY_RATE, 0.2);
+  assert.equal(TRAVEL_FATIGUE_ELO_PENALTY, -30);
+  assertAlmostEqual(
+    calculateTravelFatigueAdjustment(
+      { lastVenue: "Vancouver", lastMatchDate: "2026-06-27" },
+      miami,
+      "2026-07-01"
+    ),
+    threeRestDaysPenalty
+  );
+  assertAlmostEqual(
+    calculateTravelFatigueAdjustment(
+      { lastVenue: "Vancouver", lastMatchDate: "2026-06-27" },
+      miami,
+      "2026-07-04"
+    ),
+    sixRestDaysPenalty
+  );
+  assert.ok(Math.abs(sixRestDaysPenalty) < Math.abs(threeRestDaysPenalty));
+  assertAlmostEqual(
+    calculateTravelFatigueAdjustment(
+      { lastVenue: "Vancouver", lastMatchDate: "2026-06-27" },
+      distantVenue,
+      "2026-06-28"
+    ),
+    cappedDistancePenalty
+  );
+  assertAlmostEqual(
+    cappedDistancePenalty,
+    TRAVEL_FATIGUE_ELO_PENALTY * (TRAVEL_FATIGUE_DISTANCE_CAP_KM / TRAVEL_FATIGUE_DISTANCE_REFERENCE_KM)
+  );
 });
 
 test("played knockout winner honors penalty or provider winner when scores are level", () => {
@@ -163,6 +477,89 @@ test("played knockout winner falls back to scoreline for completed non-draws", (
       source: "espn",
     }),
     "Germany"
+  );
+});
+
+test("drawn knockout matches can be resolved by extra-time goals for either team", () => {
+  const modelConfig = { variant: "elo-poisson" as const, maxGoals: 5 };
+  const alpha = team("Alpha");
+  const bravo = team("Bravo");
+  const fullTimePrediction = predictMatch({
+    ratingA: 1700,
+    ratingB: 1500,
+    modelConfig,
+  });
+  const extraTimeMatrix = buildScoreProbabilityMatrix(fullTimePrediction.xgA / 3, fullTimePrediction.xgB / 3, {
+    maxGoals: modelConfig.maxGoals,
+  });
+  const fullTimeDraw = randomValueForScore(fullTimePrediction.scoreMatrix, 0, 0);
+  const extraTimeAlphaGoal = randomValueForScore(extraTimeMatrix, 1, 0);
+  const extraTimeBravoGoal = randomValueForScore(extraTimeMatrix, 0, 1);
+
+  assert.equal(
+    simulateKnockout(
+      alpha,
+      bravo,
+      1700,
+      1500,
+      [],
+      undefined,
+      "R32",
+      sequenceRng([fullTimeDraw, extraTimeAlphaGoal]),
+      modelConfig
+    ),
+    true
+  );
+  assert.equal(
+    simulateKnockout(
+      alpha,
+      bravo,
+      1700,
+      1500,
+      [],
+      undefined,
+      "R32",
+      sequenceRng([fullTimeDraw, extraTimeBravoGoal]),
+      modelConfig
+    ),
+    false
+  );
+});
+
+test("drawn knockout matches use Elo-biased penalty shootouts after extra time", () => {
+  const modelConfig = { variant: "elo-poisson" as const, maxGoals: 5 };
+  const alpha = team("Alpha");
+  const bravo = team("Bravo");
+  const eloA = 1800;
+  const eloB = 1600;
+  const fullTimePrediction = predictMatch({
+    ratingA: eloA,
+    ratingB: eloB,
+    modelConfig,
+  });
+  const extraTimeMatrix = buildScoreProbabilityMatrix(fullTimePrediction.xgA / 3, fullTimePrediction.xgB / 3, {
+    maxGoals: modelConfig.maxGoals,
+  });
+  const fullTimeDraw = randomValueForScore(fullTimePrediction.scoreMatrix, 0, 0);
+  const extraTimeDraw = randomValueForScore(extraTimeMatrix, 0, 0);
+  const penaltyDraw = 0.55;
+  const shootoutWinProbabilityA = 1 / (1 + 10 ** ((eloB - eloA) / 800));
+
+  assert.ok(penaltyDraw > 0.5);
+  assert.ok(penaltyDraw < shootoutWinProbabilityA);
+  assert.equal(
+    simulateKnockout(
+      alpha,
+      bravo,
+      eloA,
+      eloB,
+      [],
+      undefined,
+      "R32",
+      sequenceRng([fullTimeDraw, extraTimeDraw, penaltyDraw]),
+      modelConfig
+    ),
+    true
   );
 });
 
@@ -306,6 +703,18 @@ test("tournament simulations can use an injected RNG", () => {
 
   assert.equal(Object.values(result.titles).reduce((total, count) => total + count, 0), 1);
   assert.ok(calls > 0);
+});
+
+test("tournament simulation Elo changes apply within each path and reset before the next path", () => {
+  const ratings = buildRatings();
+  const result = runSimulations(ratings, buildDynamicEloScenarioPlayedMatches(), undefined, {
+    simulationsRun: 2,
+    random: scriptedRng([0.001, 0.001, 0.52, 0.001, 0.001, 0.54]),
+    modelConfig: { variant: "elo-poisson", maxGoals: 6 },
+  });
+
+  assert.equal(result.roundOf16["Mexico"], 1);
+  assert.equal(ratings.Mexico, 1500);
 });
 
 test("probability uncertainty uses binomial standard error and bounded confidence intervals", () => {

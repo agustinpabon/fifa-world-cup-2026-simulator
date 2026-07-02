@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import { ACTIVE_MODEL_VARIANT } from "@workspace/oracle-model";
+
 import {
+  DEFAULT_BACKTEST_OUTPUT,
   OUTCOMES,
   poissonOutcomeProbabilities,
   parseResultsCsv,
@@ -24,6 +28,14 @@ function match(
 ): HistoricalMatch {
   return { date, homeTeam, awayTeam, homeScore, awayScore, tournament, neutral };
 }
+
+test("latest generated backtest report matches the promoted active model variant", () => {
+  const report = JSON.parse(readFileSync(DEFAULT_BACKTEST_OUTPUT, "utf8")) as {
+    activeModel?: unknown;
+  };
+
+  assert.equal(report.activeModel, ACTIVE_MODEL_VARIANT);
+});
 
 test("parseResultsCsv handles quoted CSV fields without shifting the neutral flag", () => {
   const raw = [
@@ -131,6 +143,7 @@ test("runHistoricalBacktest evaluates a dated holdout against model and baseline
     "elo-poisson",
     "elo-poisson-dixon-coles",
     "elo-poisson-strength",
+    "elo-poisson-strength-dixon-coles",
     "uniform-baseline",
   ]);
   assert.ok(Math.abs(report.metrics["uniform-baseline"].brierScore - 2 / 3) < 1e-12);
@@ -166,6 +179,100 @@ test("runHistoricalBacktest compares attack/defense strength variant against pla
   );
 });
 
+test("runHistoricalBacktest applies XG and strength metric parameter overrides", () => {
+  const matches = [
+    match("2020-01-01", "Elite", "Weak", 5, 0, "FIFA World Cup", true),
+    match("2020-02-01", "Elite", "Weak", 4, 0, "FIFA World Cup", true),
+    match("2020-03-01", "Alpha", "Elite", 1, 0, "Friendly", true),
+    match("2020-04-01", "Alpha", "Elite", 1, 1, "Friendly", true),
+    match("2020-05-01", "Bravo", "Weak", 1, 0, "Friendly", true),
+    match("2020-06-01", "Bravo", "Weak", 1, 1, "Friendly", true),
+    match("2021-01-01", "Alpha", "Bravo", 2, 1, "FIFA World Cup qualification", false),
+  ];
+  const baseline = runHistoricalBacktest(matches, {
+    testStart: "2021-01-01",
+    testEnd: "2021-12-31",
+    initialRating: 1500,
+    sampleForecastLimit: 1,
+  });
+  const tuned = runHistoricalBacktest(matches, {
+    testStart: "2021-01-01",
+    testEnd: "2021-12-31",
+    initialRating: 1500,
+    homeAdvantageElo: 75,
+    useMarginOfVictoryElo: false,
+    marginOfVictoryEloScalingConstant: 1800,
+    maxRecentGoalBlend: 0.4,
+    recentMetricHalfLifeYears: 1.5,
+    recentMetricPriorWeight: 10,
+    metricEloScale: 2500,
+    baseXg: 1.75,
+    sampleForecastLimit: 1,
+  });
+
+  assert.equal(tuned.config.homeAdvantageElo, 75);
+  assert.equal(tuned.config.useMarginOfVictoryElo, false);
+  assert.equal(tuned.config.marginOfVictoryEloScalingConstant, 1800);
+  assert.equal(tuned.config.maxRecentGoalBlend, 0.4);
+  assert.equal(tuned.config.recentMetricHalfLifeYears, 1.5);
+  assert.equal(tuned.config.recentMetricPriorWeight, 10);
+  assert.equal(tuned.config.metricEloScale, 2500);
+  assert.equal(tuned.config.baseXg, 1.75);
+  assert.notDeepEqual(
+    tuned.sampleForecasts[0]?.probabilities["elo-poisson-strength"],
+    baseline.sampleForecasts[0]?.probabilities["elo-poisson-strength"]
+  );
+});
+
+test("runHistoricalBacktest can compare base forecasts against opt-in context modifiers", () => {
+  const report = runHistoricalBacktest(
+    [
+      match("2020-01-01", "Alpha", "Beta", 2, 0, "Friendly", false),
+      match("2020-02-01", "Gamma", "Delta", 0, 0, "Friendly", true),
+      match("2021-01-01", "Alpha", "Gamma", 0, 1, "Friendly", false),
+      match("2021-02-01", "Beta", "Delta", 2, 0, "Friendly", false),
+    ],
+    {
+      testStart: "2021-01-01",
+      testEnd: "2021-12-31",
+      initialRating: 1500,
+      experimentalModifiersEnabled: true,
+      experimentalModifierProvider: (candidate) => ({
+        manual: [
+          {
+            target: "teamA",
+            adjustments: { eloDelta: 80, xgMultiplier: 1.2 },
+            explanation: `Synthetic boost for ${candidate.homeTeam}; intentionally not assumed valid.`,
+            provenance: {
+              source: "unit-test",
+              sourceId: `${candidate.date}:${candidate.homeTeam}:${candidate.awayTeam}`,
+            },
+          },
+        ],
+      }),
+    }
+  );
+
+  assert.equal(report.experimentalModifiers.enabled, true);
+  assert.equal(report.experimentalModifiers.baseModel, ACTIVE_MODEL_VARIANT);
+  assert.equal(report.experimentalModifiers.appliedModifierCount, 2);
+  assert.ok(report.experimentalModifiers.metrics);
+  assert.equal(report.experimentalModifiers.metrics.base.matches, 2);
+  assert.equal(report.experimentalModifiers.metrics.withModifiers.matches, 2);
+  assert.equal(
+    report.experimentalModifiers.metrics.delta.brierScore,
+    report.experimentalModifiers.metrics.withModifiers.brierScore -
+      report.experimentalModifiers.metrics.base.brierScore
+  );
+  assert.equal(
+    report.experimentalModifiers.metrics.delta.logLoss,
+    report.experimentalModifiers.metrics.withModifiers.logLoss -
+      report.experimentalModifiers.metrics.base.logLoss
+  );
+  assert.equal(report.sampleForecasts[0]?.experimentalModifiers?.enabled, true);
+  assert.equal(report.sampleForecasts[0]?.experimentalModifiers?.applied.length, 1);
+});
+
 test("runRollingBacktest selects an active model no worse than the Elo baseline", () => {
   const report = runRollingBacktest(
     [
@@ -191,4 +298,40 @@ test("runRollingBacktest selects an active model no worse than the Elo baseline"
       window.metrics[report.activeModel].logLoss <= window.metrics["elo-baseline"].logLoss
     );
   }
+});
+
+test("runRollingBacktest keeps experimental modifiers disabled unless every enabled window improves metrics", () => {
+  const report = runRollingBacktest(
+    [
+      match("2020-01-01", "Alpha", "Beta", 2, 0, "Friendly", false),
+      match("2020-02-01", "Gamma", "Delta", 0, 0, "Friendly", true),
+      match("2021-01-01", "Alpha", "Gamma", 0, 1, "Friendly", false),
+      match("2021-02-01", "Beta", "Delta", 2, 0, "Friendly", false),
+      match("2022-01-01", "Alpha", "Delta", 0, 1, "Friendly", false),
+      match("2022-02-01", "Gamma", "Beta", 2, 0, "Friendly", false),
+    ],
+    [
+      { testStart: "2021-01-01", testEnd: "2021-12-31" },
+      { testStart: "2022-01-01", testEnd: "2022-12-31" },
+    ],
+    {
+      sampleForecastLimit: 0,
+      experimentalModifiersEnabled: true,
+      experimentalModifierProvider: (candidate) => ({
+        manual: [
+          {
+            target: "teamA",
+            adjustments: { eloDelta: 80, xgMultiplier: 1.2 },
+            explanation: `Synthetic home-side boost for ${candidate.homeTeam}; validation fixture only.`,
+            provenance: { source: "unit-test", sourceId: candidate.date },
+          },
+        ],
+      }),
+    }
+  );
+
+  assert.equal(report.experimentalModifiers.enabled, true);
+  assert.equal(report.experimentalModifiers.windowsEvaluated, 2);
+  assert.equal(report.experimentalModifiers.recommendation, "keep-disabled");
+  assert.match(report.experimentalModifiers.policy, /disabled by default/i);
 });

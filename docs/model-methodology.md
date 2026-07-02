@@ -98,6 +98,65 @@ after applying the low-score factors. Current tests verify normalization and
 that negative `rho` increases 0-0 and 1-1 probabilities while decreasing 1-0
 and 0-1.
 
+## Experimental Context Modifiers
+
+Experimental match context modifiers are implemented for research only and are
+feature-flagged off by default. They can adjust Elo and/or xG through four typed
+families:
+
+- `weather`
+- `availability`
+- `suspension`
+- `manual`
+
+Modifiers do not encode automatic heuristics. Each entry must provide explicit
+numeric adjustments plus `explanation` and `provenance.source`, and the runtime
+reports both requested and applied adjustments. Applied adjustments are bounded
+by model config limits before they affect predictions.
+
+The default published model does not use these modifiers. They are applied only
+when `experimentalModifiersEnabled=true` is present in model config or an
+explicit API query flag is passed for a prediction request. `POST
+/api/oracle/predict-match?experimentalModifiers=true` enables the experimental
+path for that request and returns the modifier report, but no external injury,
+weather, or roster source is wired into the published model by default.
+
+Backtesting can compare the active base model against opt-in modifiers:
+
+```bash
+pnpm backtest -- --experimental-modifiers path/to/modifiers.json
+```
+
+The modifiers JSON must be traceable:
+
+```json
+{
+  "sourceName": "manual-context-experiment-v1",
+  "generatedAt": "2026-07-01T00:00:00.000Z",
+  "entries": [
+    {
+      "date": "2024-06-01",
+      "homeTeam": "Team A",
+      "awayTeam": "Team B",
+      "modifiers": {
+        "manual": [
+          {
+            "target": "teamA",
+            "adjustments": { "eloDelta": -25, "xgMultiplier": 0.96 },
+            "explanation": "Research-only availability adjustment from tracked source.",
+            "provenance": { "source": "analyst-notebook", "sourceId": "exp-001" }
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+The rolling report includes base vs modifier Brier score and log loss deltas.
+Experimental modifiers remain disabled unless enabled backtests improve both
+Brier score and log loss in every evaluated window.
+
 ## Model Selection And Backtesting
 
 Backtesting uses rolling-origin evaluation. For each test match, the model
@@ -120,19 +179,19 @@ annual windows for 2021, 2022, 2023, 2024, and 2025.
 
 | Year | Matches | Active Brier | Active Log Loss | Elo Brier | Elo Log Loss | Uniform Brier | Accuracy |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| 2021 | 1115 | 0.4880 | 0.8377 | 0.5001 | 0.8587 | 0.6667 | 63.9% |
-| 2022 | 970 | 0.5550 | 0.9408 | 0.5582 | 0.9474 | 0.6667 | 57.9% |
-| 2023 | 1054 | 0.5210 | 0.8863 | 0.5292 | 0.9004 | 0.6667 | 61.6% |
-| 2024 | 1231 | 0.5431 | 0.9201 | 0.5510 | 0.9334 | 0.6667 | 58.1% |
-| 2025 | 1002 | 0.4944 | 0.8473 | 0.5083 | 0.8708 | 0.6667 | 62.2% |
+| 2021 | 1115 | 0.4849 | 0.8342 | 0.4970 | 0.8553 | 0.6667 | 64.1% |
+| 2022 | 970 | 0.5538 | 0.9388 | 0.5571 | 0.9454 | 0.6667 | 57.8% |
+| 2023 | 1054 | 0.5171 | 0.8816 | 0.5259 | 0.8966 | 0.6667 | 61.8% |
+| 2024 | 1231 | 0.5405 | 0.9167 | 0.5483 | 0.9301 | 0.6667 | 58.7% |
+| 2025 | 1002 | 0.4932 | 0.8467 | 0.5065 | 0.8690 | 0.6667 | 62.4% |
 
 Variant summary versus Elo-only across the five windows:
 
 | Variant | Windows Better On Brier | Windows Better On Log Loss | Avg Brier Delta | Avg Log Loss Delta | Decision |
 |---|---:|---:|---:|---:|---|
-| `elo-poisson` | 0/5 | 0/5 | +0.0047 | +0.0077 | Disabled |
-| `elo-poisson-dixon-coles` | 0/5 | 0/5 | +0.0057 | +0.0081 | Disabled |
-| `elo-poisson-strength` | 5/5 | 5/5 | -0.0090 | -0.0157 | Active |
+| `elo-poisson` | 0/5 | 0/5 | +0.0053 | +0.0085 | Disabled |
+| `elo-poisson-dixon-coles` | 0/5 | 0/5 | +0.0064 | +0.0089 | Disabled |
+| `elo-poisson-strength` | 5/5 | 5/5 | -0.0091 | -0.0157 | Active |
 
 Negative deltas are improvements over Elo-only. Positive deltas are worse.
 
@@ -155,7 +214,7 @@ Penalty shootouts:
 
 ## Known Limitations
 
-The model does not include:
+The default published model does not include:
 
 - Final rosters.
 - Injuries.

@@ -52,6 +52,7 @@ export const GetOracleStatusResponse = zod.object({
   "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
   "message": zod.string()
 }).optional(),
+  "activeModel": zod.enum(['elo-baseline', 'elo-poisson', 'elo-poisson-dixon-coles', 'elo-poisson-strength', 'elo-poisson-strength-dixon-coles']),
   "message": zod.string()
 }),
   "meta": zod.object({
@@ -99,6 +100,82 @@ export const GetTeamsResponse = zod.object({
 
 
 /**
+ * Returns the local squad snapshot with per-team completeness and provenance metadata.
+ * @summary Get versioned local World Cup squad snapshots
+ */
+export const GetSquadsResponse = zod.object({
+  "data": zod.object({
+  "schemaVersion": zod.number(),
+  "version": zod.string(),
+  "competition": zod.string(),
+  "provenance": zod.object({
+  "sourceName": zod.string(),
+  "sourceUrl": zod.string(),
+  "sourceTitle": zod.string(),
+  "publishedDate": zod.string(),
+  "accessedDate": zod.string(),
+  "notes": zod.array(zod.string())
+}),
+  "externalProvenance": zod.object({
+  "provider": zod.enum(['local-snapshot', 'api-football']),
+  "loadedAt": zod.string().nullable(),
+  "sourceEndpoint": zod.string(),
+  "cacheTtlMs": zod.number().nullable(),
+  "stale": zod.boolean(),
+  "error": zod.string().nullable(),
+  "state": zod.enum(['disabled', 'idle', 'fresh', 'stale', 'error']),
+  "fallback": zod.enum(['none', 'stale-cache', 'local-data'])
+}),
+  "squads": zod.array(zod.object({
+  "team": zod.string(),
+  "code": zod.string(),
+  "group": zod.string(),
+  "flagEmoji": zod.string(),
+  "completeness": zod.object({
+  "status": zod.enum(['complete', 'incomplete']),
+  "expectedPlayerCount": zod.number(),
+  "playerCount": zod.number(),
+  "notes": zod.array(zod.string())
+}),
+  "source": zod.object({
+  "sourceName": zod.string(),
+  "sourceUrl": zod.string(),
+  "sourceTitle": zod.string(),
+  "publishedDate": zod.string(),
+  "accessedDate": zod.string(),
+  "notes": zod.array(zod.string())
+}),
+  "players": zod.array(zod.object({
+  "name": zod.string(),
+  "position": zod.string(),
+  "shirtNumber": zod.number().optional(),
+  "club": zod.string().optional(),
+  "source": zod.object({
+  "sourceName": zod.string(),
+  "sourceUrl": zod.string(),
+  "sourceTitle": zod.string(),
+  "publishedDate": zod.string(),
+  "accessedDate": zod.string(),
+  "notes": zod.array(zod.string())
+})
+}))
+}))
+}),
+  "meta": zod.object({
+  "readiness": zod.object({
+  "state": zod.enum(['loading', 'ready', 'error']),
+  "ready": zod.boolean(),
+  "message": zod.string(),
+  "error": zod.object({
+  "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
+  "message": zod.string()
+}).optional()
+})
+})
+})
+
+
+/**
  * Returns pre-computed tournament simulation probabilities for all teams
  * @summary Get Monte Carlo simulation results
  */
@@ -107,7 +184,8 @@ export const getSimulationQuerySeedMax = 128;
 
 
 export const GetSimulationQueryParams = zod.object({
-  "seed": zod.coerce.string().min(1).max(getSimulationQuerySeedMax).optional().describe('Optional seed for an ad hoc reproducible simulation response. Omit it to use the cached seed.')
+  "seed": zod.coerce.string().min(1).max(getSimulationQuerySeedMax).optional().describe('Optional seed for an ad hoc reproducible simulation response. Omit it to use the cached seed.'),
+  "customMatches": zod.coerce.string().optional().describe('JSON-encoded array of request-local manual match overrides. When provided, these overrides are used only for this simulation response.')
 })
 
 export const GetSimulationResponse = zod.object({
@@ -194,13 +272,38 @@ export const GetSimulationResponse = zod.object({
  * Given two team names, returns win/draw/loss probabilities, expected goals, and most likely scoreline
  * @summary Predict a head-to-head match
  */
+export const predictMatchQueryExperimentalModifiersDefault = false;
 
+export const PredictMatchQueryParams = zod.object({
+  "experimentalModifiers": zod.coerce.boolean().default(predictMatchQueryExperimentalModifiersDefault).describe('Explicit opt-in flag for experimental context modifiers. Defaults to false.')
+})
+
+
+
+
+
+export const predictMatchBodyCustomMatchesItemHomeScoreMin = 0;
+export const predictMatchBodyCustomMatchesItemHomeScoreMax = 30;
+
+export const predictMatchBodyCustomMatchesItemAwayScoreMin = 0;
+export const predictMatchBodyCustomMatchesItemAwayScoreMax = 30;
+
+export const predictMatchBodyCustomMatchesMax = 104;
 
 
 
 export const PredictMatchBody = zod.object({
   "homeTeam": zod.string().min(1),
-  "awayTeam": zod.string().min(1)
+  "awayTeam": zod.string().min(1),
+  "neutral": zod.boolean().optional().describe('Whether the match is played at a neutral venue. Defaults to true when omitted.'),
+  "isHomeA": zod.boolean().optional().describe('Whether Team 1 receives host\/home context. Defaults to false when omitted.'),
+  "isHomeB": zod.boolean().optional().describe('Whether Team 2 receives host\/home context. Defaults to false when omitted.'),
+  "customMatches": zod.array(zod.object({
+  "homeTeam": zod.string().min(1),
+  "awayTeam": zod.string().min(1),
+  "homeScore": zod.number().min(predictMatchBodyCustomMatchesItemHomeScoreMin).max(predictMatchBodyCustomMatchesItemHomeScoreMax),
+  "awayScore": zod.number().min(predictMatchBodyCustomMatchesItemAwayScoreMin).max(predictMatchBodyCustomMatchesItemAwayScoreMax)
+})).max(predictMatchBodyCustomMatchesMax).optional().describe('Request-local manual match overrides used only for this prediction.')
 })
 
 export const PredictMatchResponse = zod.object({
@@ -218,7 +321,42 @@ export const PredictMatchResponse = zod.object({
   "homeAttackStrength": zod.number(),
   "homeDefenseStrength": zod.number(),
   "awayAttackStrength": zod.number(),
-  "awayDefenseStrength": zod.number()
+  "awayDefenseStrength": zod.number(),
+  "experimentalModifiers": zod.object({
+  "enabled": zod.boolean(),
+  "applied": zod.array(zod.object({
+  "kind": zod.enum(['weather', 'availability', 'suspension', 'manual']),
+  "target": zod.enum(['teamA', 'teamB', 'both']),
+  "explanation": zod.string(),
+  "provenance": zod.object({
+  "source": zod.string(),
+  "sourceId": zod.string().optional(),
+  "sourceUrl": zod.string().optional(),
+  "retrievedAt": zod.string().optional(),
+  "notes": zod.array(zod.string()).optional()
+}),
+  "requestedAdjustment": zod.object({
+  "eloDelta": zod.number(),
+  "xgDelta": zod.number(),
+  "xgMultiplier": zod.number()
+}),
+  "appliedAdjustment": zod.object({
+  "eloDelta": zod.number(),
+  "xgDelta": zod.number(),
+  "xgMultiplier": zod.number()
+})
+})),
+  "ignoredCount": zod.number(),
+  "disabledReason": zod.string().optional(),
+  "aggregate": zod.object({
+  "eloDeltaA": zod.number(),
+  "eloDeltaB": zod.number(),
+  "xgDeltaA": zod.number(),
+  "xgDeltaB": zod.number(),
+  "xgMultiplierA": zod.number(),
+  "xgMultiplierB": zod.number()
+})
+})
 }),
   "meta": zod.object({
   "readiness": zod.object({
@@ -335,6 +473,83 @@ export const GetLiveMatchesResponse = zod.object({
   "provider": zod.enum(['espn', 'disabled']),
   "lastSyncedAt": zod.string().nullable(),
   "error": zod.string().nullable()
+})
+}),
+  "meta": zod.object({
+  "readiness": zod.object({
+  "state": zod.enum(['loading', 'ready', 'error']),
+  "ready": zod.boolean(),
+  "message": zod.string(),
+  "error": zod.object({
+  "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
+  "message": zod.string()
+}).optional()
+})
+})
+})
+
+
+/**
+ * Returns fixture metadata, resolved venue coordinates, and weather context when the kickoff is inside the forecast horizon.
+ * @summary Get fixture context with optional Open-Meteo weather
+ */
+
+
+
+
+export const GetMatchContextQueryParams = zod.object({
+  "homeTeam": zod.coerce.string().min(1).describe('Home team name for the scheduled fixture lookup.'),
+  "awayTeam": zod.coerce.string().min(1).describe('Away team name for the scheduled fixture lookup.')
+})
+
+export const GetMatchContextResponse = zod.object({
+  "data": zod.object({
+  "fixture": zod.object({
+  "matchNumber": zod.number().optional(),
+  "homeTeam": zod.string(),
+  "awayTeam": zod.string(),
+  "stage": zod.string().optional(),
+  "source": zod.enum(['fixture', 'official', 'espn', 'custom']).optional(),
+  "sourceId": zod.string().optional(),
+  "date": zod.string().optional(),
+  "kickoffTimeEt": zod.string().optional(),
+  "status": zod.enum(['scheduled', 'live', 'finished']).optional(),
+  "group": zod.string().optional(),
+  "venue": zod.string().optional(),
+  "region": zod.string().optional()
+}),
+  "venue": zod.object({
+  "name": zod.string(),
+  "stadium": zod.string(),
+  "city": zod.string(),
+  "country": zod.enum(['Canada', 'Mexico', 'United States']),
+  "region": zod.string(),
+  "altitudeMeters": zod.number(),
+  "latitude": zod.number(),
+  "longitude": zod.number()
+}).nullable(),
+  "weather": zod.object({
+  "provider": zod.enum(['open-meteo']),
+  "status": zod.enum(['available', 'unavailable']),
+  "reason": zod.enum(['outside_forecast_horizon', 'venue_unavailable', 'provider_error', 'forecast_missing']).nullish(),
+  "forecast": zod.object({
+  "forecastTimeEt": zod.string(),
+  "temperatureC": zod.number().nullable(),
+  "precipitationMm": zod.number().nullable(),
+  "rainMm": zod.number().nullable(),
+  "windSpeed10mKph": zod.number().nullable(),
+  "precipitationProbabilityPct": zod.number().nullable()
+}).nullable(),
+  "provenance": zod.object({
+  "provider": zod.enum(['open-meteo']),
+  "loadedAt": zod.string().nullable(),
+  "sourceUrl": zod.string(),
+  "cacheTtlMs": zod.number(),
+  "stale": zod.boolean(),
+  "error": zod.string().nullable(),
+  "state": zod.enum(['idle', 'fresh', 'stale', 'error']),
+  "fallback": zod.enum(['none', 'stale-cache', 'local-data'])
+})
 })
 }),
   "meta": zod.object({

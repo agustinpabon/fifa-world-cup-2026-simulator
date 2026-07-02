@@ -32,7 +32,6 @@ No database or env vars are required to run. `PORT`, `BASE_PATH`, and
 - `lib/api-spec/` — **contract source of truth.** `openapi.yaml` drives Orval codegen.
 - `lib/api-client-react/` — generated typed React Query hooks (`src/generated`). Don't hand-edit generated files; change `openapi.yaml` and rerun codegen.
 - `lib/api-zod/` — generated Zod schemas.
-- `lib/db/` — Drizzle + node-postgres scaffold. **Currently unused at runtime** (nothing imports it); `lib/db/src/index.ts` throws if imported without `DATABASE_URL`.
 - `scripts/` — workspace utility scripts.
 
 ## Conventions / gotchas

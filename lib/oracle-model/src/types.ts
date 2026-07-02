@@ -40,6 +40,80 @@ export interface ScoreProbability {
   probability: number;
 }
 
+export type MatchContextModifierKind = "weather" | "availability" | "suspension" | "manual";
+
+export type MatchContextModifierTarget = "teamA" | "teamB" | "both";
+
+export interface MatchContextModifierProvenance {
+  source: string;
+  sourceId?: string;
+  sourceUrl?: string;
+  retrievedAt?: string;
+  notes?: readonly string[];
+}
+
+export interface MatchContextModifierAdjustments {
+  eloDelta?: number;
+  xgDelta?: number;
+  xgMultiplier?: number;
+}
+
+export interface BaseMatchContextModifier {
+  target?: MatchContextModifierTarget;
+  adjustments?: MatchContextModifierAdjustments;
+  explanation: string;
+  provenance: MatchContextModifierProvenance;
+}
+
+export interface WeatherMatchContextModifier extends BaseMatchContextModifier {
+  condition?: string;
+}
+
+export interface AvailabilityMatchContextModifier extends BaseMatchContextModifier {
+  playerCount?: number;
+}
+
+export interface SuspensionMatchContextModifier extends BaseMatchContextModifier {
+  playerName?: string;
+}
+
+export interface ManualMatchContextModifier extends BaseMatchContextModifier {
+  label?: string;
+}
+
+export interface MatchContextModifiers {
+  weather?: readonly WeatherMatchContextModifier[];
+  availability?: readonly AvailabilityMatchContextModifier[];
+  suspension?: readonly SuspensionMatchContextModifier[];
+  manual?: readonly ManualMatchContextModifier[];
+}
+
+export interface AppliedMatchContextModifier {
+  kind: MatchContextModifierKind;
+  target: MatchContextModifierTarget;
+  explanation: string;
+  provenance: MatchContextModifierProvenance;
+  requestedAdjustment: Required<MatchContextModifierAdjustments>;
+  appliedAdjustment: Required<MatchContextModifierAdjustments>;
+}
+
+export interface MatchContextModifierAggregate {
+  eloDeltaA: number;
+  eloDeltaB: number;
+  xgDeltaA: number;
+  xgDeltaB: number;
+  xgMultiplierA: number;
+  xgMultiplierB: number;
+}
+
+export interface MatchContextModifiersReport {
+  enabled: boolean;
+  applied: AppliedMatchContextModifier[];
+  ignoredCount: number;
+  disabledReason?: string;
+  aggregate: MatchContextModifierAggregate;
+}
+
 export interface MatchPrediction {
   probabilities: {
     pWinA: number;
@@ -50,6 +124,7 @@ export interface MatchPrediction {
   xgB: number;
   mostLikelyScore: string;
   scoreMatrix: ScoreProbability[];
+  modifiers: MatchContextModifiersReport;
 }
 
 export interface ScoredForecast {

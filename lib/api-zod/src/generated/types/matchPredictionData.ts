@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { MatchContextModifiersReport } from './matchContextModifiersReport';
 
 export interface MatchPredictionData {
   homeTeam: string;
@@ -21,4 +22,5 @@ export interface MatchPredictionData {
   homeDefenseStrength: number;
   awayAttackStrength: number;
   awayDefenseStrength: number;
+  experimentalModifiers: MatchContextModifiersReport;
 }

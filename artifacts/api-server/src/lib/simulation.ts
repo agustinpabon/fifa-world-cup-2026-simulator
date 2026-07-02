@@ -415,6 +415,72 @@ function updateTeamTravelState(
   });
 }
 
+function createBaselineRatingMap(ratings: EloRatings): SimulationEloRatings {
+  return new Map(Object.entries(ratings));
+}
+
+function getSimulationRating(
+  ratings: ReadonlyMap<string, number>,
+  teamName: string,
+  fallbackRating: number
+): number {
+  return ratings.get(teamName) ?? fallbackRating;
+}
+
+function actualScoreAFromGoals(goalsA: number, goalsB: number): number {
+  if (goalsA > goalsB) return 1;
+  if (goalsB > goalsA) return 0;
+  return 0.5;
+}
+
+function marginOfVictoryEloMultiplierForOutcome(
+  goalDifference: number,
+  ratingA: number,
+  ratingB: number,
+  actualScoreA: number,
+  config: ModelConfig
+): number {
+  if (!config.useMarginOfVictoryElo) return 1;
+  if (goalDifference === 0) return 1;
+
+  if (
+    !Number.isFinite(config.marginOfVictoryEloScalingConstant) ||
+    config.marginOfVictoryEloScalingConstant <= 0
+  ) {
+    throw new Error("marginOfVictoryEloScalingConstant must be positive");
+  }
+
+  const winnerEloDiff = actualScoreA > 0.5 ? ratingA - ratingB : ratingB - ratingA;
+  const denominator = Math.max(1, config.marginOfVictoryEloScalingConstant + winnerEloDiff);
+
+  return Math.log(goalDifference + 1) * (config.marginOfVictoryEloScalingConstant / denominator);
+}
+
+function applySimulationEloUpdate(
+  ratings: SimulationEloRatings,
+  teamNameA: string,
+  teamNameB: string,
+  outcome: MatchEloOutcome,
+  config: ModelConfig
+): void {
+  const ratingA = getSimulationRating(ratings, teamNameA, config.fallbackRating);
+  const ratingB = getSimulationRating(ratings, teamNameB, config.fallbackRating);
+  const actualScoreA = outcome.actualScoreA ?? actualScoreAFromGoals(outcome.goalsA, outcome.goalsB);
+  const goalDifference = Math.abs(outcome.goalsA - outcome.goalsB) || (actualScoreA === 0.5 ? 0 : 1);
+  const expectedScoreA = expectedEloScore(ratingA, ratingB);
+  const multiplier = marginOfVictoryEloMultiplierForOutcome(
+    goalDifference,
+    ratingA,
+    ratingB,
+    actualScoreA,
+    config
+  );
+  const delta = SIMULATION_ELO_K_FACTOR * multiplier * (actualScoreA - expectedScoreA);
+
+  ratings.set(teamNameA, ratingA + delta);
+  ratings.set(teamNameB, ratingB - delta);
+}
+
 // Win/draw/loss probabilities from a normalized exact score matrix.
 // The trials and random options arguments are kept for compatibility with older callers.
 export function matchProbabilities(
@@ -733,7 +799,7 @@ export function rankThirdPlacedTeamsByFifaCriteria(
 
 function simulateGroup(
   group: WCGroup,
-  ratings: EloRatings,
+  ratings: SimulationEloRatings,
   playedMatches: PlayedMatch[] = [],
   teamMetrics?: Record<string, TeamMetrics>,
   rankingOptions: FifaRankingOptions = {},
@@ -743,7 +809,7 @@ function simulateGroup(
   const resolvedModelConfig = createModelConfig(modelConfig);
   const standings: GroupStanding[] = group.teams.map((t) => ({
     team: t,
-    elo: ratings[t.name] ?? resolvedModelConfig.fallbackRating,
+    elo: getSimulationRating(ratings, t.name, resolvedModelConfig.fallbackRating),
     points: 0,
     gf: 0,
     ga: 0,
@@ -802,6 +868,15 @@ function simulateGroup(
 
     updateTeamTravelState(travelStates, home.team.name, venue, matchDate);
     updateTeamTravelState(travelStates, away.team.name, venue, matchDate);
+    applySimulationEloUpdate(
+      ratings,
+      home.team.name,
+      away.team.name,
+      { goalsA: goalsHome, goalsB: goalsAway },
+      resolvedModelConfig
+    );
+    home.elo = getSimulationRating(ratings, home.team.name, resolvedModelConfig.fallbackRating);
+    away.elo = getSimulationRating(ratings, away.team.name, resolvedModelConfig.fallbackRating);
 
     home.gf += goalsHome;
     home.ga += goalsAway;
@@ -965,7 +1040,7 @@ export function getPlayedKnockoutWinner(
 
 function simulateKnockoutRound(
   matches: readonly KnockoutMatch[],
-  ratings: EloRatings,
+  ratings: SimulationEloRatings,
   playedMatches: PlayedMatch[] = [],
   teamMetrics?: Record<string, TeamMetrics>,
   random: Rng = createSeededRng(DEFAULT_SIMULATION_SEED),
@@ -979,11 +1054,11 @@ function simulateKnockoutRound(
     const played = findPlayedMatch(match.home.name, match.away.name, playedMatches);
     const venue = played?.venue ?? match.venue;
     const matchDate = played?.date ?? match.date;
-    const aWins = simulateKnockout(
+    const simulationResult = simulateKnockoutResult(
       match.home,
       match.away,
-      ratings[match.home.name] ?? resolvedModelConfig.fallbackRating,
-      ratings[match.away.name] ?? resolvedModelConfig.fallbackRating,
+      getSimulationRating(ratings, match.home.name, resolvedModelConfig.fallbackRating),
+      getSimulationRating(ratings, match.away.name, resolvedModelConfig.fallbackRating),
       playedMatches,
       teamMetrics,
       match.stage,
@@ -1000,7 +1075,14 @@ function simulateKnockoutRound(
     );
     updateTeamTravelState(travelStates, match.home.name, venue, matchDate);
     updateTeamTravelState(travelStates, match.away.name, venue, matchDate);
-    winners.set(match.matchNumber, aWins ? match.home : match.away);
+    applySimulationEloUpdate(
+      ratings,
+      match.home.name,
+      match.away.name,
+      simulationResult,
+      resolvedModelConfig
+    );
+    winners.set(match.matchNumber, simulationResult.aWins ? match.home : match.away);
   }
 
   return winners;
@@ -1190,6 +1272,7 @@ export function runSimulations(
   const simulationsRun = getSimulationCount(options);
   const random = createRandomSource(options, DEFAULT_SIMULATION_SEED);
   const modelConfig = createModelConfig(options.modelConfig);
+  const baselineRatings = createBaselineRatingMap(ratings);
   const result: SimResult = {
     titles: {},
     finals: {},
@@ -1212,6 +1295,7 @@ export function runSimulations(
   }
 
   for (let sim = 0; sim < simulationsRun; sim++) {
+    const simulationRatings = new Map(baselineRatings);
     const travelStates: TeamTravelStates = new Map();
     // Group stage: all 12 groups
     const groupResults: GroupStanding[][] = [];
@@ -1219,10 +1303,18 @@ export function runSimulations(
     const groupRunnersMap: Partial<Record<GroupId, WCTeam>> = {};
 
     for (const group of WC2026_GROUPS) {
-      const standings = simulateGroup(group, ratings, playedMatches, teamMetrics, {
-        random,
-        fallbackSeed: `${DEFAULT_TIEBREAKER_SEED}:simulation:${sim}:group:${group.id}`,
-      }, modelConfig, travelStates);
+      const standings = simulateGroup(
+        group,
+        simulationRatings,
+        playedMatches,
+        teamMetrics,
+        {
+          random,
+          fallbackSeed: `${DEFAULT_TIEBREAKER_SEED}:simulation:${sim}:group:${group.id}`,
+        },
+        modelConfig,
+        travelStates
+      );
       groupResults.push(standings);
       groupWinnersMap[group.id] = standings[0].team;
       groupRunnersMap[group.id] = standings[1].team;
@@ -1258,7 +1350,7 @@ export function runSimulations(
     const r32Matches = buildRoundOf32Matches(groupWinnersMap, groupRunnersMap, thirdPlaceTeamsByGroup);
     const r32Winners = simulateKnockoutRound(
       r32Matches,
-      ratings,
+      simulationRatings,
       playedMatches,
       teamMetrics,
       random,
@@ -1270,7 +1362,7 @@ export function runSimulations(
     const r16Matches = buildMatchesFromPreviousWinners(ROUND_OF_16_MATCHES, r32Winners);
     const r16Winners = simulateKnockoutRound(
       r16Matches,
-      ratings,
+      simulationRatings,
       playedMatches,
       teamMetrics,
       random,
@@ -1282,7 +1374,7 @@ export function runSimulations(
     const quarterFinalMatches = buildMatchesFromPreviousWinners(QUARTER_FINAL_MATCHES, r16Winners);
     const quarterFinalWinners = simulateKnockoutRound(
       quarterFinalMatches,
-      ratings,
+      simulationRatings,
       playedMatches,
       teamMetrics,
       random,
@@ -1294,7 +1386,7 @@ export function runSimulations(
     const semiFinalMatches = buildMatchesFromPreviousWinners(SEMI_FINAL_MATCHES, quarterFinalWinners);
     const semiFinalWinners = simulateKnockoutRound(
       semiFinalMatches,
-      ratings,
+      simulationRatings,
       playedMatches,
       teamMetrics,
       random,
@@ -1306,7 +1398,7 @@ export function runSimulations(
     const finalMatches = buildMatchesFromPreviousWinners(FINAL_MATCHES, semiFinalWinners);
     const finalWinners = simulateKnockoutRound(
       finalMatches,
-      ratings,
+      simulationRatings,
       playedMatches,
       teamMetrics,
       random,

@@ -24,11 +24,12 @@ import {
   runSimulations,
   simulateKnockout,
   toPublishedSimulationResults,
+  type PlayedMatch,
   type GroupMatchScore,
   type GroupStanding,
   type SimResult,
 } from "./simulation.js";
-import { WC2026_TEAMS, getHostVenueByName, type WCTeam } from "./worldcup2026.js";
+import { WC2026_GROUPS, WC2026_TEAMS, getHostVenueByName, type WCTeam } from "./worldcup2026.js";
 
 function team(name: string): WCTeam {
   return {
@@ -103,6 +104,87 @@ function randomValueForScore(
 
 function buildRatings(): Record<string, number> {
   return Object.fromEntries(WC2026_TEAMS.map((entry) => [entry.name, 1500]));
+}
+
+function playedKnockoutMatch(homeTeam: string, awayTeam: string, winnerTeam = homeTeam): PlayedMatch {
+  return {
+    homeTeam,
+    awayTeam,
+    homeScore: winnerTeam === homeTeam ? 1 : 0,
+    awayScore: winnerTeam === awayTeam ? 1 : 0,
+    winnerTeam,
+    stage: "knockout",
+    status: "finished",
+  };
+}
+
+function buildDynamicEloScenarioPlayedMatches(): PlayedMatch[] {
+  const groupMatches = WC2026_GROUPS.flatMap((group, groupIndex) => {
+    const teamOrder = new Map(group.teams.map((entry, index) => [entry.name, index]));
+
+    return group.fixtures.map((fixture): PlayedMatch => {
+      const homeRank = teamOrder.get(fixture.homeTeam);
+      const awayRank = teamOrder.get(fixture.awayTeam);
+
+      if (homeRank === undefined || awayRank === undefined) {
+        throw new Error(`Fixture ${fixture.matchNumber} references a team outside Group ${group.id}`);
+      }
+
+      const strongerHome = homeRank < awayRank;
+      const isThirdVsFourth = Math.min(homeRank, awayRank) === 2 && Math.max(homeRank, awayRank) === 3;
+      const margin = isThirdVsFourth ? WC2026_GROUPS.length - groupIndex : 1;
+
+      return {
+        homeTeam: fixture.homeTeam,
+        awayTeam: fixture.awayTeam,
+        homeScore: strongerHome ? margin : 0,
+        awayScore: strongerHome ? 0 : margin,
+        stage: "group",
+        date: fixture.date,
+        venue: fixture.venue,
+        group: group.id,
+        status: "finished",
+      };
+    });
+  });
+  const nonTargetKnockoutMatches = [
+    playedKnockoutMatch("South Africa", "Bosnia & Herzegovina"),
+    playedKnockoutMatch("Germany", "Haiti"),
+    playedKnockoutMatch("Netherlands", "Morocco"),
+    playedKnockoutMatch("Brazil", "Japan"),
+    playedKnockoutMatch("France", "Sweden"),
+    playedKnockoutMatch("Curaçao", "Senegal"),
+    playedKnockoutMatch("England", "Côte d'Ivoire"),
+    playedKnockoutMatch("USA", "Qatar"),
+    playedKnockoutMatch("Belgium", "Korea Republic"),
+    playedKnockoutMatch("Congo DR", "Croatia"),
+    playedKnockoutMatch("Spain", "Algeria"),
+    playedKnockoutMatch("Canada", "IR Iran"),
+    playedKnockoutMatch("Argentina", "Cabo Verde"),
+    playedKnockoutMatch("Portugal", "Australia"),
+    playedKnockoutMatch("Paraguay", "Egypt"),
+    playedKnockoutMatch("Germany", "France"),
+    playedKnockoutMatch("South Africa", "Netherlands", "Netherlands"),
+    playedKnockoutMatch("Brazil", "Curaçao"),
+    playedKnockoutMatch("Mexico", "England"),
+    playedKnockoutMatch("Saudi Arabia", "England"),
+    playedKnockoutMatch("Congo DR", "Spain", "Spain"),
+    playedKnockoutMatch("USA", "Belgium", "Belgium"),
+    playedKnockoutMatch("Argentina", "Paraguay"),
+    playedKnockoutMatch("Canada", "Portugal", "Portugal"),
+    playedKnockoutMatch("Germany", "Netherlands"),
+    playedKnockoutMatch("Spain", "Belgium"),
+    playedKnockoutMatch("Brazil", "Mexico", "Mexico"),
+    playedKnockoutMatch("Brazil", "Saudi Arabia", "Saudi Arabia"),
+    playedKnockoutMatch("Argentina", "Portugal"),
+    playedKnockoutMatch("Germany", "Spain"),
+    playedKnockoutMatch("Mexico", "Argentina"),
+    playedKnockoutMatch("Saudi Arabia", "Argentina", "Saudi Arabia"),
+    playedKnockoutMatch("Germany", "Mexico", "Mexico"),
+    playedKnockoutMatch("Germany", "Saudi Arabia", "Saudi Arabia"),
+  ];
+
+  return [...groupMatches, ...nonTargetKnockoutMatches];
 }
 
 function assertAlmostEqual(actual: number, expected: number, tolerance = 1e-12): void {
@@ -621,6 +703,18 @@ test("tournament simulations can use an injected RNG", () => {
 
   assert.equal(Object.values(result.titles).reduce((total, count) => total + count, 0), 1);
   assert.ok(calls > 0);
+});
+
+test("tournament simulation Elo changes apply within each path and reset before the next path", () => {
+  const ratings = buildRatings();
+  const result = runSimulations(ratings, buildDynamicEloScenarioPlayedMatches(), undefined, {
+    simulationsRun: 2,
+    random: scriptedRng([0.001, 0.001, 0.52, 0.001, 0.001, 0.54]),
+    modelConfig: { variant: "elo-poisson", maxGoals: 6 },
+  });
+
+  assert.equal(result.roundOf16["Mexico"], 1);
+  assert.equal(ratings.Mexico, 1500);
 });
 
 test("probability uncertainty uses binomial standard error and bounded confidence intervals", () => {

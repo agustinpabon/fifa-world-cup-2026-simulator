@@ -53,7 +53,7 @@ before(async () => {
     workerUrl: pathToFileURL(bundledWorkerPath),
   });
 
-  server = app.listen(0);
+  server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => {
     server.once("listening", resolve);
   });
@@ -148,6 +148,19 @@ function createMarkedSimResult(champion: string): SimResult {
     groupWins: { ...counts, [champion]: 10_000 },
     groupAdvances: { ...counts, [champion]: 10_000 },
   };
+}
+
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolveDeferred: ((value: T) => void) | undefined;
+  const promise = new Promise<T>((resolve) => {
+    resolveDeferred = resolve;
+  });
+
+  assert.ok(resolveDeferred);
+  return { promise, resolve: resolveDeferred };
 }
 
 async function createTempDir(prefix: string): Promise<string> {
@@ -776,6 +789,26 @@ test("loadBestModelConfigOverrides rejects invalid optimizer JSON values", async
   }
 });
 
+test("loadBestModelConfigOverrides rejects out-of-domain optimizer JSON values", async () => {
+  const dir = await createTempDir("oracle-bad-model-domain-");
+
+  try {
+    const configPath = join(dir, "best-model-config.json");
+    await writeFile(
+      configPath,
+      JSON.stringify({ modelConfig: { maxGoals: 0 } }),
+      "utf8",
+    );
+
+    await assert.rejects(
+      () => loadBestModelConfigOverrides(configPath),
+      /maxGoals must be a positive integer/,
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("GET /api/oracle/simulation accepts an optional seed", async () => {
   const response = await requestGet("/api/oracle/simulation?seed=debug-seed");
   const body = await readJson(response);
@@ -809,7 +842,10 @@ test("GET /api/oracle/simulation accepts an optional seed", async () => {
 test("GET /api/oracle/simulation delegates seeded simulations to the worker", async () => {
   resetOracleForTests();
   const ratings = Object.fromEntries(
-    WC2026_TEAMS.map((team) => [team.name, DEFAULT_MODEL_CONFIG.fallbackRating]),
+    WC2026_TEAMS.map((team) => [
+      team.name,
+      DEFAULT_MODEL_CONFIG.fallbackRating,
+    ]),
   );
   seedReadyOracleForTests({
     ratings,
@@ -828,11 +864,16 @@ test("GET /api/oracle/simulation delegates seeded simulations to the worker", as
     const data = readData(await readJson(response));
     const results = data.results as Array<Record<string, unknown>>;
     const expected = toPublishedSimulationResults(
-      runSimulations(ratings, [], {}, {
-        seed: "worker-success",
-        simulationsRun: 1,
-        modelConfig: DEFAULT_MODEL_CONFIG,
-      }),
+      runSimulations(
+        ratings,
+        [],
+        {},
+        {
+          seed: "worker-success",
+          simulationsRun: 1,
+          modelConfig: DEFAULT_MODEL_CONFIG,
+        },
+      ),
       ratings,
       NUM_SIMULATIONS,
       new Set(),
@@ -867,9 +908,7 @@ test("GET /api/oracle/simulation returns a controlled error when the worker cras
   });
 
   try {
-    const response = await requestGet(
-      "/api/oracle/simulation?seed=crash-test",
-    );
+    const response = await requestGet("/api/oracle/simulation?seed=crash-test");
     const error = readError(await readJson(response));
 
     assert.equal(response.status, 503);
@@ -931,6 +970,52 @@ test("GET /api/oracle/simulation times out stalled worker runs without replacing
     restoreWorkerOptions();
     resetOracleForTests();
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("GET /api/oracle/simulation rejects ad hoc runs when the queue is saturated", async () => {
+  resetOracleForTests();
+  seedReadyOracleForTests({
+    simulationSeed: "cached-seed",
+    simResult: createMarkedSimResult("Argentina"),
+  });
+
+  const firstRunStarted = createDeferred<void>();
+  const firstRun = createDeferred<SimResult>();
+  let runnerCalls = 0;
+  const restoreRunner = setSimulationRunnerForTests(async () => {
+    runnerCalls += 1;
+    firstRunStarted.resolve();
+    return firstRun.promise;
+  });
+  const restoreWorkerOptions = setSimulationWorkerOptionsForTests({
+    adHocConcurrency: 1,
+    adHocQueueLimit: 0,
+  });
+
+  try {
+    const firstResponsePromise = requestGet(
+      "/api/oracle/simulation?seed=queue-one",
+    );
+    await firstRunStarted.promise;
+
+    const secondResponse = await requestGet(
+      "/api/oracle/simulation?seed=queue-two",
+    );
+    const secondError = readError(await readJson(secondResponse));
+
+    assert.equal(secondResponse.status, 429);
+    assert.equal(secondError.code, "simulation_capacity_exceeded");
+    assert.equal(runnerCalls, 1);
+
+    firstRun.resolve(createMarkedSimResult("Mexico"));
+    const firstResponse = await firstResponsePromise;
+    assert.equal(firstResponse.status, 200);
+  } finally {
+    restoreWorkerOptions();
+    restoreRunner();
+    firstRun.resolve(createMarkedSimResult("Mexico"));
+    resetOracleForTests();
   }
 });
 
@@ -1456,6 +1541,50 @@ test("POST /api/oracle/predict-match applies custom match overrides without muta
       liveMatches.some((match) => match.source === "custom"),
       false,
     );
+  } finally {
+    resetOracleForTests();
+  }
+});
+
+test("POST /api/oracle/predict-match ignores custom overrides for locked external results", async () => {
+  resetOracleForTests();
+  seedReadyOracleForTests({
+    ratings: {
+      Mexico: 1500,
+      "South Africa": 1500,
+    },
+    liveDataMatches: [
+      {
+        homeTeam: "Mexico",
+        awayTeam: "South Africa",
+        homeScore: 0,
+        awayScore: 1,
+        source: "espn",
+        status: "finished",
+      },
+    ],
+  });
+
+  try {
+    const response = await requestJson("POST", "/api/oracle/predict-match", {
+      homeTeam: "Mexico",
+      awayTeam: "South Africa",
+      customMatches: [
+        {
+          homeTeam: "Mexico",
+          awayTeam: "South Africa",
+          homeScore: 9,
+          awayScore: 0,
+        },
+      ],
+    });
+    const data = readData(await readJson(response));
+
+    assert.equal(response.status, 200);
+    assert.equal(data.homeWinPct, 0);
+    assert.equal(data.drawPct, 0);
+    assert.equal(data.awayWinPct, 100);
+    assert.equal(data.mostLikelyScore, "0-1");
   } finally {
     resetOracleForTests();
   }

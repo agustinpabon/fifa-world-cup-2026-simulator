@@ -5,10 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import {
-  useMutation,
-  useQuery
-} from '@tanstack/react-query';
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
   MutationFunction,
   QueryFunction,
@@ -16,8 +13,8 @@ import type {
   UseMutationOptions,
   UseMutationResult,
   UseQueryOptions,
-  UseQueryResult
-} from '@tanstack/react-query';
+  UseQueryResult,
+} from "@tanstack/react-query";
 
 import type {
   ClearLiveMatchesResult,
@@ -37,873 +34,924 @@ import type {
   PredictMatchParams,
   SimulationResponse,
   SquadsResponse,
-  TeamsResponse
-} from './api.schemas';
+  TeamsResponse,
+} from "./api.schemas";
 
-import { customFetch } from '../custom-fetch';
-import type { ErrorType , BodyType } from '../custom-fetch';
+import { customFetch } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
-      type Awaited<O> = O extends AwaitedInput<infer T> ? T : never;
-
+type Awaited<O> = O extends AwaitedInput<infer T> ? T : never;
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
-
-
 export const getHealthCheckUrl = () => {
-
-
-
-
-  return `/api/healthz`
-}
+  return `/api/healthz`;
+};
 
 /**
  * Returns server health status
  * @summary Health check
  */
-export const healthCheck = async ( options?: RequestInit): Promise<HealthStatus> => {
-
-  return customFetch<HealthStatus>(getHealthCheckUrl(),
-  {
+export const healthCheck = async (
+  options?: RequestInit,
+): Promise<HealthStatus> => {
+  return customFetch<HealthStatus>(getHealthCheckUrl(), {
     ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
+    method: "GET",
+  });
+};
 
 export const getHealthCheckQueryKey = () => {
-    return [
-    `/api/healthz`
-    ] as const;
-    }
+  return [`/api/healthz`] as const;
+};
 
+export const getHealthCheckQueryOptions = <
+  TData = Awaited<ReturnType<typeof healthCheck>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof healthCheck>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
 
-export const getHealthCheckQueryOptions = <TData = Awaited<ReturnType<typeof healthCheck>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
+  const queryKey = queryOptions?.queryKey ?? getHealthCheckQueryKey();
 
-const {query: queryOptions, request: requestOptions} = options ?? {};
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof healthCheck>>> = ({
+    signal,
+  }) => healthCheck({ signal, ...requestOptions });
 
-  const queryKey =  queryOptions?.queryKey ?? getHealthCheckQueryKey();
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof healthCheck>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
 
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof healthCheck>>> = ({ signal }) => healthCheck({ signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type HealthCheckQueryResult = NonNullable<Awaited<ReturnType<typeof healthCheck>>>
-export type HealthCheckQueryError = ErrorType<unknown>
-
+export type HealthCheckQueryResult = NonNullable<
+  Awaited<ReturnType<typeof healthCheck>>
+>;
+export type HealthCheckQueryError = ErrorType<unknown>;
 
 /**
  * @summary Health check
  */
 
-export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export function useHealthCheck<
+  TData = Awaited<ReturnType<typeof healthCheck>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof healthCheck>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getHealthCheckQueryOptions(options);
 
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getHealthCheckQueryOptions(options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
 
-
-
-
-
-
-
 export const getGetOracleStatusUrl = () => {
-
-
-
-
-  return `/api/oracle/status`
-}
+  return `/api/oracle/status`;
+};
 
 /**
  * Returns whether the Elo ratings and simulation are ready
  * @summary Get oracle initialization status
  */
-export const getOracleStatus = async ( options?: RequestInit): Promise<OracleStatus> => {
-
-  return customFetch<OracleStatus>(getGetOracleStatusUrl(),
-  {
+export const getOracleStatus = async (
+  options?: RequestInit,
+): Promise<OracleStatus> => {
+  return customFetch<OracleStatus>(getGetOracleStatusUrl(), {
     ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
+    method: "GET",
+  });
+};
 
 export const getGetOracleStatusQueryKey = () => {
-    return [
-    `/api/oracle/status`
-    ] as const;
-    }
+  return [`/api/oracle/status`] as const;
+};
 
+export const getGetOracleStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getOracleStatus>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getOracleStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
 
-export const getGetOracleStatusQueryOptions = <TData = Awaited<ReturnType<typeof getOracleStatus>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOracleStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
+  const queryKey = queryOptions?.queryKey ?? getGetOracleStatusQueryKey();
 
-const {query: queryOptions, request: requestOptions} = options ?? {};
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getOracleStatus>>> = ({
+    signal,
+  }) => getOracleStatus({ signal, ...requestOptions });
 
-  const queryKey =  queryOptions?.queryKey ?? getGetOracleStatusQueryKey();
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getOracleStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
 
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getOracleStatus>>> = ({ signal }) => getOracleStatus({ signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getOracleStatus>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type GetOracleStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getOracleStatus>>>
-export type GetOracleStatusQueryError = ErrorType<unknown>
-
+export type GetOracleStatusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getOracleStatus>>
+>;
+export type GetOracleStatusQueryError = ErrorType<unknown>;
 
 /**
  * @summary Get oracle initialization status
  */
 
-export function useGetOracleStatus<TData = Awaited<ReturnType<typeof getOracleStatus>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOracleStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export function useGetOracleStatus<
+  TData = Awaited<ReturnType<typeof getOracleStatus>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getOracleStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetOracleStatusQueryOptions(options);
 
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getGetOracleStatusQueryOptions(options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
 
-
-
-
-
-
-
 export const getGetTeamsUrl = () => {
-
-
-
-
-  return `/api/oracle/teams`
-}
+  return `/api/oracle/teams`;
+};
 
 /**
  * Returns sorted list of all qualified teams and their computed Elo ratings
  * @summary Get all 48 World Cup teams with Elo ratings
  */
-export const getTeams = async ( options?: RequestInit): Promise<TeamsResponse> => {
-
-  return customFetch<TeamsResponse>(getGetTeamsUrl(),
-  {
+export const getTeams = async (
+  options?: RequestInit,
+): Promise<TeamsResponse> => {
+  return customFetch<TeamsResponse>(getGetTeamsUrl(), {
     ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
+    method: "GET",
+  });
+};
 
 export const getGetTeamsQueryKey = () => {
-    return [
-    `/api/oracle/teams`
-    ] as const;
-    }
+  return [`/api/oracle/teams`] as const;
+};
 
+export const getGetTeamsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getTeams>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof getTeams>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
 
-export const getGetTeamsQueryOptions = <TData = Awaited<ReturnType<typeof getTeams>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTeams>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
+  const queryKey = queryOptions?.queryKey ?? getGetTeamsQueryKey();
 
-const {query: queryOptions, request: requestOptions} = options ?? {};
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getTeams>>> = ({
+    signal,
+  }) => getTeams({ signal, ...requestOptions });
 
-  const queryKey =  queryOptions?.queryKey ?? getGetTeamsQueryKey();
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getTeams>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
 
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTeams>>> = ({ signal }) => getTeams({ signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTeams>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type GetTeamsQueryResult = NonNullable<Awaited<ReturnType<typeof getTeams>>>
-export type GetTeamsQueryError = ErrorType<unknown>
-
+export type GetTeamsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getTeams>>
+>;
+export type GetTeamsQueryError = ErrorType<unknown>;
 
 /**
  * @summary Get all 48 World Cup teams with Elo ratings
  */
 
-export function useGetTeams<TData = Awaited<ReturnType<typeof getTeams>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTeams>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export function useGetTeams<
+  TData = Awaited<ReturnType<typeof getTeams>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof getTeams>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetTeamsQueryOptions(options);
 
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getGetTeamsQueryOptions(options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
 
-
-
-
-
-
-
 export const getGetSquadsUrl = () => {
-
-
-
-
-  return `/api/oracle/squads`
-}
+  return `/api/oracle/squads`;
+};
 
 /**
  * Returns the local squad snapshot with per-team completeness and provenance metadata.
  * @summary Get versioned local World Cup squad snapshots
  */
-export const getSquads = async ( options?: RequestInit): Promise<SquadsResponse> => {
-
-  return customFetch<SquadsResponse>(getGetSquadsUrl(),
-  {
+export const getSquads = async (
+  options?: RequestInit,
+): Promise<SquadsResponse> => {
+  return customFetch<SquadsResponse>(getGetSquadsUrl(), {
     ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
+    method: "GET",
+  });
+};
 
 export const getGetSquadsQueryKey = () => {
-    return [
-    `/api/oracle/squads`
-    ] as const;
-    }
+  return [`/api/oracle/squads`] as const;
+};
 
+export const getGetSquadsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSquads>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof getSquads>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
 
-export const getGetSquadsQueryOptions = <TData = Awaited<ReturnType<typeof getSquads>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSquads>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
+  const queryKey = queryOptions?.queryKey ?? getGetSquadsQueryKey();
 
-const {query: queryOptions, request: requestOptions} = options ?? {};
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getSquads>>> = ({
+    signal,
+  }) => getSquads({ signal, ...requestOptions });
 
-  const queryKey =  queryOptions?.queryKey ?? getGetSquadsQueryKey();
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSquads>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
 
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSquads>>> = ({ signal }) => getSquads({ signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSquads>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type GetSquadsQueryResult = NonNullable<Awaited<ReturnType<typeof getSquads>>>
-export type GetSquadsQueryError = ErrorType<unknown>
-
+export type GetSquadsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSquads>>
+>;
+export type GetSquadsQueryError = ErrorType<unknown>;
 
 /**
  * @summary Get versioned local World Cup squad snapshots
  */
 
-export function useGetSquads<TData = Awaited<ReturnType<typeof getSquads>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSquads>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export function useGetSquads<
+  TData = Awaited<ReturnType<typeof getSquads>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof getSquads>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSquadsQueryOptions(options);
 
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getGetSquadsQueryOptions(options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
 
-
-
-
-
-
-
-export const getGetSimulationUrl = (params?: GetSimulationParams,) => {
+export const getGetSimulationUrl = (params?: GetSimulationParams) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
-
     if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : value.toString())
+      normalizedParams.append(key, value === null ? "null" : value.toString());
     }
   });
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/oracle/simulation?${stringifiedParams}` : `/api/oracle/simulation`
-}
+  return stringifiedParams.length > 0
+    ? `/api/oracle/simulation?${stringifiedParams}`
+    : `/api/oracle/simulation`;
+};
 
 /**
  * Returns pre-computed tournament simulation probabilities for all teams
  * @summary Get Monte Carlo simulation results
  */
-export const getSimulation = async (params?: GetSimulationParams, options?: RequestInit): Promise<SimulationResponse> => {
-
-  return customFetch<SimulationResponse>(getGetSimulationUrl(params),
-  {
+export const getSimulation = async (
+  params?: GetSimulationParams,
+  options?: RequestInit,
+): Promise<SimulationResponse> => {
+  return customFetch<SimulationResponse>(getGetSimulationUrl(params), {
     ...options,
-    method: 'GET'
+    method: "GET",
+  });
+};
 
+export const getGetSimulationQueryKey = (params?: GetSimulationParams) => {
+  return [`/api/oracle/simulation`, ...(params ? [params] : [])] as const;
+};
 
-  }
-);}
-
-
-
-
-
-export const getGetSimulationQueryKey = (params?: GetSimulationParams,) => {
-    return [
-    `/api/oracle/simulation`, ...(params ? [params] : [])
-    ] as const;
-    }
-
-
-export const getGetSimulationQueryOptions = <TData = Awaited<ReturnType<typeof getSimulation>>, TError = ErrorType<ErrorResponse>>(params?: GetSimulationParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSimulation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetSimulationQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSimulation>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: GetSimulationParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSimulation>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
 ) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
 
-const {query: queryOptions, request: requestOptions} = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetSimulationQueryKey(params);
 
-  const queryKey =  queryOptions?.queryKey ?? getGetSimulationQueryKey(params);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getSimulation>>> = ({
+    signal,
+  }) => getSimulation(params, { signal, ...requestOptions });
 
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSimulation>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
 
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSimulation>>> = ({ signal }) => getSimulation(params, { signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSimulation>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type GetSimulationQueryResult = NonNullable<Awaited<ReturnType<typeof getSimulation>>>
-export type GetSimulationQueryError = ErrorType<ErrorResponse>
-
+export type GetSimulationQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSimulation>>
+>;
+export type GetSimulationQueryError = ErrorType<ErrorResponse>;
 
 /**
  * @summary Get Monte Carlo simulation results
  */
 
-export function useGetSimulation<TData = Awaited<ReturnType<typeof getSimulation>>, TError = ErrorType<ErrorResponse>>(
- params?: GetSimulationParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSimulation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export function useGetSimulation<
+  TData = Awaited<ReturnType<typeof getSimulation>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: GetSimulationParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSimulation>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSimulationQueryOptions(params, options);
 
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getGetSimulationQueryOptions(params,options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
 
-
-
-
-
-
-
-export const getPredictMatchUrl = (params?: PredictMatchParams,) => {
+export const getPredictMatchUrl = (params?: PredictMatchParams) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
-
     if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : value.toString())
+      normalizedParams.append(key, value === null ? "null" : value.toString());
     }
   });
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/oracle/predict-match?${stringifiedParams}` : `/api/oracle/predict-match`
-}
+  return stringifiedParams.length > 0
+    ? `/api/oracle/predict-match?${stringifiedParams}`
+    : `/api/oracle/predict-match`;
+};
 
 /**
  * Given two team names, returns win/draw/loss probabilities, expected goals, and most likely scoreline
  * @summary Predict a head-to-head match
  */
-export const predictMatch = async (matchPredictionRequest: MatchPredictionRequest,
-    params?: PredictMatchParams, options?: RequestInit): Promise<MatchPredictionResponse> => {
-
-  return customFetch<MatchPredictionResponse>(getPredictMatchUrl(params),
-  {
+export const predictMatch = async (
+  matchPredictionRequest: MatchPredictionRequest,
+  params?: PredictMatchParams,
+  options?: RequestInit,
+): Promise<MatchPredictionResponse> => {
+  return customFetch<MatchPredictionResponse>(getPredictMatchUrl(params), {
     ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      matchPredictionRequest,)
-  }
-);}
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(matchPredictionRequest),
+  });
+};
 
+export const getPredictMatchMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof predictMatch>>,
+    TError,
+    { data: BodyType<MatchPredictionRequest>; params?: PredictMatchParams },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof predictMatch>>,
+  TError,
+  { data: BodyType<MatchPredictionRequest>; params?: PredictMatchParams },
+  TContext
+> => {
+  const mutationKey = ["predictMatch"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
 
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof predictMatch>>,
+    { data: BodyType<MatchPredictionRequest>; params?: PredictMatchParams }
+  > = (props) => {
+    const { data, params } = props ?? {};
 
+    return predictMatch(data, params, requestOptions);
+  };
 
-export const getPredictMatchMutationOptions = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof predictMatch>>, TError,{data: BodyType<MatchPredictionRequest>;params?: PredictMatchParams}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof predictMatch>>, TError,{data: BodyType<MatchPredictionRequest>;params?: PredictMatchParams}, TContext> => {
+  return { mutationFn, ...mutationOptions };
+};
 
-const mutationKey = ['predictMatch'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
+export type PredictMatchMutationResult = NonNullable<
+  Awaited<ReturnType<typeof predictMatch>>
+>;
+export type PredictMatchMutationBody = BodyType<MatchPredictionRequest>;
+export type PredictMatchMutationError = ErrorType<ErrorResponse>;
 
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof predictMatch>>, {data: BodyType<MatchPredictionRequest>;params?: PredictMatchParams}> = (props) => {
-          const {data,params} = props ?? {};
-
-          return  predictMatch(data,params,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type PredictMatchMutationResult = NonNullable<Awaited<ReturnType<typeof predictMatch>>>
-    export type PredictMatchMutationBody = BodyType<MatchPredictionRequest>
-    export type PredictMatchMutationError = ErrorType<ErrorResponse>
-
-    /**
+/**
  * @summary Predict a head-to-head match
  */
-export const usePredictMatch = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof predictMatch>>, TError,{data: BodyType<MatchPredictionRequest>;params?: PredictMatchParams}, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof predictMatch>>,
-        TError,
-        {data: BodyType<MatchPredictionRequest>;params?: PredictMatchParams},
-        TContext
-      > => {
-      return useMutation(getPredictMatchMutationOptions(options));
-    }
+export const usePredictMatch = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof predictMatch>>,
+    TError,
+    { data: BodyType<MatchPredictionRequest>; params?: PredictMatchParams },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof predictMatch>>,
+  TError,
+  { data: BodyType<MatchPredictionRequest>; params?: PredictMatchParams },
+  TContext
+> => {
+  return useMutation(getPredictMatchMutationOptions(options));
+};
 
 export const getRecordLiveMatchUrl = () => {
-
-
-
-
-  return `/api/oracle/live-match`
-}
+  return `/api/oracle/live-match`;
+};
 
 /**
- * Records a manual match score override in-memory and queues simulation recalculation
- * @summary Record a manual scenario override
+ * Legacy compatibility endpoint. Validates a manual match score override but does not store server-side state or queue recalculation; active dashboard scenarios are sent as request-local customMatches.
+ * @summary Validate a manual scenario override
  */
-export const recordLiveMatch = async (liveMatchRequest: LiveMatchRequest, options?: RequestInit): Promise<LiveMatchResponse> => {
-
-  return customFetch<LiveMatchResponse>(getRecordLiveMatchUrl(),
-  {
+export const recordLiveMatch = async (
+  liveMatchRequest: LiveMatchRequest,
+  options?: RequestInit,
+): Promise<LiveMatchResponse> => {
+  return customFetch<LiveMatchResponse>(getRecordLiveMatchUrl(), {
     ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      liveMatchRequest,)
-  }
-);}
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(liveMatchRequest),
+  });
+};
 
+export const getRecordLiveMatchMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof recordLiveMatch>>,
+    TError,
+    { data: BodyType<LiveMatchRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof recordLiveMatch>>,
+  TError,
+  { data: BodyType<LiveMatchRequest> },
+  TContext
+> => {
+  const mutationKey = ["recordLiveMatch"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
 
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof recordLiveMatch>>,
+    { data: BodyType<LiveMatchRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
 
+    return recordLiveMatch(data, requestOptions);
+  };
 
-export const getRecordLiveMatchMutationOptions = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordLiveMatch>>, TError,{data: BodyType<LiveMatchRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof recordLiveMatch>>, TError,{data: BodyType<LiveMatchRequest>}, TContext> => {
+  return { mutationFn, ...mutationOptions };
+};
 
-const mutationKey = ['recordLiveMatch'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
+export type RecordLiveMatchMutationResult = NonNullable<
+  Awaited<ReturnType<typeof recordLiveMatch>>
+>;
+export type RecordLiveMatchMutationBody = BodyType<LiveMatchRequest>;
+export type RecordLiveMatchMutationError = ErrorType<ErrorResponse>;
 
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof recordLiveMatch>>, {data: BodyType<LiveMatchRequest>}> = (props) => {
-          const {data} = props ?? {};
-
-          return  recordLiveMatch(data,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type RecordLiveMatchMutationResult = NonNullable<Awaited<ReturnType<typeof recordLiveMatch>>>
-    export type RecordLiveMatchMutationBody = BodyType<LiveMatchRequest>
-    export type RecordLiveMatchMutationError = ErrorType<ErrorResponse>
-
-    /**
- * @summary Record a manual scenario override
+/**
+ * @summary Validate a manual scenario override
  */
-export const useRecordLiveMatch = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordLiveMatch>>, TError,{data: BodyType<LiveMatchRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof recordLiveMatch>>,
-        TError,
-        {data: BodyType<LiveMatchRequest>},
-        TContext
-      > => {
-      return useMutation(getRecordLiveMatchMutationOptions(options));
-    }
+export const useRecordLiveMatch = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof recordLiveMatch>>,
+    TError,
+    { data: BodyType<LiveMatchRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof recordLiveMatch>>,
+  TError,
+  { data: BodyType<LiveMatchRequest> },
+  TContext
+> => {
+  return useMutation(getRecordLiveMatchMutationOptions(options));
+};
 
 export const getDeleteLiveMatchUrl = () => {
-
-
-
-
-  return `/api/oracle/live-match`
-}
+  return `/api/oracle/live-match`;
+};
 
 /**
- * Removes a manual match score override in-memory and queues simulation recalculation
- * @summary Remove a manual scenario override
+ * Legacy compatibility endpoint. Validates a manual override delete request but does not mutate server-side state; active dashboard scenarios are browser-local/request-local.
+ * @summary Validate removing a manual scenario override
  */
-export const deleteLiveMatch = async (deleteLiveMatchRequest: DeleteLiveMatchRequest, options?: RequestInit): Promise<DeleteLiveMatchResult> => {
-
-  return customFetch<DeleteLiveMatchResult>(getDeleteLiveMatchUrl(),
-  {
+export const deleteLiveMatch = async (
+  deleteLiveMatchRequest: DeleteLiveMatchRequest,
+  options?: RequestInit,
+): Promise<DeleteLiveMatchResult> => {
+  return customFetch<DeleteLiveMatchResult>(getDeleteLiveMatchUrl(), {
     ...options,
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      deleteLiveMatchRequest,)
-  }
-);}
+    method: "DELETE",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(deleteLiveMatchRequest),
+  });
+};
 
+export const getDeleteLiveMatchMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteLiveMatch>>,
+    TError,
+    { data: BodyType<DeleteLiveMatchRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteLiveMatch>>,
+  TError,
+  { data: BodyType<DeleteLiveMatchRequest> },
+  TContext
+> => {
+  const mutationKey = ["deleteLiveMatch"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
 
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteLiveMatch>>,
+    { data: BodyType<DeleteLiveMatchRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
 
+    return deleteLiveMatch(data, requestOptions);
+  };
 
-export const getDeleteLiveMatchMutationOptions = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteLiveMatch>>, TError,{data: BodyType<DeleteLiveMatchRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof deleteLiveMatch>>, TError,{data: BodyType<DeleteLiveMatchRequest>}, TContext> => {
+  return { mutationFn, ...mutationOptions };
+};
 
-const mutationKey = ['deleteLiveMatch'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
+export type DeleteLiveMatchMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteLiveMatch>>
+>;
+export type DeleteLiveMatchMutationBody = BodyType<DeleteLiveMatchRequest>;
+export type DeleteLiveMatchMutationError = ErrorType<ErrorResponse>;
 
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteLiveMatch>>, {data: BodyType<DeleteLiveMatchRequest>}> = (props) => {
-          const {data} = props ?? {};
-
-          return  deleteLiveMatch(data,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type DeleteLiveMatchMutationResult = NonNullable<Awaited<ReturnType<typeof deleteLiveMatch>>>
-    export type DeleteLiveMatchMutationBody = BodyType<DeleteLiveMatchRequest>
-    export type DeleteLiveMatchMutationError = ErrorType<ErrorResponse>
-
-    /**
- * @summary Remove a manual scenario override
+/**
+ * @summary Validate removing a manual scenario override
  */
-export const useDeleteLiveMatch = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteLiveMatch>>, TError,{data: BodyType<DeleteLiveMatchRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof deleteLiveMatch>>,
-        TError,
-        {data: BodyType<DeleteLiveMatchRequest>},
-        TContext
-      > => {
-      return useMutation(getDeleteLiveMatchMutationOptions(options));
-    }
+export const useDeleteLiveMatch = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteLiveMatch>>,
+    TError,
+    { data: BodyType<DeleteLiveMatchRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteLiveMatch>>,
+  TError,
+  { data: BodyType<DeleteLiveMatchRequest> },
+  TContext
+> => {
+  return useMutation(getDeleteLiveMatchMutationOptions(options));
+};
 
 export const getGetLiveMatchesUrl = () => {
-
-
-
-
-  return `/api/oracle/live-matches`
-}
+  return `/api/oracle/live-matches`;
+};
 
 /**
- * Returns the imported fixture list plus any in-memory manual scenario overrides
- * @summary List imported fixtures and manual scenario overrides
+ * Returns imported fixtures plus external live/final results. Manual scenario overrides are not persisted on the server and must be supplied through request-local customMatches.
+ * @summary List imported fixtures and live results
  */
-export const getLiveMatches = async ( options?: RequestInit): Promise<LiveMatchesResponse> => {
-
-  return customFetch<LiveMatchesResponse>(getGetLiveMatchesUrl(),
-  {
+export const getLiveMatches = async (
+  options?: RequestInit,
+): Promise<LiveMatchesResponse> => {
+  return customFetch<LiveMatchesResponse>(getGetLiveMatchesUrl(), {
     ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
+    method: "GET",
+  });
+};
 
 export const getGetLiveMatchesQueryKey = () => {
-    return [
-    `/api/oracle/live-matches`
-    ] as const;
-    }
+  return [`/api/oracle/live-matches`] as const;
+};
 
+export const getGetLiveMatchesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getLiveMatches>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getLiveMatches>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
 
-export const getGetLiveMatchesQueryOptions = <TData = Awaited<ReturnType<typeof getLiveMatches>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLiveMatches>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
+  const queryKey = queryOptions?.queryKey ?? getGetLiveMatchesQueryKey();
 
-const {query: queryOptions, request: requestOptions} = options ?? {};
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getLiveMatches>>> = ({
+    signal,
+  }) => getLiveMatches({ signal, ...requestOptions });
 
-  const queryKey =  queryOptions?.queryKey ?? getGetLiveMatchesQueryKey();
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getLiveMatches>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
 
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLiveMatches>>> = ({ signal }) => getLiveMatches({ signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLiveMatches>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type GetLiveMatchesQueryResult = NonNullable<Awaited<ReturnType<typeof getLiveMatches>>>
-export type GetLiveMatchesQueryError = ErrorType<unknown>
-
+export type GetLiveMatchesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getLiveMatches>>
+>;
+export type GetLiveMatchesQueryError = ErrorType<unknown>;
 
 /**
- * @summary List imported fixtures and manual scenario overrides
+ * @summary List imported fixtures and live results
  */
 
-export function useGetLiveMatches<TData = Awaited<ReturnType<typeof getLiveMatches>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLiveMatches>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export function useGetLiveMatches<
+  TData = Awaited<ReturnType<typeof getLiveMatches>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getLiveMatches>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetLiveMatchesQueryOptions(options);
 
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getGetLiveMatchesQueryOptions(options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
 
-
-
-
-
-
-
-export const getGetMatchContextUrl = (params: GetMatchContextParams,) => {
+export const getGetMatchContextUrl = (params: GetMatchContextParams) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
-
     if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : value.toString())
+      normalizedParams.append(key, value === null ? "null" : value.toString());
     }
   });
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/oracle/match-context?${stringifiedParams}` : `/api/oracle/match-context`
-}
+  return stringifiedParams.length > 0
+    ? `/api/oracle/match-context?${stringifiedParams}`
+    : `/api/oracle/match-context`;
+};
 
 /**
  * Returns fixture metadata, resolved venue coordinates, and weather context when the kickoff is inside the forecast horizon.
  * @summary Get fixture context with optional Open-Meteo weather
  */
-export const getMatchContext = async (params: GetMatchContextParams, options?: RequestInit): Promise<MatchContextResponse> => {
-
-  return customFetch<MatchContextResponse>(getGetMatchContextUrl(params),
-  {
+export const getMatchContext = async (
+  params: GetMatchContextParams,
+  options?: RequestInit,
+): Promise<MatchContextResponse> => {
+  return customFetch<MatchContextResponse>(getGetMatchContextUrl(params), {
     ...options,
-    method: 'GET'
+    method: "GET",
+  });
+};
 
+export const getGetMatchContextQueryKey = (params?: GetMatchContextParams) => {
+  return [`/api/oracle/match-context`, ...(params ? [params] : [])] as const;
+};
 
-  }
-);}
-
-
-
-
-
-export const getGetMatchContextQueryKey = (params?: GetMatchContextParams,) => {
-    return [
-    `/api/oracle/match-context`, ...(params ? [params] : [])
-    ] as const;
-    }
-
-
-export const getGetMatchContextQueryOptions = <TData = Awaited<ReturnType<typeof getMatchContext>>, TError = ErrorType<ErrorResponse>>(params: GetMatchContextParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMatchContext>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetMatchContextQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMatchContext>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: GetMatchContextParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMatchContext>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
 ) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
 
-const {query: queryOptions, request: requestOptions} = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetMatchContextQueryKey(params);
 
-  const queryKey =  queryOptions?.queryKey ?? getGetMatchContextQueryKey(params);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getMatchContext>>> = ({
+    signal,
+  }) => getMatchContext(params, { signal, ...requestOptions });
 
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMatchContext>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
 
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMatchContext>>> = ({ signal }) => getMatchContext(params, { signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMatchContext>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type GetMatchContextQueryResult = NonNullable<Awaited<ReturnType<typeof getMatchContext>>>
-export type GetMatchContextQueryError = ErrorType<ErrorResponse>
-
+export type GetMatchContextQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMatchContext>>
+>;
+export type GetMatchContextQueryError = ErrorType<ErrorResponse>;
 
 /**
  * @summary Get fixture context with optional Open-Meteo weather
  */
 
-export function useGetMatchContext<TData = Awaited<ReturnType<typeof getMatchContext>>, TError = ErrorType<ErrorResponse>>(
- params: GetMatchContextParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMatchContext>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export function useGetMatchContext<
+  TData = Awaited<ReturnType<typeof getMatchContext>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: GetMatchContextParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMatchContext>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMatchContextQueryOptions(params, options);
 
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getGetMatchContextQueryOptions(params,options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
 
-
-
-
-
-
-
 export const getClearLiveMatchesUrl = () => {
-
-
-
-
-  return `/api/oracle/live-matches/clear`
-}
+  return `/api/oracle/live-matches/clear`;
+};
 
 /**
- * Clears all in-memory manual score overrides and queues simulation recalculation
- * @summary Clear all manual scenario overrides
+ * Legacy compatibility endpoint. Returns success without mutating server state because manual scenario overrides are browser-local/request-local.
+ * @summary Validate clearing manual scenario overrides
  */
-export const clearLiveMatches = async ( options?: RequestInit): Promise<ClearLiveMatchesResult> => {
-
-  return customFetch<ClearLiveMatchesResult>(getClearLiveMatchesUrl(),
-  {
+export const clearLiveMatches = async (
+  options?: RequestInit,
+): Promise<ClearLiveMatchesResult> => {
+  return customFetch<ClearLiveMatchesResult>(getClearLiveMatchesUrl(), {
     ...options,
-    method: 'POST'
+    method: "POST",
+  });
+};
 
+export const getClearLiveMatchesMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof clearLiveMatches>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof clearLiveMatches>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["clearLiveMatches"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
 
-  }
-);}
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof clearLiveMatches>>,
+    void
+  > = () => {
+    return clearLiveMatches(requestOptions);
+  };
 
+  return { mutationFn, ...mutationOptions };
+};
 
+export type ClearLiveMatchesMutationResult = NonNullable<
+  Awaited<ReturnType<typeof clearLiveMatches>>
+>;
 
+export type ClearLiveMatchesMutationError = ErrorType<ErrorResponse>;
 
-export const getClearLiveMatchesMutationOptions = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearLiveMatches>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof clearLiveMatches>>, TError,void, TContext> => {
-
-const mutationKey = ['clearLiveMatches'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof clearLiveMatches>>, void> = () => {
-
-
-          return  clearLiveMatches(requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type ClearLiveMatchesMutationResult = NonNullable<Awaited<ReturnType<typeof clearLiveMatches>>>
-
-    export type ClearLiveMatchesMutationError = ErrorType<ErrorResponse>
-
-    /**
- * @summary Clear all manual scenario overrides
+/**
+ * @summary Validate clearing manual scenario overrides
  */
-export const useClearLiveMatches = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearLiveMatches>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof clearLiveMatches>>,
-        TError,
-        void,
-        TContext
-      > => {
-      return useMutation(getClearLiveMatchesMutationOptions(options));
-    }
-
+export const useClearLiveMatches = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof clearLiveMatches>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof clearLiveMatches>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getClearLiveMatchesMutationOptions(options));
+};

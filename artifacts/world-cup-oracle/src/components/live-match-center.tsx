@@ -46,6 +46,7 @@ interface PlayedMatch {
 }
 
 type MatchStageTab = "results" | "group" | "knockout";
+const MAX_REASONABLE_SCORE = 30;
 
 export function LiveMatchCenter() {
   const queryClient = useQueryClient();
@@ -128,12 +129,22 @@ export function LiveMatchCenter() {
     hScore: number,
     aScore: number,
   ) => {
-    upsertCustomMatch({
+    const recorded = upsertCustomMatch({
       homeTeam: mHome,
       awayTeam: mAway,
       homeScore: hScore,
       awayScore: aScore,
     });
+
+    if (!recorded) {
+      toast({
+        title: "Invalid Score",
+        description: `Scores must be whole numbers from 0 to ${MAX_REASONABLE_SCORE}.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     toast({
       title: "Manual Override Recorded",
       description: `Recorded locally: ${mHome} ${hScore} - ${aScore} ${mAway}`,
@@ -587,7 +598,16 @@ function MatchCard({
     e.preventDefault();
     const hScore = parseInt(homeInput, 10);
     const aScore = parseInt(awayInput, 10);
-    if (isNaN(hScore) || isNaN(aScore) || hScore < 0 || aScore < 0) return;
+    if (
+      isNaN(hScore) ||
+      isNaN(aScore) ||
+      hScore < 0 ||
+      aScore < 0 ||
+      hScore > MAX_REASONABLE_SCORE ||
+      aScore > MAX_REASONABLE_SCORE
+    ) {
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -728,7 +748,18 @@ function MatchCard({
   }
 
   // Edit / Input mode (or unplayed match mode)
-  const canSave = homeInput !== "" && awayInput !== "" && !submitting;
+  const parsedHomeInput = Number(homeInput);
+  const parsedAwayInput = Number(awayInput);
+  const canSave =
+    homeInput !== "" &&
+    awayInput !== "" &&
+    Number.isInteger(parsedHomeInput) &&
+    Number.isInteger(parsedAwayInput) &&
+    parsedHomeInput >= 0 &&
+    parsedAwayInput >= 0 &&
+    parsedHomeInput <= MAX_REASONABLE_SCORE &&
+    parsedAwayInput <= MAX_REASONABLE_SCORE &&
+    !submitting;
 
   return (
     <form
@@ -773,6 +804,7 @@ function MatchCard({
             aria-label={`${homeTeam} score`}
             type="number"
             min="0"
+            max={MAX_REASONABLE_SCORE}
             placeholder="-"
             value={homeInput}
             onChange={(e) => setHomeInput(e.target.value)}
@@ -786,6 +818,7 @@ function MatchCard({
             aria-label={`${awayTeam} score`}
             type="number"
             min="0"
+            max={MAX_REASONABLE_SCORE}
             placeholder="-"
             value={awayInput}
             onChange={(e) => setAwayInput(e.target.value)}

@@ -232,12 +232,13 @@ export function useCustomMatches() {
   const upsertCustomMatch = useCallback((match: LiveMatchRequest) => {
     const normalized = normalizeCustomMatch(match);
     if (!normalized) {
-      return;
+      return false;
     }
 
     writeCustomMatches(
       upsertCustomMatchInList(getCustomMatchesSnapshot(), normalized),
     );
+    return true;
   }, []);
 
   const removeCustomMatch = useCallback(

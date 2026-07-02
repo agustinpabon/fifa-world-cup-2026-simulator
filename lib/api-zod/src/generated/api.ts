@@ -5,175 +5,210 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import * as zod from 'zod';
-
+import * as zod from "zod";
 
 /**
  * Returns server health status
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
-  "data": zod.object({
-  "status": zod.string()
-})
-})
-
+  data: zod.object({
+    status: zod.string(),
+  }),
+});
 
 /**
  * Returns whether the Elo ratings and simulation are ready
  * @summary Get oracle initialization status
  */
 export const GetOracleStatusResponse = zod.object({
-  "data": zod.object({
-  "state": zod.enum(['loading', 'ready', 'error']),
-  "ready": zod.boolean(),
-  "matchesLoaded": zod.number(),
-  "teamsRated": zod.number(),
-  "simulationsRun": zod.number(),
-  "simulationSeed": zod.string(),
-  "liveMatchesRecorded": zod.number(),
-  "liveDataProvider": zod.enum(['espn', 'disabled']),
-  "liveDataMatchesLoaded": zod.number(),
-  "liveDataLastSyncedAt": zod.string().nullable(),
-  "liveDataError": zod.string().nullable(),
-  "eliminatedTeams": zod.array(zod.string()),
-  "recalculating": zod.boolean().describe('True when a recalculation job is pending or running.'),
-  "lastUpdated": zod.string().nullable().describe('ISO timestamp for the last successfully published simulation.'),
-  "recalculationError": zod.string().nullable().describe('Last simulation recalculation error, if the latest job failed.'),
-  "dataset": zod.object({
-  "source": zod.enum(['remote', 'snapshot']),
-  "date": zod.string().describe('Latest completed match date included in the loaded dataset.'),
-  "hash": zod.string().describe('SHA-256 hash of the raw CSV used for this runtime.'),
-  "loadedAt": zod.string(),
-  "remoteUrl": zod.string().optional(),
-  "fallbackReason": zod.string().optional()
-}).nullable(),
-  "error": zod.object({
-  "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
-  "message": zod.string()
-}).optional(),
-  "activeModel": zod.enum(['elo-baseline', 'elo-poisson', 'elo-poisson-dixon-coles', 'elo-poisson-strength', 'elo-poisson-strength-dixon-coles']),
-  "message": zod.string()
-}),
-  "meta": zod.object({
-  "readiness": zod.object({
-  "state": zod.enum(['loading', 'ready', 'error']),
-  "ready": zod.boolean(),
-  "message": zod.string(),
-  "error": zod.object({
-  "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
-  "message": zod.string()
-}).optional()
-})
-})
-})
-
+  data: zod.object({
+    state: zod.enum(["loading", "ready", "error"]),
+    ready: zod.boolean(),
+    matchesLoaded: zod.number(),
+    teamsRated: zod.number(),
+    simulationsRun: zod.number(),
+    simulationSeed: zod.string(),
+    liveMatchesRecorded: zod.number(),
+    liveDataProvider: zod.enum(["espn", "disabled"]),
+    liveDataMatchesLoaded: zod.number(),
+    liveDataLastSyncedAt: zod.string().nullable(),
+    liveDataError: zod.string().nullable(),
+    eliminatedTeams: zod.array(zod.string()),
+    recalculating: zod
+      .boolean()
+      .describe("True when a recalculation job is pending or running."),
+    lastUpdated: zod
+      .string()
+      .nullable()
+      .describe(
+        "ISO timestamp for the last successfully published simulation.",
+      ),
+    recalculationError: zod
+      .string()
+      .nullable()
+      .describe(
+        "Last simulation recalculation error, if the latest job failed.",
+      ),
+    dataset: zod
+      .object({
+        source: zod.enum(["remote", "snapshot"]),
+        date: zod
+          .string()
+          .describe(
+            "Latest completed match date included in the loaded dataset.",
+          ),
+        hash: zod
+          .string()
+          .describe("SHA-256 hash of the raw CSV used for this runtime."),
+        loadedAt: zod.string(),
+        remoteUrl: zod.string().optional(),
+        fallbackReason: zod.string().optional(),
+      })
+      .nullable(),
+    error: zod
+      .object({
+        code: zod.enum(["HISTORICAL_DATA_LOAD_FAILED"]),
+        message: zod.string(),
+      })
+      .optional(),
+    activeModel: zod.enum([
+      "elo-baseline",
+      "elo-poisson",
+      "elo-poisson-dixon-coles",
+      "elo-poisson-strength",
+      "elo-poisson-strength-dixon-coles",
+    ]),
+    message: zod.string(),
+  }),
+  meta: zod.object({
+    readiness: zod.object({
+      state: zod.enum(["loading", "ready", "error"]),
+      ready: zod.boolean(),
+      message: zod.string(),
+      error: zod
+        .object({
+          code: zod.enum(["HISTORICAL_DATA_LOAD_FAILED"]),
+          message: zod.string(),
+        })
+        .optional(),
+    }),
+  }),
+});
 
 /**
  * Returns sorted list of all qualified teams and their computed Elo ratings
  * @summary Get all 48 World Cup teams with Elo ratings
  */
 export const GetTeamsResponse = zod.object({
-  "data": zod.object({
-  "teams": zod.array(zod.object({
-  "name": zod.string(),
-  "code": zod.string(),
-  "elo": zod.number(),
-  "group": zod.string(),
-  "flagEmoji": zod.string(),
-  "attackStrength": zod.number(),
-  "defenseStrength": zod.number()
-}))
-}),
-  "meta": zod.object({
-  "readiness": zod.object({
-  "state": zod.enum(['loading', 'ready', 'error']),
-  "ready": zod.boolean(),
-  "message": zod.string(),
-  "error": zod.object({
-  "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
-  "message": zod.string()
-}).optional()
-})
-})
-})
-
+  data: zod.object({
+    teams: zod.array(
+      zod.object({
+        name: zod.string(),
+        code: zod.string(),
+        elo: zod.number(),
+        group: zod.string(),
+        flagEmoji: zod.string(),
+        attackStrength: zod.number(),
+        defenseStrength: zod.number(),
+      }),
+    ),
+  }),
+  meta: zod.object({
+    readiness: zod.object({
+      state: zod.enum(["loading", "ready", "error"]),
+      ready: zod.boolean(),
+      message: zod.string(),
+      error: zod
+        .object({
+          code: zod.enum(["HISTORICAL_DATA_LOAD_FAILED"]),
+          message: zod.string(),
+        })
+        .optional(),
+    }),
+  }),
+});
 
 /**
  * Returns the local squad snapshot with per-team completeness and provenance metadata.
  * @summary Get versioned local World Cup squad snapshots
  */
 export const GetSquadsResponse = zod.object({
-  "data": zod.object({
-  "schemaVersion": zod.number(),
-  "version": zod.string(),
-  "competition": zod.string(),
-  "provenance": zod.object({
-  "sourceName": zod.string(),
-  "sourceUrl": zod.string(),
-  "sourceTitle": zod.string(),
-  "publishedDate": zod.string(),
-  "accessedDate": zod.string(),
-  "notes": zod.array(zod.string())
-}),
-  "externalProvenance": zod.object({
-  "provider": zod.enum(['local-snapshot', 'api-football']),
-  "loadedAt": zod.string().nullable(),
-  "sourceEndpoint": zod.string(),
-  "cacheTtlMs": zod.number().nullable(),
-  "stale": zod.boolean(),
-  "error": zod.string().nullable(),
-  "state": zod.enum(['disabled', 'idle', 'fresh', 'stale', 'error']),
-  "fallback": zod.enum(['none', 'stale-cache', 'local-data'])
-}),
-  "squads": zod.array(zod.object({
-  "team": zod.string(),
-  "code": zod.string(),
-  "group": zod.string(),
-  "flagEmoji": zod.string(),
-  "completeness": zod.object({
-  "status": zod.enum(['complete', 'incomplete']),
-  "expectedPlayerCount": zod.number(),
-  "playerCount": zod.number(),
-  "notes": zod.array(zod.string())
-}),
-  "source": zod.object({
-  "sourceName": zod.string(),
-  "sourceUrl": zod.string(),
-  "sourceTitle": zod.string(),
-  "publishedDate": zod.string(),
-  "accessedDate": zod.string(),
-  "notes": zod.array(zod.string())
-}),
-  "players": zod.array(zod.object({
-  "name": zod.string(),
-  "position": zod.string(),
-  "shirtNumber": zod.number().optional(),
-  "club": zod.string().optional(),
-  "source": zod.object({
-  "sourceName": zod.string(),
-  "sourceUrl": zod.string(),
-  "sourceTitle": zod.string(),
-  "publishedDate": zod.string(),
-  "accessedDate": zod.string(),
-  "notes": zod.array(zod.string())
-})
-}))
-}))
-}),
-  "meta": zod.object({
-  "readiness": zod.object({
-  "state": zod.enum(['loading', 'ready', 'error']),
-  "ready": zod.boolean(),
-  "message": zod.string(),
-  "error": zod.object({
-  "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
-  "message": zod.string()
-}).optional()
-})
-})
-})
-
+  data: zod.object({
+    schemaVersion: zod.number(),
+    version: zod.string(),
+    competition: zod.string(),
+    provenance: zod.object({
+      sourceName: zod.string(),
+      sourceUrl: zod.string(),
+      sourceTitle: zod.string(),
+      publishedDate: zod.string(),
+      accessedDate: zod.string(),
+      notes: zod.array(zod.string()),
+    }),
+    externalProvenance: zod.object({
+      provider: zod.enum(["local-snapshot", "api-football"]),
+      loadedAt: zod.string().nullable(),
+      sourceEndpoint: zod.string(),
+      cacheTtlMs: zod.number().nullable(),
+      stale: zod.boolean(),
+      error: zod.string().nullable(),
+      state: zod.enum(["disabled", "idle", "fresh", "stale", "error"]),
+      fallback: zod.enum(["none", "stale-cache", "local-data"]),
+    }),
+    squads: zod.array(
+      zod.object({
+        team: zod.string(),
+        code: zod.string(),
+        group: zod.string(),
+        flagEmoji: zod.string(),
+        completeness: zod.object({
+          status: zod.enum(["complete", "incomplete"]),
+          expectedPlayerCount: zod.number(),
+          playerCount: zod.number(),
+          notes: zod.array(zod.string()),
+        }),
+        source: zod.object({
+          sourceName: zod.string(),
+          sourceUrl: zod.string(),
+          sourceTitle: zod.string(),
+          publishedDate: zod.string(),
+          accessedDate: zod.string(),
+          notes: zod.array(zod.string()),
+        }),
+        players: zod.array(
+          zod.object({
+            name: zod.string(),
+            position: zod.string(),
+            shirtNumber: zod.number().optional(),
+            club: zod.string().optional(),
+            source: zod.object({
+              sourceName: zod.string(),
+              sourceUrl: zod.string(),
+              sourceTitle: zod.string(),
+              publishedDate: zod.string(),
+              accessedDate: zod.string(),
+              notes: zod.array(zod.string()),
+            }),
+          }),
+        ),
+      }),
+    ),
+  }),
+  meta: zod.object({
+    readiness: zod.object({
+      state: zod.enum(["loading", "ready", "error"]),
+      ready: zod.boolean(),
+      message: zod.string(),
+      error: zod
+        .object({
+          code: zod.enum(["HISTORICAL_DATA_LOAD_FAILED"]),
+          message: zod.string(),
+        })
+        .optional(),
+    }),
+  }),
+});
 
 /**
  * Returns pre-computed tournament simulation probabilities for all teams
@@ -181,92 +216,207 @@ export const GetSquadsResponse = zod.object({
  */
 export const getSimulationQuerySeedMax = 128;
 
-
-
 export const GetSimulationQueryParams = zod.object({
-  "seed": zod.coerce.string().min(1).max(getSimulationQuerySeedMax).optional().describe('Optional seed for an ad hoc reproducible simulation response. Omit it to use the cached seed.'),
-  "customMatches": zod.coerce.string().optional().describe('JSON-encoded array of request-local manual match overrides. When provided, these overrides are used only for this simulation response.')
-})
+  seed: zod.coerce
+    .string()
+    .min(1)
+    .max(getSimulationQuerySeedMax)
+    .optional()
+    .describe(
+      "Optional seed for an ad hoc reproducible simulation response. Omit it to use the cached seed.",
+    ),
+  customMatches: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "JSON-encoded array of request-local manual match overrides. When provided, these overrides are used only for this simulation response.",
+    ),
+});
 
 export const GetSimulationResponse = zod.object({
-  "data": zod.object({
-  "results": zod.array(zod.object({
-  "name": zod.string(),
-  "code": zod.string(),
-  "group": zod.string(),
-  "flagEmoji": zod.string(),
-  "elo": zod.number(),
-  "titlePct": zod.number(),
-  "finalPct": zod.number(),
-  "semiFinalPct": zod.number(),
-  "quarterFinalPct": zod.number(),
-  "roundOf16Pct": zod.number(),
-  "groupWinPct": zod.number(),
-  "groupAdvancePct": zod.number(),
-  "eliminated": zod.boolean(),
-  "uncertainty": zod.object({
-  "titlePct": zod.object({
-  "standardErrorPct": zod.number().describe('Standard error in percentage points.'),
-  "confidenceIntervalLowPct": zod.number().describe('Lower bound of the approximate confidence interval in percentage points.'),
-  "confidenceIntervalHighPct": zod.number().describe('Upper bound of the approximate confidence interval in percentage points.')
-}).describe('Binomial Monte Carlo uncertainty for a displayed probability percentage.'),
-  "finalPct": zod.object({
-  "standardErrorPct": zod.number().describe('Standard error in percentage points.'),
-  "confidenceIntervalLowPct": zod.number().describe('Lower bound of the approximate confidence interval in percentage points.'),
-  "confidenceIntervalHighPct": zod.number().describe('Upper bound of the approximate confidence interval in percentage points.')
-}).describe('Binomial Monte Carlo uncertainty for a displayed probability percentage.'),
-  "semiFinalPct": zod.object({
-  "standardErrorPct": zod.number().describe('Standard error in percentage points.'),
-  "confidenceIntervalLowPct": zod.number().describe('Lower bound of the approximate confidence interval in percentage points.'),
-  "confidenceIntervalHighPct": zod.number().describe('Upper bound of the approximate confidence interval in percentage points.')
-}).describe('Binomial Monte Carlo uncertainty for a displayed probability percentage.'),
-  "quarterFinalPct": zod.object({
-  "standardErrorPct": zod.number().describe('Standard error in percentage points.'),
-  "confidenceIntervalLowPct": zod.number().describe('Lower bound of the approximate confidence interval in percentage points.'),
-  "confidenceIntervalHighPct": zod.number().describe('Upper bound of the approximate confidence interval in percentage points.')
-}).describe('Binomial Monte Carlo uncertainty for a displayed probability percentage.'),
-  "roundOf16Pct": zod.object({
-  "standardErrorPct": zod.number().describe('Standard error in percentage points.'),
-  "confidenceIntervalLowPct": zod.number().describe('Lower bound of the approximate confidence interval in percentage points.'),
-  "confidenceIntervalHighPct": zod.number().describe('Upper bound of the approximate confidence interval in percentage points.')
-}).describe('Binomial Monte Carlo uncertainty for a displayed probability percentage.'),
-  "groupWinPct": zod.object({
-  "standardErrorPct": zod.number().describe('Standard error in percentage points.'),
-  "confidenceIntervalLowPct": zod.number().describe('Lower bound of the approximate confidence interval in percentage points.'),
-  "confidenceIntervalHighPct": zod.number().describe('Upper bound of the approximate confidence interval in percentage points.')
-}).describe('Binomial Monte Carlo uncertainty for a displayed probability percentage.'),
-  "groupAdvancePct": zod.object({
-  "standardErrorPct": zod.number().describe('Standard error in percentage points.'),
-  "confidenceIntervalLowPct": zod.number().describe('Lower bound of the approximate confidence interval in percentage points.'),
-  "confidenceIntervalHighPct": zod.number().describe('Upper bound of the approximate confidence interval in percentage points.')
-}).describe('Binomial Monte Carlo uncertainty for a displayed probability percentage.')
-})
-})),
-  "simulationsRun": zod.number(),
-  "simulationSeed": zod.string(),
-  "liveMatchesRecorded": zod.number(),
-  "eliminatedTeams": zod.array(zod.string()),
-  "uncertainty": zod.object({
-  "method": zod.enum(['binomial_standard_error']),
-  "confidenceLevel": zod.number(),
-  "zScore": zod.number(),
-  "maxStandardErrorPct": zod.number().describe('Largest possible standard error in percentage points for this simulation count.'),
-  "description": zod.string()
-})
-}),
-  "meta": zod.object({
-  "readiness": zod.object({
-  "state": zod.enum(['loading', 'ready', 'error']),
-  "ready": zod.boolean(),
-  "message": zod.string(),
-  "error": zod.object({
-  "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
-  "message": zod.string()
-}).optional()
-})
-})
-})
-
+  data: zod.object({
+    results: zod.array(
+      zod.object({
+        name: zod.string(),
+        code: zod.string(),
+        group: zod.string(),
+        flagEmoji: zod.string(),
+        elo: zod.number(),
+        titlePct: zod.number(),
+        finalPct: zod.number(),
+        semiFinalPct: zod.number(),
+        quarterFinalPct: zod.number(),
+        roundOf16Pct: zod.number(),
+        groupWinPct: zod.number(),
+        groupAdvancePct: zod.number(),
+        eliminated: zod.boolean(),
+        uncertainty: zod.object({
+          titlePct: zod
+            .object({
+              standardErrorPct: zod
+                .number()
+                .describe("Standard error in percentage points."),
+              confidenceIntervalLowPct: zod
+                .number()
+                .describe(
+                  "Lower bound of the approximate confidence interval in percentage points.",
+                ),
+              confidenceIntervalHighPct: zod
+                .number()
+                .describe(
+                  "Upper bound of the approximate confidence interval in percentage points.",
+                ),
+            })
+            .describe(
+              "Binomial Monte Carlo uncertainty for a displayed probability percentage.",
+            ),
+          finalPct: zod
+            .object({
+              standardErrorPct: zod
+                .number()
+                .describe("Standard error in percentage points."),
+              confidenceIntervalLowPct: zod
+                .number()
+                .describe(
+                  "Lower bound of the approximate confidence interval in percentage points.",
+                ),
+              confidenceIntervalHighPct: zod
+                .number()
+                .describe(
+                  "Upper bound of the approximate confidence interval in percentage points.",
+                ),
+            })
+            .describe(
+              "Binomial Monte Carlo uncertainty for a displayed probability percentage.",
+            ),
+          semiFinalPct: zod
+            .object({
+              standardErrorPct: zod
+                .number()
+                .describe("Standard error in percentage points."),
+              confidenceIntervalLowPct: zod
+                .number()
+                .describe(
+                  "Lower bound of the approximate confidence interval in percentage points.",
+                ),
+              confidenceIntervalHighPct: zod
+                .number()
+                .describe(
+                  "Upper bound of the approximate confidence interval in percentage points.",
+                ),
+            })
+            .describe(
+              "Binomial Monte Carlo uncertainty for a displayed probability percentage.",
+            ),
+          quarterFinalPct: zod
+            .object({
+              standardErrorPct: zod
+                .number()
+                .describe("Standard error in percentage points."),
+              confidenceIntervalLowPct: zod
+                .number()
+                .describe(
+                  "Lower bound of the approximate confidence interval in percentage points.",
+                ),
+              confidenceIntervalHighPct: zod
+                .number()
+                .describe(
+                  "Upper bound of the approximate confidence interval in percentage points.",
+                ),
+            })
+            .describe(
+              "Binomial Monte Carlo uncertainty for a displayed probability percentage.",
+            ),
+          roundOf16Pct: zod
+            .object({
+              standardErrorPct: zod
+                .number()
+                .describe("Standard error in percentage points."),
+              confidenceIntervalLowPct: zod
+                .number()
+                .describe(
+                  "Lower bound of the approximate confidence interval in percentage points.",
+                ),
+              confidenceIntervalHighPct: zod
+                .number()
+                .describe(
+                  "Upper bound of the approximate confidence interval in percentage points.",
+                ),
+            })
+            .describe(
+              "Binomial Monte Carlo uncertainty for a displayed probability percentage.",
+            ),
+          groupWinPct: zod
+            .object({
+              standardErrorPct: zod
+                .number()
+                .describe("Standard error in percentage points."),
+              confidenceIntervalLowPct: zod
+                .number()
+                .describe(
+                  "Lower bound of the approximate confidence interval in percentage points.",
+                ),
+              confidenceIntervalHighPct: zod
+                .number()
+                .describe(
+                  "Upper bound of the approximate confidence interval in percentage points.",
+                ),
+            })
+            .describe(
+              "Binomial Monte Carlo uncertainty for a displayed probability percentage.",
+            ),
+          groupAdvancePct: zod
+            .object({
+              standardErrorPct: zod
+                .number()
+                .describe("Standard error in percentage points."),
+              confidenceIntervalLowPct: zod
+                .number()
+                .describe(
+                  "Lower bound of the approximate confidence interval in percentage points.",
+                ),
+              confidenceIntervalHighPct: zod
+                .number()
+                .describe(
+                  "Upper bound of the approximate confidence interval in percentage points.",
+                ),
+            })
+            .describe(
+              "Binomial Monte Carlo uncertainty for a displayed probability percentage.",
+            ),
+        }),
+      }),
+    ),
+    simulationsRun: zod.number(),
+    simulationSeed: zod.string(),
+    liveMatchesRecorded: zod.number(),
+    eliminatedTeams: zod.array(zod.string()),
+    uncertainty: zod.object({
+      method: zod.enum(["binomial_standard_error"]),
+      confidenceLevel: zod.number(),
+      zScore: zod.number(),
+      maxStandardErrorPct: zod
+        .number()
+        .describe(
+          "Largest possible standard error in percentage points for this simulation count.",
+        ),
+      description: zod.string(),
+    }),
+  }),
+  meta: zod.object({
+    readiness: zod.object({
+      state: zod.enum(["loading", "ready", "error"]),
+      ready: zod.boolean(),
+      message: zod.string(),
+      error: zod
+        .object({
+          code: zod.enum(["HISTORICAL_DATA_LOAD_FAILED"]),
+          message: zod.string(),
+        })
+        .optional(),
+    }),
+  }),
+});
 
 /**
  * Given two team names, returns win/draw/loss probabilities, expected goals, and most likely scoreline
@@ -275,12 +425,13 @@ export const GetSimulationResponse = zod.object({
 export const predictMatchQueryExperimentalModifiersDefault = false;
 
 export const PredictMatchQueryParams = zod.object({
-  "experimentalModifiers": zod.coerce.boolean().default(predictMatchQueryExperimentalModifiersDefault).describe('Explicit opt-in flag for experimental context modifiers. Defaults to false.')
-})
-
-
-
-
+  experimentalModifiers: zod.coerce
+    .boolean()
+    .default(predictMatchQueryExperimentalModifiersDefault)
+    .describe(
+      "Explicit opt-in flag for experimental context modifiers. Defaults to false.",
+    ),
+});
 
 export const predictMatchBodyCustomMatchesItemHomeScoreMin = 0;
 export const predictMatchBodyCustomMatchesItemHomeScoreMax = 30;
@@ -290,93 +441,122 @@ export const predictMatchBodyCustomMatchesItemAwayScoreMax = 30;
 
 export const predictMatchBodyCustomMatchesMax = 104;
 
-
-
 export const PredictMatchBody = zod.object({
-  "homeTeam": zod.string().min(1),
-  "awayTeam": zod.string().min(1),
-  "neutral": zod.boolean().optional().describe('Whether the match is played at a neutral venue. Defaults to true when omitted.'),
-  "isHomeA": zod.boolean().optional().describe('Whether Team 1 receives host\/home context. Defaults to false when omitted.'),
-  "isHomeB": zod.boolean().optional().describe('Whether Team 2 receives host\/home context. Defaults to false when omitted.'),
-  "customMatches": zod.array(zod.object({
-  "homeTeam": zod.string().min(1),
-  "awayTeam": zod.string().min(1),
-  "homeScore": zod.number().min(predictMatchBodyCustomMatchesItemHomeScoreMin).max(predictMatchBodyCustomMatchesItemHomeScoreMax),
-  "awayScore": zod.number().min(predictMatchBodyCustomMatchesItemAwayScoreMin).max(predictMatchBodyCustomMatchesItemAwayScoreMax)
-})).max(predictMatchBodyCustomMatchesMax).optional().describe('Request-local manual match overrides used only for this prediction.')
-})
+  homeTeam: zod.string().min(1),
+  awayTeam: zod.string().min(1),
+  neutral: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Whether the match is played at a neutral venue. Defaults to true when omitted.",
+    ),
+  isHomeA: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Whether Team 1 receives host\/home context. Defaults to false when omitted.",
+    ),
+  isHomeB: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Whether Team 2 receives host\/home context. Defaults to false when omitted.",
+    ),
+  customMatches: zod
+    .array(
+      zod.object({
+        homeTeam: zod.string().min(1),
+        awayTeam: zod.string().min(1),
+        homeScore: zod
+          .number()
+          .min(predictMatchBodyCustomMatchesItemHomeScoreMin)
+          .max(predictMatchBodyCustomMatchesItemHomeScoreMax),
+        awayScore: zod
+          .number()
+          .min(predictMatchBodyCustomMatchesItemAwayScoreMin)
+          .max(predictMatchBodyCustomMatchesItemAwayScoreMax),
+      }),
+    )
+    .max(predictMatchBodyCustomMatchesMax)
+    .optional()
+    .describe(
+      "Request-local manual match overrides used only for this prediction.",
+    ),
+});
 
 export const PredictMatchResponse = zod.object({
-  "data": zod.object({
-  "homeTeam": zod.string(),
-  "awayTeam": zod.string(),
-  "homeWinPct": zod.number(),
-  "drawPct": zod.number(),
-  "awayWinPct": zod.number(),
-  "homeExpectedGoals": zod.number(),
-  "awayExpectedGoals": zod.number(),
-  "mostLikelyScore": zod.string(),
-  "homeElo": zod.number(),
-  "awayElo": zod.number(),
-  "homeAttackStrength": zod.number(),
-  "homeDefenseStrength": zod.number(),
-  "awayAttackStrength": zod.number(),
-  "awayDefenseStrength": zod.number(),
-  "experimentalModifiers": zod.object({
-  "enabled": zod.boolean(),
-  "applied": zod.array(zod.object({
-  "kind": zod.enum(['weather', 'availability', 'suspension', 'manual']),
-  "target": zod.enum(['teamA', 'teamB', 'both']),
-  "explanation": zod.string(),
-  "provenance": zod.object({
-  "source": zod.string(),
-  "sourceId": zod.string().optional(),
-  "sourceUrl": zod.string().optional(),
-  "retrievedAt": zod.string().optional(),
-  "notes": zod.array(zod.string()).optional()
-}),
-  "requestedAdjustment": zod.object({
-  "eloDelta": zod.number(),
-  "xgDelta": zod.number(),
-  "xgMultiplier": zod.number()
-}),
-  "appliedAdjustment": zod.object({
-  "eloDelta": zod.number(),
-  "xgDelta": zod.number(),
-  "xgMultiplier": zod.number()
-})
-})),
-  "ignoredCount": zod.number(),
-  "disabledReason": zod.string().optional(),
-  "aggregate": zod.object({
-  "eloDeltaA": zod.number(),
-  "eloDeltaB": zod.number(),
-  "xgDeltaA": zod.number(),
-  "xgDeltaB": zod.number(),
-  "xgMultiplierA": zod.number(),
-  "xgMultiplierB": zod.number()
-})
-})
-}),
-  "meta": zod.object({
-  "readiness": zod.object({
-  "state": zod.enum(['loading', 'ready', 'error']),
-  "ready": zod.boolean(),
-  "message": zod.string(),
-  "error": zod.object({
-  "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
-  "message": zod.string()
-}).optional()
-})
-})
-})
-
+  data: zod.object({
+    homeTeam: zod.string(),
+    awayTeam: zod.string(),
+    homeWinPct: zod.number(),
+    drawPct: zod.number(),
+    awayWinPct: zod.number(),
+    homeExpectedGoals: zod.number(),
+    awayExpectedGoals: zod.number(),
+    mostLikelyScore: zod.string(),
+    homeElo: zod.number(),
+    awayElo: zod.number(),
+    homeAttackStrength: zod.number(),
+    homeDefenseStrength: zod.number(),
+    awayAttackStrength: zod.number(),
+    awayDefenseStrength: zod.number(),
+    experimentalModifiers: zod.object({
+      enabled: zod.boolean(),
+      applied: zod.array(
+        zod.object({
+          kind: zod.enum(["weather", "availability", "suspension", "manual"]),
+          target: zod.enum(["teamA", "teamB", "both"]),
+          explanation: zod.string(),
+          provenance: zod.object({
+            source: zod.string(),
+            sourceId: zod.string().optional(),
+            sourceUrl: zod.string().optional(),
+            retrievedAt: zod.string().optional(),
+            notes: zod.array(zod.string()).optional(),
+          }),
+          requestedAdjustment: zod.object({
+            eloDelta: zod.number(),
+            xgDelta: zod.number(),
+            xgMultiplier: zod.number(),
+          }),
+          appliedAdjustment: zod.object({
+            eloDelta: zod.number(),
+            xgDelta: zod.number(),
+            xgMultiplier: zod.number(),
+          }),
+        }),
+      ),
+      ignoredCount: zod.number(),
+      disabledReason: zod.string().optional(),
+      aggregate: zod.object({
+        eloDeltaA: zod.number(),
+        eloDeltaB: zod.number(),
+        xgDeltaA: zod.number(),
+        xgDeltaB: zod.number(),
+        xgMultiplierA: zod.number(),
+        xgMultiplierB: zod.number(),
+      }),
+    }),
+  }),
+  meta: zod.object({
+    readiness: zod.object({
+      state: zod.enum(["loading", "ready", "error"]),
+      ready: zod.boolean(),
+      message: zod.string(),
+      error: zod
+        .object({
+          code: zod.enum(["HISTORICAL_DATA_LOAD_FAILED"]),
+          message: zod.string(),
+        })
+        .optional(),
+    }),
+  }),
+});
 
 /**
- * Records a manual match score override in-memory and queues simulation recalculation
- * @summary Record a manual scenario override
+ * Legacy compatibility endpoint. Validates a manual match score override but does not store server-side state or queue recalculation; active dashboard scenarios are sent as request-local customMatches.
+ * @summary Validate a manual scenario override
  */
-
 
 export const recordLiveMatchBodyHomeScoreMin = 0;
 export const recordLiveMatchBodyHomeScoreMax = 30;
@@ -384,208 +564,229 @@ export const recordLiveMatchBodyHomeScoreMax = 30;
 export const recordLiveMatchBodyAwayScoreMin = 0;
 export const recordLiveMatchBodyAwayScoreMax = 30;
 
-
-
 export const RecordLiveMatchBody = zod.object({
-  "homeTeam": zod.string().min(1),
-  "awayTeam": zod.string().min(1),
-  "homeScore": zod.number().min(recordLiveMatchBodyHomeScoreMin).max(recordLiveMatchBodyHomeScoreMax),
-  "awayScore": zod.number().min(recordLiveMatchBodyAwayScoreMin).max(recordLiveMatchBodyAwayScoreMax)
-})
+  homeTeam: zod.string().min(1),
+  awayTeam: zod.string().min(1),
+  homeScore: zod
+    .number()
+    .min(recordLiveMatchBodyHomeScoreMin)
+    .max(recordLiveMatchBodyHomeScoreMax),
+  awayScore: zod
+    .number()
+    .min(recordLiveMatchBodyAwayScoreMin)
+    .max(recordLiveMatchBodyAwayScoreMax),
+});
 
 export const RecordLiveMatchResponse = zod.object({
-  "data": zod.object({
-  "success": zod.boolean(),
-  "message": zod.string(),
-  "liveMatchesCount": zod.number()
-}),
-  "meta": zod.object({
-  "readiness": zod.object({
-  "state": zod.enum(['loading', 'ready', 'error']),
-  "ready": zod.boolean(),
-  "message": zod.string(),
-  "error": zod.object({
-  "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
-  "message": zod.string()
-}).optional()
-})
-})
-})
-
+  data: zod.object({
+    success: zod.boolean(),
+    message: zod.string(),
+    liveMatchesCount: zod.number(),
+  }),
+  meta: zod.object({
+    readiness: zod.object({
+      state: zod.enum(["loading", "ready", "error"]),
+      ready: zod.boolean(),
+      message: zod.string(),
+      error: zod
+        .object({
+          code: zod.enum(["HISTORICAL_DATA_LOAD_FAILED"]),
+          message: zod.string(),
+        })
+        .optional(),
+    }),
+  }),
+});
 
 /**
- * Removes a manual match score override in-memory and queues simulation recalculation
- * @summary Remove a manual scenario override
+ * Legacy compatibility endpoint. Validates a manual override delete request but does not mutate server-side state; active dashboard scenarios are browser-local/request-local.
+ * @summary Validate removing a manual scenario override
  */
-
-
-
 
 export const DeleteLiveMatchBody = zod.object({
-  "homeTeam": zod.string().min(1),
-  "awayTeam": zod.string().min(1)
-})
+  homeTeam: zod.string().min(1),
+  awayTeam: zod.string().min(1),
+});
 
 export const DeleteLiveMatchResponse = zod.object({
-  "data": zod.object({
-  "success": zod.boolean(),
-  "liveMatchesCount": zod.number()
-}),
-  "meta": zod.object({
-  "readiness": zod.object({
-  "state": zod.enum(['loading', 'ready', 'error']),
-  "ready": zod.boolean(),
-  "message": zod.string(),
-  "error": zod.object({
-  "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
-  "message": zod.string()
-}).optional()
-})
-})
-})
-
+  data: zod.object({
+    success: zod.boolean(),
+    liveMatchesCount: zod.number(),
+  }),
+  meta: zod.object({
+    readiness: zod.object({
+      state: zod.enum(["loading", "ready", "error"]),
+      ready: zod.boolean(),
+      message: zod.string(),
+      error: zod
+        .object({
+          code: zod.enum(["HISTORICAL_DATA_LOAD_FAILED"]),
+          message: zod.string(),
+        })
+        .optional(),
+    }),
+  }),
+});
 
 /**
- * Returns the imported fixture list plus any in-memory manual scenario overrides
- * @summary List imported fixtures and manual scenario overrides
+ * Returns imported fixtures plus external live/final results. Manual scenario overrides are not persisted on the server and must be supplied through request-local customMatches.
+ * @summary List imported fixtures and live results
  */
 export const GetLiveMatchesResponse = zod.object({
-  "data": zod.object({
-  "playedMatches": zod.array(zod.object({
-  "matchNumber": zod.number().optional(),
-  "homeTeam": zod.string(),
-  "awayTeam": zod.string(),
-  "homeScore": zod.number(),
-  "awayScore": zod.number(),
-  "stage": zod.string().optional(),
-  "source": zod.enum(['fixture', 'official', 'espn', 'custom']).optional(),
-  "sourceId": zod.string().optional(),
-  "date": zod.string().optional(),
-  "kickoffTimeEt": zod.string().optional(),
-  "status": zod.enum(['scheduled', 'live', 'finished']).optional(),
-  "statusDetail": zod.string().optional(),
-  "group": zod.string().optional(),
-  "venue": zod.string().optional(),
-  "region": zod.string().optional(),
-  "winnerTeam": zod.string().optional()
-})),
-  "source": zod.object({
-  "provider": zod.enum(['espn', 'disabled']),
-  "lastSyncedAt": zod.string().nullable(),
-  "error": zod.string().nullable()
-})
-}),
-  "meta": zod.object({
-  "readiness": zod.object({
-  "state": zod.enum(['loading', 'ready', 'error']),
-  "ready": zod.boolean(),
-  "message": zod.string(),
-  "error": zod.object({
-  "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
-  "message": zod.string()
-}).optional()
-})
-})
-})
-
+  data: zod.object({
+    playedMatches: zod.array(
+      zod.object({
+        matchNumber: zod.number().optional(),
+        homeTeam: zod.string(),
+        awayTeam: zod.string(),
+        homeScore: zod.number(),
+        awayScore: zod.number(),
+        stage: zod.string().optional(),
+        source: zod.enum(["fixture", "official", "espn", "custom"]).optional(),
+        sourceId: zod.string().optional(),
+        date: zod.string().optional(),
+        kickoffTimeEt: zod.string().optional(),
+        status: zod.enum(["scheduled", "live", "finished"]).optional(),
+        statusDetail: zod.string().optional(),
+        group: zod.string().optional(),
+        venue: zod.string().optional(),
+        region: zod.string().optional(),
+        winnerTeam: zod.string().optional(),
+      }),
+    ),
+    source: zod.object({
+      provider: zod.enum(["espn", "disabled"]),
+      lastSyncedAt: zod.string().nullable(),
+      error: zod.string().nullable(),
+    }),
+  }),
+  meta: zod.object({
+    readiness: zod.object({
+      state: zod.enum(["loading", "ready", "error"]),
+      ready: zod.boolean(),
+      message: zod.string(),
+      error: zod
+        .object({
+          code: zod.enum(["HISTORICAL_DATA_LOAD_FAILED"]),
+          message: zod.string(),
+        })
+        .optional(),
+    }),
+  }),
+});
 
 /**
  * Returns fixture metadata, resolved venue coordinates, and weather context when the kickoff is inside the forecast horizon.
  * @summary Get fixture context with optional Open-Meteo weather
  */
 
-
-
-
 export const GetMatchContextQueryParams = zod.object({
-  "homeTeam": zod.coerce.string().min(1).describe('Home team name for the scheduled fixture lookup.'),
-  "awayTeam": zod.coerce.string().min(1).describe('Away team name for the scheduled fixture lookup.')
-})
+  homeTeam: zod.coerce
+    .string()
+    .min(1)
+    .describe("Home team name for the scheduled fixture lookup."),
+  awayTeam: zod.coerce
+    .string()
+    .min(1)
+    .describe("Away team name for the scheduled fixture lookup."),
+});
 
 export const GetMatchContextResponse = zod.object({
-  "data": zod.object({
-  "fixture": zod.object({
-  "matchNumber": zod.number().optional(),
-  "homeTeam": zod.string(),
-  "awayTeam": zod.string(),
-  "stage": zod.string().optional(),
-  "source": zod.enum(['fixture', 'official', 'espn', 'custom']).optional(),
-  "sourceId": zod.string().optional(),
-  "date": zod.string().optional(),
-  "kickoffTimeEt": zod.string().optional(),
-  "status": zod.enum(['scheduled', 'live', 'finished']).optional(),
-  "group": zod.string().optional(),
-  "venue": zod.string().optional(),
-  "region": zod.string().optional()
-}),
-  "venue": zod.object({
-  "name": zod.string(),
-  "stadium": zod.string(),
-  "city": zod.string(),
-  "country": zod.enum(['Canada', 'Mexico', 'United States']),
-  "region": zod.string(),
-  "altitudeMeters": zod.number(),
-  "latitude": zod.number(),
-  "longitude": zod.number()
-}).nullable(),
-  "weather": zod.object({
-  "provider": zod.enum(['open-meteo']),
-  "status": zod.enum(['available', 'unavailable']),
-  "reason": zod.enum(['outside_forecast_horizon', 'venue_unavailable', 'provider_error', 'forecast_missing']).nullish(),
-  "forecast": zod.object({
-  "forecastTimeEt": zod.string(),
-  "temperatureC": zod.number().nullable(),
-  "precipitationMm": zod.number().nullable(),
-  "rainMm": zod.number().nullable(),
-  "windSpeed10mKph": zod.number().nullable(),
-  "precipitationProbabilityPct": zod.number().nullable()
-}).nullable(),
-  "provenance": zod.object({
-  "provider": zod.enum(['open-meteo']),
-  "loadedAt": zod.string().nullable(),
-  "sourceUrl": zod.string(),
-  "cacheTtlMs": zod.number(),
-  "stale": zod.boolean(),
-  "error": zod.string().nullable(),
-  "state": zod.enum(['idle', 'fresh', 'stale', 'error']),
-  "fallback": zod.enum(['none', 'stale-cache', 'local-data'])
-})
-})
-}),
-  "meta": zod.object({
-  "readiness": zod.object({
-  "state": zod.enum(['loading', 'ready', 'error']),
-  "ready": zod.boolean(),
-  "message": zod.string(),
-  "error": zod.object({
-  "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
-  "message": zod.string()
-}).optional()
-})
-})
-})
-
+  data: zod.object({
+    fixture: zod.object({
+      matchNumber: zod.number().optional(),
+      homeTeam: zod.string(),
+      awayTeam: zod.string(),
+      stage: zod.string().optional(),
+      source: zod.enum(["fixture", "official", "espn", "custom"]).optional(),
+      sourceId: zod.string().optional(),
+      date: zod.string().optional(),
+      kickoffTimeEt: zod.string().optional(),
+      status: zod.enum(["scheduled", "live", "finished"]).optional(),
+      group: zod.string().optional(),
+      venue: zod.string().optional(),
+      region: zod.string().optional(),
+    }),
+    venue: zod
+      .object({
+        name: zod.string(),
+        stadium: zod.string(),
+        city: zod.string(),
+        country: zod.enum(["Canada", "Mexico", "United States"]),
+        region: zod.string(),
+        altitudeMeters: zod.number(),
+        latitude: zod.number(),
+        longitude: zod.number(),
+      })
+      .nullable(),
+    weather: zod.object({
+      provider: zod.enum(["open-meteo"]),
+      status: zod.enum(["available", "unavailable"]),
+      reason: zod
+        .enum([
+          "outside_forecast_horizon",
+          "venue_unavailable",
+          "provider_error",
+          "forecast_missing",
+        ])
+        .nullish(),
+      forecast: zod
+        .object({
+          forecastTimeEt: zod.string(),
+          temperatureC: zod.number().nullable(),
+          precipitationMm: zod.number().nullable(),
+          rainMm: zod.number().nullable(),
+          windSpeed10mKph: zod.number().nullable(),
+          precipitationProbabilityPct: zod.number().nullable(),
+        })
+        .nullable(),
+      provenance: zod.object({
+        provider: zod.enum(["open-meteo"]),
+        loadedAt: zod.string().nullable(),
+        sourceUrl: zod.string(),
+        cacheTtlMs: zod.number(),
+        stale: zod.boolean(),
+        error: zod.string().nullable(),
+        state: zod.enum(["idle", "fresh", "stale", "error"]),
+        fallback: zod.enum(["none", "stale-cache", "local-data"]),
+      }),
+    }),
+  }),
+  meta: zod.object({
+    readiness: zod.object({
+      state: zod.enum(["loading", "ready", "error"]),
+      ready: zod.boolean(),
+      message: zod.string(),
+      error: zod
+        .object({
+          code: zod.enum(["HISTORICAL_DATA_LOAD_FAILED"]),
+          message: zod.string(),
+        })
+        .optional(),
+    }),
+  }),
+});
 
 /**
- * Clears all in-memory manual score overrides and queues simulation recalculation
- * @summary Clear all manual scenario overrides
+ * Legacy compatibility endpoint. Returns success without mutating server state because manual scenario overrides are browser-local/request-local.
+ * @summary Validate clearing manual scenario overrides
  */
 export const ClearLiveMatchesResponse = zod.object({
-  "data": zod.object({
-  "success": zod.boolean(),
-  "message": zod.string()
-}),
-  "meta": zod.object({
-  "readiness": zod.object({
-  "state": zod.enum(['loading', 'ready', 'error']),
-  "ready": zod.boolean(),
-  "message": zod.string(),
-  "error": zod.object({
-  "code": zod.enum(['HISTORICAL_DATA_LOAD_FAILED']),
-  "message": zod.string()
-}).optional()
-})
-})
-})
-
-
+  data: zod.object({
+    success: zod.boolean(),
+    message: zod.string(),
+  }),
+  meta: zod.object({
+    readiness: zod.object({
+      state: zod.enum(["loading", "ready", "error"]),
+      ready: zod.boolean(),
+      message: zod.string(),
+      error: zod
+        .object({
+          code: zod.enum(["HISTORICAL_DATA_LOAD_FAILED"]),
+          message: zod.string(),
+        })
+        .optional(),
+    }),
+  }),
+});

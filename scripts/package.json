@@ -8,6 +8,7 @@
     "hello": "tsx ./src/hello.ts",
     "optimize": "tsx ./src/optimize.ts",
     "test": "tsx --test \"src/**/*.test.ts\"",
+    "test:coverage": "node --experimental-test-coverage --test-coverage-lines=80 --import tsx --test \"src/**/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
